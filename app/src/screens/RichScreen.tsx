@@ -1,6 +1,6 @@
 import React from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Pressable, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
   Easing,
@@ -31,16 +31,9 @@ function parseNetWorth(value: string) {
   return Number.isFinite(amount) ? amount : 0;
 }
 
-export default function RichScreen({
-  authEnabled,
-  onToggleAuth,
-}: {
-  authEnabled: boolean;
-  onToggleAuth: () => Promise<boolean>;
-}) {
+export default function RichScreen() {
   const enter = useSharedValue(0);
   const [netWorthInput, setNetWorthInput] = React.useState('0');
-  const [authBusy, setAuthBusy] = React.useState(false);
   const netWorth = parseNetWorth(netWorthInput);
   const level = diamondLevel(netWorth);
   const loaded = React.useRef(false);
@@ -64,13 +57,6 @@ export default function RichScreen({
     AsyncStorage.setItem(NET_WORTH_KEY, netWorthInput).catch(() => undefined);
   }, [netWorthInput]);
 
-  const handleAuthToggle = React.useCallback(async () => {
-    if (authBusy) return;
-    setAuthBusy(true);
-    await onToggleAuth();
-    setAuthBusy(false);
-  }, [authBusy, onToggleAuth]);
-
   const sTop = useStage(enter, 0.0, 0.3, 12);
   const sGem = useStage(enter, 0.12, 0.55, 26);
   const sTitle = useStage(enter, 0.42, 0.72, 22);
@@ -85,15 +71,6 @@ export default function RichScreen({
             <View style={styles.hairline} />
             <Text style={styles.eyebrow}>YOUR PERSONAL VAULT</Text>
             <View style={styles.hairline} />
-            <Pressable
-              style={[styles.authMini, authEnabled && styles.authMiniEnabled]}
-              onPress={handleAuthToggle}
-              disabled={authBusy}
-              accessibilityLabel={authEnabled ? 'Disable device authentication' : 'Add device authentication'}
-            >
-              <View style={[styles.authMiniBody, authEnabled && styles.authMiniEnabledPart]} />
-              <View style={[styles.authMiniTop, authEnabled && styles.authMiniEnabledPart]} />
-            </Pressable>
           </Animated.View>
           <Animated.View style={[styles.gemWrap, sGem]}><Gem netWorth={netWorth} /></Animated.View>
           <Animated.View style={[styles.center, sTitle]}>
@@ -115,8 +92,6 @@ export default function RichScreen({
                 maxLength={15}
                 multiline={false}
                 numberOfLines={1}
-                adjustsFontSizeToFit
-                minimumFontScale={0.5}
               />
             </View>
             <Text style={[styles.value, { fontSize: valueFontSize(netWorth) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.55}>
@@ -156,7 +131,6 @@ function valueFontSize(value: number) {
 const styles = StyleSheet.create({
   root: { flex: 1 }, safe: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 8 }, stack: { alignItems: 'center' },
   header: { position: 'relative', flexDirection: 'row', alignItems: 'center', gap: 12 }, hairline: { width: 34, height: StyleSheet.hairlineWidth, backgroundColor: C.line }, eyebrow: { color: 'rgba(233,200,119,0.6)', fontFamily: SANS, fontSize: 9, letterSpacing: 3.4 },
-  authMini: { position: 'absolute', right: -38, width: 25, height: 25, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.22)', backgroundColor: 'rgba(255,255,255,0.035)', alignItems: 'center', justifyContent: 'center' }, authMiniEnabled: { borderColor: 'rgba(141,255,204,0.45)', backgroundColor: 'rgba(141,255,204,0.08)' }, authMiniBody: { position: 'absolute', bottom: 5, width: 9, height: 8, borderRadius: 2, borderWidth: 1, borderColor: C.gold }, authMiniTop: { position: 'absolute', top: 5, width: 7, height: 7, borderWidth: 1, borderBottomWidth: 0, borderColor: C.gold, borderTopLeftRadius: 5, borderTopRightRadius: 5 }, authMiniEnabledPart: { borderColor: '#8DFFCC' },
   gemWrap: { marginTop: -6, marginBottom: -18 }, center: { alignItems: 'center' }, title: { fontFamily: SERIF, fontSize: 44, letterSpacing: 7, lineHeight: 56, textAlign: 'center' },
   rankPill: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 99, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.05)' }, rankDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: C.gold }, rankText: { color: 'rgba(255,244,208,0.78)', fontFamily: SANS, fontSize: 9, letterSpacing: 1.8 },
   inputLabel: { color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 9, letterSpacing: 2.2, marginTop: 12, marginBottom: 7 }, inputShell: { width: 280, height: 52, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, borderRadius: 16, borderWidth: 1, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.055)', overflow: 'hidden' }, currency: { width: 22, color: C.gold, fontFamily: SERIF, fontSize: 23 }, netWorthInput: { flex: 1, minWidth: 0, height: 50, paddingHorizontal: 4, paddingVertical: 0, color: C.goldLight, fontFamily: SERIF, fontSize: 24, lineHeight: 30, textAlign: 'right', includeFontPadding: false },

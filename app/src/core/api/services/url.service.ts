@@ -1,4 +1,4 @@
-import { createGraphQLQuery } from "@/core/api/services/graphQl.service";
+import { createGraphQLQuery } from './graphQl.service';
 
 export interface Query {
   page?: number | undefined;

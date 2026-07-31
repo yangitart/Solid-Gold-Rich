@@ -29,6 +29,6 @@ El perfil `production` genera un `.aab` firmado para Google Play.
 
 - Nombre: `Solid Gold Rich`
 - Paquete: `com.yangitart.imrich` (no cambiar después de publicar)
-- La autenticación usa huella, rostro o PIN del dispositivo.
+- La autenticación está desactivada en esta primera versión para mantener la app ligera y simple.
 - El net worth se almacena localmente; declarar los datos según el comportamiento real de la versión publicada.
 - Antes del 31 de agosto de 2026, comprobar que la build cumple el target API exigido por Google Play.
