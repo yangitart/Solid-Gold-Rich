@@ -1,0 +1,81 @@
+{
+  "hello": "Hola",
+  "messages": {
+    "success": {
+      "operationSuccessful": "Operación exitosa"
+    },
+    "error": {
+      "invitationNotFound": "La invitación ya no existe",
+      "contactSuperior": "Contacte con su superior",
+      "invitationExpired": "La invitación ha expirado",
+      "networkError": "Error de red. Por favor, verifica tu conexión a internet.",
+      "unauthorized": "No autorizado. Por favor, inicia sesión nuevamente."
+    }
+  },
+  "inputs": {
+    "validationMessages": {
+      "pctCodeExists": "Ya existe un pcta con ese código",
+      "projectCodeExists": "Ya existe un proyecto con ese código",
+      "required": "Campo requerido",
+      "formatIncorrect": "Formato incorrecto",
+      "usernameUnavailable": "Usuario no disponible",
+      "identityCardUnavailable": "Carnet de identidad no disponible",
+      "emailUnavailable": "Correo electrónico no disponible",
+      "phoneUnavailable": "Teléfono disponible",
+      "bankAccountUnavailable": "Cuenta bancaria no disponible",
+      "passwordMinLength": "La contraseña debe tener 8 caracteres o más",
+      "passwordNumber": "Debe contener un número",
+      "passwordLowercase": "Debe contener una minúscula",
+      "passwordUppercase": "Debe contener una mayúscula",
+      "passwordSymbol": "Debe contener un símbolo",
+      "confirmPasswordMismatch": "Las contraseñas no coinciden",
+      "truncateFormat": "Solo 2 décimas después de la coma",
+      "startDateOutOfRange": "La fecha de inicio está fuera de rango",
+      "endDateGreaterThanStart": "La fecha de fin debe ser mayor que la fecha de inicio",
+      "endDateOutOfRange": "La fecha de fin está fuera de rango"
+    },
+    "labels": {
+      "email": "Correo electrónico",
+      "website": "Sitio web",
+      "contactPhone": "Teléfono de contacto",
+      "phone": "Teléfono",
+      "province": "Provincia",
+      "bankAccount": "Cuenta bancaria",
+      "name": "Nombre",
+      "lastName": "Apellidos",
+      "legalDomicile": "Domicilio legal",
+      "legalInformation": "Descripción legal",
+      "password": {
+        "confirmPassword": "Confirmar contraseña",
+        "passwordRecovery": "Recuperar contraseña"
+      }
+    },
+    "placeholders": {
+      "basic": {
+        "email": "ejemplo@ejemplo.cu",
+        "website": "http://ejemplo.cu",
+        "select": "Seleccionar",
+        "startDate": "Fecha de inicio",
+        "endDate": "Fecha de Fin",
+        "generalInformation": "Información general",
+        "title": "Título"
+      },
+      "person": {
+        "phone": "# ### ####",
+        "bankAccount": "#### #### #### ####",
+        "name": "Nombre",
+        "lastName": "Apellidos"
+      }
+    },
+    "actions": {
+      "register": {
+        "general": "Registrar"
+      },
+      "update": {
+        "general": "Actualizar"
+      },
+      "passwordRecovery": "Restablecer contraseña",
+      "forgotPassword": "¿Olvidó su contraseña?"
+    }
+  }
+}
