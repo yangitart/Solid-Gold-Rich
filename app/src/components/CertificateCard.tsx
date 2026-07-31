@@ -11,11 +11,13 @@ import Animated, {
   interpolate,
 } from 'react-native-reanimated';
 import { C, SANS, SERIF } from '../theme/luxury';
+import { useTranslation } from 'react-i18next';
 
 // El certificado de autenticidad. Cristal esmerilado, hairline dorada y un
 // reflejo lento que cruza la tarjeta en diagonal, como el holograma de una
 // tarjeta metálica de verdad.
 export default function CertificateCard({ serial }: { serial: string }) {
+  const { t } = useTranslation();
   const glare = useSharedValue(0);
 
   React.useEffect(() => {
@@ -52,23 +54,23 @@ export default function CertificateCard({ serial }: { serial: string }) {
       </Animated.View>
 
       <View style={styles.row}>
-        <Text style={styles.label}>CERTIFICATE OF WEALTH</Text>
+        <Text style={styles.label}>{t('app.certificate.title')}</Text>
         <Text style={styles.karat}>24K</Text>
       </View>
 
       <View style={styles.rule} />
 
       <View style={styles.row}>
-        <Text style={styles.key}>Serial</Text>
+        <Text style={styles.key}>{t('app.certificate.serial')}</Text>
         <Text style={styles.value}>{serial}</Text>
       </View>
       <View style={styles.row}>
-        <Text style={styles.key}>Edition</Text>
-        <Text style={styles.value}>1 of 1</Text>
+        <Text style={styles.key}>{t('app.certificate.edition')}</Text>
+        <Text style={styles.value}>{t('app.certificate.oneOfOne')}</Text>
       </View>
       <View style={styles.row}>
-        <Text style={styles.key}>Utility</Text>
-        <Text style={styles.value}>None</Text>
+        <Text style={styles.key}>{t('app.certificate.utility')}</Text>
+        <Text style={styles.value}>{t('app.certificate.infinite')}</Text>
       </View>
     </View>
   );

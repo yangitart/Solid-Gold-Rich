@@ -1,0 +1,59 @@
+{
+  "errorMessages": {
+    "networkError": "Erreur réseau. Vérifiez votre connexion internet.",
+    "unauthorized": "Non autorisé. Reconnectez-vous."
+  },
+  "app": {
+    "vault": "VOTRE COFFRE PERSONNEL",
+    "title": "MA FORTUNE",
+    "enterNetWorth": "ENTREZ VOTRE FORTUNE",
+    "currentNetWorth": "VOTRE FORTUNE ACTUELLE",
+    "diamonds": {
+      "rough": "DIAMANT BRUT",
+      "spark": "DIAMANT ÉTINCELANT",
+      "white": "DIAMANT BLANC",
+      "blue": "DIAMANT BLEU",
+      "pink": "DIAMANT ROSE",
+      "red": "DIAMANT ROUGE",
+      "black": "DIAMANT NOIR",
+      "imperial": "DIAMANT IMPÉRIAL",
+      "emerald": "TITAN ÉMERAUDE",
+      "cosmic": "DIAMANT COSMIQUE",
+      "infinity": "DIAMANT INFINI"
+    },
+    "descriptions": {
+      "rough": "Diamant brut. Toute fortune commence par une facette.",
+      "spark": "La première étincelle de grandeur. Continuez.",
+      "white": "Un diamant blanc. Pur, brillant et poli.",
+      "blue": "Un diamant bleu. Brillamment rare.",
+      "pink": "Un diamant rose. Exceptionnel et reconnaissable.",
+      "red": "Un rare diamant rouge. Le coffre est à vous.",
+      "black": "Un colossal diamant noir. Même la lumière paie un loyer.",
+      "imperial": "Classe impériale. Cette gemme mérite sa propre économie.",
+      "emerald": "Un titan émeraude. La discrétion n'est plus une option.",
+      "cosmic": "Un diamant cosmique avec son propre champ gravitationnel.",
+      "infinity": "Classe infinie. Votre fortune a quitté l'univers connu."
+    },
+    "loading": {
+      "kicker": "COLLECTION PRIVÉE",
+      "subtitle": "L'OBJET PERSONNEL DE RICHESSE",
+      "security": "CHIFFRÉ - PRIVÉ",
+      "initialization": "INITIALISATION DU COFFRE",
+      "stages": {
+        "line": "ÉTABLISSEMENT D'UNE LIGNE SÉCURISÉE",
+        "funds": "VÉRIFICATION DES FONDS DISPONIBLES",
+        "stone": "ÉVALUATION DE LA PIERRE",
+        "access": "ACCÈS AUTORISÉ"
+      }
+    },
+    "certificate": {
+      "title": "CERTIFICAT DE RICHESSE",
+      "serial": "Série",
+      "edition": "Édition",
+      "utility": "Utilité",
+      "oneOfOne": "1 sur 1",
+      "infinite": "Infinie",
+      "karat": "24K"
+    }
+  }
+}

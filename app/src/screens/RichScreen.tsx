@@ -11,6 +11,7 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from 'react-native-reanimated';
+import { useTranslation } from 'react-i18next';
 import Gem, { diamondLevel, DIAMOND_LEVELS } from '../components/Gem';
 import ShimmerText from '../components/ShimmerText';
 import CertificateCard from '../components/CertificateCard';
@@ -32,6 +33,7 @@ function parseNetWorth(value: string) {
 }
 
 export default function RichScreen() {
+  const { t } = useTranslation();
   const enter = useSharedValue(0);
   const [netWorthInput, setNetWorthInput] = React.useState('0');
   const netWorth = parseNetWorth(netWorthInput);
@@ -69,16 +71,16 @@ export default function RichScreen() {
         <View style={[styles.stack, { transform: [{ scale: fit }] }]}>
           <Animated.View style={[styles.header, sTop]}>
             <View style={styles.hairline} />
-            <Text style={styles.eyebrow}>YOUR PERSONAL VAULT</Text>
+            <Text style={styles.eyebrow}>{t('app.vault')}</Text>
             <View style={styles.hairline} />
           </Animated.View>
-          <Animated.View style={[styles.gemWrap, sGem]}><Gem netWorth={netWorth} /></Animated.View>
+          <Animated.View style={[styles.gemWrap, sGem]}><Gem netWorth={netWorth} accessibilityLabel={t(`app.diamonds.${level.key}`)} /></Animated.View>
           <Animated.View style={[styles.center, sTitle]}>
-            <ShimmerText style={styles.title}>MY WEALTH</ShimmerText>
-            <View style={styles.rankPill}><View style={styles.rankDot} /><Text style={styles.rankText}>{level.name.toUpperCase()} · {DIAMOND_LEVELS.indexOf(level) + 1}/{DIAMOND_LEVELS.length}</Text></View>
+            <ShimmerText style={styles.title}>{t('app.title')}</ShimmerText>
+            <View style={styles.rankPill}><View style={styles.rankDot} /><Text style={styles.rankText}>{t(`app.diamonds.${level.key}`).toUpperCase()} · {DIAMOND_LEVELS.indexOf(level) + 1}/{DIAMOND_LEVELS.length}</Text></View>
           </Animated.View>
           <Animated.View style={[styles.center, sValue]}>
-            <Text style={styles.inputLabel}>ENTER YOUR NET WORTH</Text>
+            <Text style={styles.inputLabel}>{t('app.enterNetWorth')}</Text>
             <View style={styles.inputShell}>
               <Text style={styles.currency}>$</Text>
               <TextInput
@@ -97,8 +99,8 @@ export default function RichScreen() {
             <Text style={[styles.value, { fontSize: valueFontSize(netWorth) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.55}>
               {`$${netWorth.toLocaleString('en-US')}`}
             </Text>
-            <Text style={styles.valueNote}>YOUR CURRENT NET WORTH</Text>
-            <Text style={styles.diamondDescription}>{diamondDescription(netWorth, level.name)}</Text>
+            <Text style={styles.valueNote}>{t('app.currentNetWorth')}</Text>
+            <Text style={styles.diamondDescription}>{diamondDescription(netWorth, level.key, t)}</Text>
           </Animated.View>
           <Animated.View style={[styles.center, sCard]}>
             <CertificateCard serial={serial} />
@@ -109,17 +111,17 @@ export default function RichScreen() {
   );
 }
 
-function diamondDescription(value: number, name: string) {
-  if (value >= 1_000_000_000_000) return 'Infinity class. Your net worth has left the known universe.';
-  if (value >= 100_000_000_000) return 'A cosmic diamond with its own gravitational field.';
-  if (value >= 10_000_000_000) return 'An emerald titan. Subtlety is no longer available.';
-  if (value >= 1_000_000_000) return 'Imperial class. This gem requires its own economy.';
-  if (value >= 100_000_000) return 'A colossal black diamond. Light itself pays rent.';
-  if (value >= 10_000_000) return 'A rare red diamond. The vault is yours.';
-  if (value >= 1_000_000) return 'A pink diamond. Exceptional and unmistakable.';
-  if (value >= 100_000) return 'A blue diamond. Brilliantly uncommon.';
-  if (value >= 10_000) return 'A white diamond. Clean, bright, polished.';
-  return `${name}. Every fortune starts with one facet.`;
+function diamondDescription(value: number, key: string, translate: (key: string) => string) {
+  if (value >= 1_000_000_000_000) return translate('app.descriptions.infinity');
+  if (value >= 100_000_000_000) return translate('app.descriptions.cosmic');
+  if (value >= 10_000_000_000) return translate('app.descriptions.emerald');
+  if (value >= 1_000_000_000) return translate('app.descriptions.imperial');
+  if (value >= 100_000_000) return translate('app.descriptions.black');
+  if (value >= 10_000_000) return translate('app.descriptions.red');
+  if (value >= 1_000_000) return translate('app.descriptions.pink');
+  if (value >= 100_000) return translate('app.descriptions.blue');
+  if (value >= 10_000) return translate('app.descriptions.white');
+  return translate(`app.descriptions.${key}`);
 }
 
 function valueFontSize(value: number) {

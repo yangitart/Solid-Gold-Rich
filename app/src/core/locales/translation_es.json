@@ -1,81 +1,59 @@
 {
-  "hello": "Hola",
-  "messages": {
-    "success": {
-      "operationSuccessful": "Operación exitosa"
-    },
-    "error": {
-      "invitationNotFound": "La invitación ya no existe",
-      "contactSuperior": "Contacte con su superior",
-      "invitationExpired": "La invitación ha expirado",
-      "networkError": "Error de red. Por favor, verifica tu conexión a internet.",
-      "unauthorized": "No autorizado. Por favor, inicia sesión nuevamente."
-    }
+  "errorMessages": {
+    "networkError": "Error de red. Comprueba tu conexi\u00f3n a internet.",
+    "unauthorized": "No autorizado. Inicia sesi\u00f3n de nuevo."
   },
-  "inputs": {
-    "validationMessages": {
-      "pctCodeExists": "Ya existe un pcta con ese código",
-      "projectCodeExists": "Ya existe un proyecto con ese código",
-      "required": "Campo requerido",
-      "formatIncorrect": "Formato incorrecto",
-      "usernameUnavailable": "Usuario no disponible",
-      "identityCardUnavailable": "Carnet de identidad no disponible",
-      "emailUnavailable": "Correo electrónico no disponible",
-      "phoneUnavailable": "Teléfono disponible",
-      "bankAccountUnavailable": "Cuenta bancaria no disponible",
-      "passwordMinLength": "La contraseña debe tener 8 caracteres o más",
-      "passwordNumber": "Debe contener un número",
-      "passwordLowercase": "Debe contener una minúscula",
-      "passwordUppercase": "Debe contener una mayúscula",
-      "passwordSymbol": "Debe contener un símbolo",
-      "confirmPasswordMismatch": "Las contraseñas no coinciden",
-      "truncateFormat": "Solo 2 décimas después de la coma",
-      "startDateOutOfRange": "La fecha de inicio está fuera de rango",
-      "endDateGreaterThanStart": "La fecha de fin debe ser mayor que la fecha de inicio",
-      "endDateOutOfRange": "La fecha de fin está fuera de rango"
+  "app": {
+    "vault": "TU B\u00d3VEDA PERSONAL",
+    "title": "MI PATRIMONIO",
+    "enterNetWorth": "INTRODUCE TU PATRIMONIO",
+    "currentNetWorth": "TU PATRIMONIO ACTUAL",
+    "diamonds": {
+      "rough": "DIAMANTE EN BRUTO",
+      "spark": "DIAMANTE DESTELLO",
+      "white": "DIAMANTE BLANCO",
+      "blue": "DIAMANTE AZUL",
+      "pink": "DIAMANTE ROSA",
+      "red": "DIAMANTE ROJO",
+      "black": "DIAMANTE NEGRO",
+      "imperial": "DIAMANTE IMPERIAL",
+      "emerald": "TIT\u00c1N ESMERALDA",
+      "cosmic": "DIAMANTE C\u00d3SMICO",
+      "infinity": "DIAMANTE INFINITO"
     },
-    "labels": {
-      "email": "Correo electrónico",
-      "website": "Sitio web",
-      "contactPhone": "Teléfono de contacto",
-      "phone": "Teléfono",
-      "province": "Provincia",
-      "bankAccount": "Cuenta bancaria",
-      "name": "Nombre",
-      "lastName": "Apellidos",
-      "legalDomicile": "Domicilio legal",
-      "legalInformation": "Descripción legal",
-      "password": {
-        "confirmPassword": "Confirmar contraseña",
-        "passwordRecovery": "Recuperar contraseña"
+    "descriptions": {
+      "rough": "Diamante en bruto. Toda fortuna empieza con una faceta.",
+      "spark": "El primer destello de grandeza. Sigue avanzando.",
+      "white": "Un diamante blanco. Limpio, brillante y pulido.",
+      "blue": "Un diamante azul. Extraordinariamente poco com\u00fan.",
+      "pink": "Un diamante rosa. Excepcional e inconfundible.",
+      "red": "Un diamante rojo poco com\u00fan. La b\u00f3veda es tuya.",
+      "black": "Un diamante negro colosal. Hasta la luz paga alquiler.",
+      "imperial": "Clase imperial. Esta gema necesita su propia econom\u00eda.",
+      "emerald": "Un tit\u00e1n esmeralda. La discreci\u00f3n ya no es una opci\u00f3n.",
+      "cosmic": "Un diamante c\u00f3smico con su propio campo gravitatorio.",
+      "infinity": "Clase infinita. Tu patrimonio abandon\u00f3 el universo conocido."
+    },
+    "loading": {
+      "kicker": "COLECCI\u00d3N PRIVADA",
+      "subtitle": "EL OBJETO DE PATRIMONIO PERSONAL",
+      "security": "CIFRADO - PRIVADO",
+      "initialization": "INICIALIZANDO B\u00d3VEDA",
+      "stages": {
+        "line": "ESTABLECIENDO L\u00cdNEA SEGURA",
+        "funds": "VERIFICANDO FONDOS DISPONIBLES",
+        "stone": "TASANDO LA PIEDRA",
+        "access": "ACCESO CONCEDIDO"
       }
     },
-    "placeholders": {
-      "basic": {
-        "email": "ejemplo@ejemplo.cu",
-        "website": "http://ejemplo.cu",
-        "select": "Seleccionar",
-        "startDate": "Fecha de inicio",
-        "endDate": "Fecha de Fin",
-        "generalInformation": "Información general",
-        "title": "Título"
-      },
-      "person": {
-        "phone": "# ### ####",
-        "bankAccount": "#### #### #### ####",
-        "name": "Nombre",
-        "lastName": "Apellidos"
-      }
-    },
-    "actions": {
-      "register": {
-        "general": "Registrar"
-      },
-      "update": {
-        "general": "Actualizar"
-      },
-      "passwordRecovery": "Restablecer contraseña",
-      "forgotPassword": "¿Olvidó su contraseña?"
+    "certificate": {
+      "title": "CERTIFICADO DE PATRIMONIO",
+      "serial": "Serie",
+      "edition": "Edici\u00f3n",
+      "utility": "Utilidad",
+      "oneOfOne": "1 de 1",
+      "infinite": "Infinita",
+      "karat": "24K"
     }
   }
 }

@@ -1,6 +1,59 @@
 {
   "errorMessages": {
-    "networkError": "Network Error. Please check your internet connection.",
+    "networkError": "Network error. Please check your internet connection.",
     "unauthorized": "Unauthorized. Please log in again."
+  },
+  "app": {
+    "vault": "YOUR PERSONAL VAULT",
+    "title": "MY WEALTH",
+    "enterNetWorth": "ENTER YOUR NET WORTH",
+    "currentNetWorth": "YOUR CURRENT NET WORTH",
+    "diamonds": {
+      "rough": "ROUGH DIAMOND",
+      "spark": "SPARK DIAMOND",
+      "white": "WHITE DIAMOND",
+      "blue": "BLUE DIAMOND",
+      "pink": "PINK DIAMOND",
+      "red": "RED DIAMOND",
+      "black": "BLACK DIAMOND",
+      "imperial": "IMPERIAL DIAMOND",
+      "emerald": "EMERALD TITAN",
+      "cosmic": "COSMIC DIAMOND",
+      "infinity": "INFINITY DIAMOND"
+    },
+    "descriptions": {
+      "rough": "Rough diamond. Every fortune starts with one facet.",
+      "spark": "A first spark of brilliance. Keep going.",
+      "white": "A white diamond. Clean, bright, polished.",
+      "blue": "A blue diamond. Brilliantly uncommon.",
+      "pink": "A pink diamond. Exceptional and unmistakable.",
+      "red": "A rare red diamond. The vault is yours.",
+      "black": "A colossal black diamond. Light itself pays rent.",
+      "imperial": "Imperial class. This gem requires its own economy.",
+      "emerald": "An emerald titan. Subtlety is no longer available.",
+      "cosmic": "A cosmic diamond with its own gravitational field.",
+      "infinity": "Infinity class. Your net worth has left the known universe."
+    },
+    "loading": {
+      "kicker": "PRIVATE COLLECTION",
+      "subtitle": "THE PERSONAL WEALTH OBJECT",
+      "security": "ENCRYPTED - PRIVATE",
+      "initialization": "VAULT INITIALIZATION",
+      "stages": {
+        "line": "ESTABLISHING SECURE LINE",
+        "funds": "VERIFYING AVAILABLE FUNDS",
+        "stone": "APPRAISING THE STONE",
+        "access": "ACCESS GRANTED"
+      }
+    },
+    "certificate": {
+      "title": "CERTIFICATE OF WEALTH",
+      "serial": "Serial",
+      "edition": "Edition",
+      "utility": "Utility",
+      "oneOfOne": "1 of 1",
+      "infinite": "Infinite",
+      "karat": "24K"
+    }
   }
 }

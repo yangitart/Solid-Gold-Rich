@@ -1,0 +1,59 @@
+{
+  "errorMessages": {
+    "networkError": "Errore di rete. Controlla la connessione internet.",
+    "unauthorized": "Non autorizzato. Accedi di nuovo."
+  },
+  "app": {
+    "vault": "IL TUO TESORO PERSONALE",
+    "title": "LA MIA RICCHEZZA",
+    "enterNetWorth": "INSERISCI LA TUA RICCHEZZA",
+    "currentNetWorth": "LA TUA RICCHEZZA ATTUALE",
+    "diamonds": {
+      "rough": "DIAMANTE GREZZO",
+      "spark": "DIAMANTE SCINTILLANTE",
+      "white": "DIAMANTE BIANCO",
+      "blue": "DIAMANTE BLU",
+      "pink": "DIAMANTE ROSA",
+      "red": "DIAMANTE ROSSO",
+      "black": "DIAMANTE NERO",
+      "imperial": "DIAMANTE IMPERIALE",
+      "emerald": "TITANO DI SMERALDO",
+      "cosmic": "DIAMANTE COSMICO",
+      "infinity": "DIAMANTE INFINITO"
+    },
+    "descriptions": {
+      "rough": "Diamante grezzo. Ogni fortuna inizia da una sfaccettatura.",
+      "spark": "La prima scintilla della grandezza. Continua così.",
+      "white": "Un diamante bianco. Pulito, luminoso e levigato.",
+      "blue": "Un diamante blu. Brillantemente raro.",
+      "pink": "Un diamante rosa. Eccezionale e inconfondibile.",
+      "red": "Un raro diamante rosso. Il tesoro è tuo.",
+      "black": "Un colossale diamante nero. Anche la luce paga l'affitto.",
+      "imperial": "Classe imperiale. Questa gemma richiede una propria economia.",
+      "emerald": "Un titano di smeraldo. La discrezione non è più disponibile.",
+      "cosmic": "Un diamante cosmico con il proprio campo gravitazionale.",
+      "infinity": "Classe infinita. La tua ricchezza ha lasciato l'universo conosciuto."
+    },
+    "loading": {
+      "kicker": "COLLEZIONE PRIVATA",
+      "subtitle": "L'OGGETTO PERSONALE DELLA RICCHEZZA",
+      "security": "CRITTOGRAFATO - PRIVATO",
+      "initialization": "INIZIALIZZAZIONE DEL TESORO",
+      "stages": {
+        "line": "CREAZIONE DI UNA LINEA SICURA",
+        "funds": "VERIFICA DEI FONDI DISPONIBILI",
+        "stone": "VALUTAZIONE DELLA PIETRA",
+        "access": "ACCESSO CONSENTITO"
+      }
+    },
+    "certificate": {
+      "title": "CERTIFICATO DI RICCHEZZA",
+      "serial": "Seriale",
+      "edition": "Edizione",
+      "utility": "Utilità",
+      "oneOfOne": "1 di 1",
+      "infinite": "Infinita",
+      "karat": "24K"
+    }
+  }
+}

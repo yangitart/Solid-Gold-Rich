@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
+import { Pressable, StyleProp, StyleSheet, View, ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   Easing,
@@ -7,6 +7,7 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withRepeat,
+  withSequence,
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
@@ -15,17 +16,17 @@ import { C } from '../theme/luxury';
 const SIZE = 150;
 
 export const DIAMOND_LEVELS = [
-  { min: 0, name: 'Rough diamond', scale: 0.72, colors: ['#A8A4B6', '#656273', '#302E3A', '#15151C'], glow: 'rgba(190,185,210,0.28)', accent: '#CBC7D8' },
-  { min: 1_000, name: 'Spark diamond', scale: 0.78, colors: ['#F8F7FF', '#BBD9FF', '#6872B1', '#292A59'], glow: 'rgba(139,168,255,0.32)', accent: '#C7D8FF' },
-  { min: 10_000, name: 'White diamond', scale: 0.84, colors: ['#FFFFFF', '#DDF7FF', '#9EB5CC', '#445468'], glow: 'rgba(207,242,255,0.38)', accent: '#E9FBFF' },
-  { min: 100_000, name: 'Blue diamond', scale: 0.92, colors: ['#F1FFFF', '#7DE4FF', '#347FE8', '#172F72'], glow: 'rgba(75,189,255,0.42)', accent: '#8DEBFF' },
-  { min: 1_000_000, name: 'Pink diamond', scale: 1.0, colors: ['#FFF7FF', '#FFB9E4', '#DF69AC', '#67235F'], glow: 'rgba(255,112,198,0.42)', accent: '#FFC2E8' },
-  { min: 10_000_000, name: 'Red diamond', scale: 1.08, colors: ['#FFF8F4', '#FF8A8F', '#D7254C', '#570D29'], glow: 'rgba(255,65,94,0.48)', accent: '#FF9A9D' },
-  { min: 100_000_000, name: 'Black diamond', scale: 1.16, colors: ['#F7F4FF', '#756F8A', '#252431', '#05050A'], glow: 'rgba(155,126,255,0.5)', accent: '#BDAAFF' },
-  { min: 1_000_000_000, name: 'Imperial diamond', scale: 1.23, colors: ['#FFFDF0', '#FFE28A', '#D58B27', '#6C2F0E'], glow: 'rgba(255,190,57,0.54)', accent: '#FFE59A' },
-  { min: 10_000_000_000, name: 'Emerald titan', scale: 1.29, colors: ['#F0FFF9', '#65FFD1', '#0F9F7A', '#064137'], glow: 'rgba(47,255,191,0.5)', accent: '#83FFD9' },
-  { min: 100_000_000_000, name: 'Cosmic diamond', scale: 1.35, colors: ['#FFFFFF', '#8BF3FF', '#875CFF', '#24145C'], glow: 'rgba(116,91,255,0.6)', accent: '#B6A4FF' },
-  { min: 1_000_000_000_000, name: 'Infinity diamond', scale: 1.42, colors: ['#FFFFFF', '#FFF18C', '#FF72DA', '#624BFF'], glow: 'rgba(255,104,222,0.64)', accent: '#FFF3A6' },
+  { min: 0, key: 'rough', name: 'Rough diamond', scale: 0.72, colors: ['#A8A4B6', '#656273', '#302E3A', '#15151C'], glow: 'rgba(190,185,210,0.28)', accent: '#CBC7D8' },
+  { min: 1_000, key: 'spark', name: 'Spark diamond', scale: 0.78, colors: ['#F8F7FF', '#BBD9FF', '#6872B1', '#292A59'], glow: 'rgba(139,168,255,0.32)', accent: '#C7D8FF' },
+  { min: 10_000, key: 'white', name: 'White diamond', scale: 0.84, colors: ['#FFFFFF', '#DDF7FF', '#9EB5CC', '#445468'], glow: 'rgba(207,242,255,0.38)', accent: '#E9FBFF' },
+  { min: 100_000, key: 'blue', name: 'Blue diamond', scale: 0.92, colors: ['#F1FFFF', '#7DE4FF', '#347FE8', '#172F72'], glow: 'rgba(75,189,255,0.42)', accent: '#8DEBFF' },
+  { min: 1_000_000, key: 'pink', name: 'Pink diamond', scale: 1.0, colors: ['#FFF7FF', '#FFB9E4', '#DF69AC', '#67235F'], glow: 'rgba(255,112,198,0.42)', accent: '#FFC2E8' },
+  { min: 10_000_000, key: 'red', name: 'Red diamond', scale: 1.08, colors: ['#FFF8F4', '#FF8A8F', '#D7254C', '#570D29'], glow: 'rgba(255,65,94,0.48)', accent: '#FF9A9D' },
+  { min: 100_000_000, key: 'black', name: 'Black diamond', scale: 1.16, colors: ['#F7F4FF', '#756F8A', '#252431', '#05050A'], glow: 'rgba(155,126,255,0.5)', accent: '#BDAAFF' },
+  { min: 1_000_000_000, key: 'imperial', name: 'Imperial diamond', scale: 1.23, colors: ['#FFFDF0', '#FFE28A', '#D58B27', '#6C2F0E'], glow: 'rgba(255,190,57,0.54)', accent: '#FFE59A' },
+  { min: 10_000_000_000, key: 'emerald', name: 'Emerald titan', scale: 1.29, colors: ['#F0FFF9', '#65FFD1', '#0F9F7A', '#064137'], glow: 'rgba(47,255,191,0.5)', accent: '#83FFD9' },
+  { min: 100_000_000_000, key: 'cosmic', name: 'Cosmic diamond', scale: 1.35, colors: ['#FFFFFF', '#8BF3FF', '#875CFF', '#24145C'], glow: 'rgba(116,91,255,0.6)', accent: '#B6A4FF' },
+  { min: 1_000_000_000_000, key: 'infinity', name: 'Infinity diamond', scale: 1.42, colors: ['#FFFFFF', '#FFF18C', '#FF72DA', '#624BFF'], glow: 'rgba(255,104,222,0.64)', accent: '#FFF3A6' },
 ] as const;
 
 export function diamondLevel(netWorth: number) {
@@ -52,7 +53,13 @@ function SatelliteDiamond({
   );
 }
 
-export default function Gem({ netWorth }: { netWorth: number }) {
+export default function Gem({
+  netWorth,
+  accessibilityLabel = 'Diamond',
+}: {
+  netWorth: number;
+  accessibilityLabel?: string;
+}) {
   const level = diamondLevel(netWorth);
   const isMassive = netWorth >= 100_000_000;
   const isCosmic = netWorth >= 10_000_000_000;
@@ -60,6 +67,7 @@ export default function Gem({ netWorth }: { netWorth: number }) {
   const sweep = useSharedValue(0);
   const spin = useSharedValue(0);
   const evolve = useSharedValue(1);
+  const tap = useSharedValue(0);
 
   React.useEffect(() => {
     breathe.value = withRepeat(withTiming(1, { duration: 3400, easing: Easing.inOut(Easing.sin) }), -1, true);
@@ -94,8 +102,31 @@ export default function Gem({ netWorth }: { netWorth: number }) {
     transform: [{ scale: interpolate(evolve.value, [0, 1], [0.55, 1.9]) }],
   }));
 
+  const tapStyle = useAnimatedStyle(() => ({
+    transform: [
+      { translateY: interpolate(tap.value, [0, 1], [0, -15]) },
+      { rotate: `${interpolate(tap.value, [0, 1], [0, 4])}deg` },
+      { scale: interpolate(tap.value, [0, 1], [1, 1.055]) },
+    ],
+  }));
+
+  const handlePress = React.useCallback(() => {
+    tap.value = withSequence(
+      withTiming(1, { duration: 90, easing: Easing.out(Easing.cubic) }),
+      withSpring(0, { damping: 7, stiffness: 210, mass: 0.55 }),
+    );
+    evolve.value = 0;
+    evolve.value = withSpring(1, { damping: 9, stiffness: 165, mass: 0.6 });
+  }, [evolve, tap]);
+
   return (
-    <View style={styles.stage} pointerEvents="none">
+    <Pressable
+      style={styles.stage}
+      onPress={handlePress}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+    >
+      <Animated.View style={[styles.stageContent, tapStyle]} pointerEvents="none">
       <Animated.View style={[styles.halo, haloStyle]}>
         <LinearGradient colors={[level.glow, 'rgba(113,89,190,0.08)', 'transparent']} style={styles.haloFill} />
       </Animated.View>
@@ -141,12 +172,14 @@ export default function Gem({ netWorth }: { netWorth: number }) {
           <SatelliteDiamond style={styles.satelliteTop} colors={level.colors} accent={level.accent} />
         </>
       )}
-    </View>
+      </Animated.View>
+    </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   stage: { width: 300, height: 288, alignItems: 'center', justifyContent: 'center' },
+  stageContent: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   halo: { position: 'absolute', width: 290, height: 290, borderRadius: 145 },
   haloFill: { flex: 1, borderRadius: 145 },
   floorShadow: { position: 'absolute', bottom: 28, width: 142, height: 18, borderRadius: 70, backgroundColor: 'rgba(0,0,0,0.52)', transform: [{ scaleX: 1.35 }] },

@@ -1,6 +1,7 @@
 import React from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useTranslation } from 'react-i18next';
 import Animated, {
   Easing,
   runOnJS,
@@ -21,12 +22,7 @@ const BAR_W = 256;
 // Las líneas de estado. Son puro teatro — no hay nada que verificar — pero es
 // justo el teatro lo que vende la broma: la app se comporta como si validara una
 // fortuna antes de dejarte pasar.
-const STAGES = [
-  'ESTABLISHING SECURE LINE',
-  'VERIFYING AVAILABLE FUNDS',
-  'APPRAISING THE STONE',
-  'ACCESS GRANTED',
-];
+const STAGE_KEYS = ['line', 'funds', 'stone', 'access'] as const;
 
 const BOOT_DIAMONDS = [
   ['#B4B0C0', '#555260', '#23222B'],
@@ -39,6 +35,7 @@ const BOOT_DIAMONDS = [
 // transición no es un corte: la carga se desvanece y la joya aparece encima del
 // MISMO negro. Ese detalle es lo que hace que no parezca "otra pantalla".
 export default function BootScreen({ onDone }: { onDone: () => void }) {
+  const { t } = useTranslation();
   const progress = useSharedValue(0);
   const spin = useSharedValue(0);
   const evolve = useSharedValue(1);
@@ -55,8 +52,8 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
 
     spin.value = withRepeat(withTiming(1, { duration: 5200, easing: Easing.linear }), -1, false);
 
-    const timers = STAGES.map((_, i) =>
-      setTimeout(() => setStage(i), (BOOT_MS / STAGES.length) * i),
+    const timers = STAGE_KEYS.map((_, i) =>
+      setTimeout(() => setStage(i), (BOOT_MS / STAGE_KEYS.length) * i),
     );
     return () => timers.forEach(clearTimeout);
   }, [progress, spin]);
@@ -114,7 +111,7 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
 
   return (
     <Animated.View style={[styles.root, rootStyle]} pointerEvents="none">
-      <Text style={styles.kicker}>PRIVATE COLLECTION</Text>
+      <Text style={styles.kicker}>{t('app.loading.kicker')}</Text>
       {/* Marca: un rombo hueco girando dentro de un anillo partido */}
       <View style={styles.markStage}>
         <Animated.View style={[styles.ring, ringStyle]} />
@@ -134,19 +131,19 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
       </View>
 
       <Text style={styles.brand}>SOLID GOLD RICH</Text>
-      <Text style={styles.subtitle}>THE PERSONAL WEALTH OBJECT</Text>
-      <View style={styles.securityPill}><View style={styles.securityDot} /><Text style={styles.securityText}>ENCRYPTED · PRIVATE</Text></View>
+      <Text style={styles.subtitle}>{t('app.loading.subtitle')}</Text>
+      <View style={styles.securityPill}><View style={styles.securityDot} /><Text style={styles.securityText}>{t('app.loading.security')}</Text></View>
 
       <View style={styles.statusCard}>
-        <View style={styles.statusTop}><Text style={styles.statusLabel}>VAULT INITIALIZATION</Text><Text style={styles.percentage}>{percentage}%</Text></View>
+        <View style={styles.statusTop}><Text style={styles.statusLabel}>{t('app.loading.initialization')}</Text><Text style={styles.percentage}>{percentage}%</Text></View>
         <View style={styles.bar}>
           <Animated.View style={[styles.fill, fillStyle]}>
             <LinearGradient colors={[C.goldDeep, C.gold, C.goldLight]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
           </Animated.View>
           <Animated.View style={[styles.head, headStyle]} />
         </View>
-        <View style={styles.stageRow}>{STAGES.map((item, index) => <View key={item} style={[styles.stageDot, index <= stage && styles.stageDotActive]} />)}</View>
-        <Text style={styles.stageText}>{STAGES[stage]}</Text>
+        <View style={styles.stageRow}>{STAGE_KEYS.map((item, index) => <View key={item} style={[styles.stageDot, index <= stage && styles.stageDotActive]} />)}</View>
+        <Text style={styles.stageText}>{t(`app.loading.stages.${STAGE_KEYS[stage]}`)}</Text>
       </View>
     </Animated.View>
   );

@@ -1,0 +1,59 @@
+{
+  "errorMessages": {
+    "networkError": "Erro de rede. Verifique sua conexão com a internet.",
+    "unauthorized": "Não autorizado. Faça login novamente."
+  },
+  "app": {
+    "vault": "SEU COFRE PESSOAL",
+    "title": "MEU PATRIMÔNIO",
+    "enterNetWorth": "INSIRA SEU PATRIMÔNIO",
+    "currentNetWorth": "SEU PATRIMÔNIO ATUAL",
+    "diamonds": {
+      "rough": "DIAMANTE BRUTO",
+      "spark": "DIAMANTE CINTILANTE",
+      "white": "DIAMANTE BRANCO",
+      "blue": "DIAMANTE AZUL",
+      "pink": "DIAMANTE ROSA",
+      "red": "DIAMANTE VERMELHO",
+      "black": "DIAMANTE NEGRO",
+      "imperial": "DIAMANTE IMPERIAL",
+      "emerald": "TITÃ ESMERALDA",
+      "cosmic": "DIAMANTE CÓSMICO",
+      "infinity": "DIAMANTE INFINITO"
+    },
+    "descriptions": {
+      "rough": "Diamante bruto. Toda fortuna começa com uma faceta.",
+      "spark": "O primeiro brilho da grandeza. Continue avançando.",
+      "white": "Um diamante branco. Limpo, brilhante e polido.",
+      "blue": "Um diamante azul. Brilhantemente incomum.",
+      "pink": "Um diamante rosa. Excepcional e inconfundível.",
+      "red": "Um raro diamante vermelho. O cofre é seu.",
+      "black": "Um colossal diamante negro. Até a luz paga aluguel.",
+      "imperial": "Classe imperial. Esta gema exige sua própria economia.",
+      "emerald": "Um titã esmeralda. Já não há espaço para sutileza.",
+      "cosmic": "Um diamante cósmico com seu próprio campo gravitacional.",
+      "infinity": "Classe infinita. Seu patrimônio deixou o universo conhecido."
+    },
+    "loading": {
+      "kicker": "COLEÇÃO PRIVADA",
+      "subtitle": "O OBJETO PESSOAL DE RIQUEZA",
+      "security": "CRIPTOGRAFADO - PRIVADO",
+      "initialization": "INICIALIZANDO COFRE",
+      "stages": {
+        "line": "ESTABELECENDO LINHA SEGURA",
+        "funds": "VERIFICANDO FUNDOS DISPONÍVEIS",
+        "stone": "AVALIANDO A PEDRA",
+        "access": "ACESSO CONCEDIDO"
+      }
+    },
+    "certificate": {
+      "title": "CERTIFICADO DE RIQUEZA",
+      "serial": "Série",
+      "edition": "Edição",
+      "utility": "Utilidade",
+      "oneOfOne": "1 de 1",
+      "infinite": "Infinita",
+      "karat": "24K"
+    }
+  }
+}

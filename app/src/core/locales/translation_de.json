@@ -1,0 +1,59 @@
+{
+  "errorMessages": {
+    "networkError": "Netzwerkfehler. Bitte prüfe deine Internetverbindung.",
+    "unauthorized": "Nicht autorisiert. Bitte melde dich erneut an."
+  },
+  "app": {
+    "vault": "DEIN PERSÖNLICHER TRESOR",
+    "title": "MEIN VERMÖGEN",
+    "enterNetWorth": "GIB DEIN VERMÖGEN EIN",
+    "currentNetWorth": "DEIN AKTUELLES VERMÖGEN",
+    "diamonds": {
+      "rough": "ROHER DIAMANT",
+      "spark": "FUNKELNDER DIAMANT",
+      "white": "WEISSER DIAMANT",
+      "blue": "BLAUER DIAMANT",
+      "pink": "ROSÉDIAMANT",
+      "red": "ROTER DIAMANT",
+      "black": "SCHWARZER DIAMANT",
+      "imperial": "IMPERIALDIAMANT",
+      "emerald": "SMARAGD-TITAN",
+      "cosmic": "KOSMISCHER DIAMANT",
+      "infinity": "UNENDLICHER DIAMANT"
+    },
+    "descriptions": {
+      "rough": "Roher Diamant. Jedes Vermögen beginnt mit einer Facette.",
+      "spark": "Der erste Funke von Größe. Mach weiter.",
+      "white": "Ein weißer Diamant. Klar, hell und poliert.",
+      "blue": "Ein blauer Diamant. Brillant und außergewöhnlich.",
+      "pink": "Ein Rosédiamant. Außergewöhnlich und unverkennbar.",
+      "red": "Ein seltener roter Diamant. Der Tresor gehört dir.",
+      "black": "Ein kolossaler schwarzer Diamant. Selbst Licht zahlt Miete.",
+      "imperial": "Imperiale Klasse. Dieser Edelstein braucht seine eigene Wirtschaft.",
+      "emerald": "Ein Smaragd-Titan. Bescheidenheit ist keine Option mehr.",
+      "cosmic": "Ein kosmischer Diamant mit eigenem Gravitationsfeld.",
+      "infinity": "Unendliche Klasse. Dein Vermögen hat das bekannte Universum verlassen."
+    },
+    "loading": {
+      "kicker": "PRIVATE SAMMLUNG",
+      "subtitle": "DAS PERSÖNLICHE VERMÖGENSOBJEKT",
+      "security": "VERSCHLÜSSELT - PRIVAT",
+      "initialization": "TRESOR WIRD INITIALISIERT",
+      "stages": {
+        "line": "SICHERE VERBINDUNG WIRD HERGESTELLT",
+        "funds": "VERFÜGBARE MITTEL WERDEN GEPRÜFT",
+        "stone": "DER STEIN WIRD BEWERTET",
+        "access": "ZUGRIFF GEWÄHRT"
+      }
+    },
+    "certificate": {
+      "title": "VERMÖGENSZERTIFIKAT",
+      "serial": "Seriennummer",
+      "edition": "Edition",
+      "utility": "Nutzen",
+      "oneOfOne": "1 von 1",
+      "infinite": "Unendlich",
+      "karat": "24K"
+    }
+  }
+}

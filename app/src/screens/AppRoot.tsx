@@ -5,6 +5,7 @@ import GoldDust from '../components/GoldDust';
 import BootScreen from './BootScreen';
 import RichScreen from './RichScreen';
 import { C } from '../theme/luxury';
+import '../core/locales/i18next';
 
 // The background is mounted once so the transition from loading to the card
 // stays continuous and the ambient animation never restarts.
