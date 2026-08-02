@@ -19,7 +19,9 @@
       "edgeToEdgeEnabled": true,
       "package": "com.yangitart.imrich",
       "blockedPermissions": [
+        "android.permission.INTERNET",
         "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.VIBRATE",
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.SYSTEM_ALERT_WINDOW"
       ]

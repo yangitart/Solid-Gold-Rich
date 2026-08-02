@@ -1,8 +1,4 @@
 {
-  "errorMessages": {
-    "networkError": "Netzwerkfehler. Bitte prüfe deine Internetverbindung.",
-    "unauthorized": "Nicht autorisiert. Bitte melde dich erneut an."
-  },
   "app": {
     "vault": "DEIN PERSÖNLICHER TRESOR",
     "title": "MEIN VERMÖGEN",

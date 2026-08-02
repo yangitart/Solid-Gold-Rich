@@ -54,8 +54,8 @@ export default function CertificateCard({ serial }: { serial: string }) {
       </Animated.View>
 
       <View style={styles.row}>
-        <Text style={styles.label}>{t('app.certificate.title')}</Text>
-        <Text style={styles.karat}>24K</Text>
+        <Text style={styles.label} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{t('app.certificate.title')}</Text>
+        <Text style={styles.karat}>{t('app.certificate.karat')}</Text>
       </View>
 
       <View style={styles.rule} />
@@ -94,7 +94,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginVertical: 3,
   },
-  label: { color: C.gold, fontFamily: SANS, fontSize: 10, letterSpacing: 2.4 },
+  label: { flex: 1, minWidth: 0, color: C.gold, fontFamily: SANS, fontSize: 10, letterSpacing: 2.4 },
   karat: { color: C.goldLight, fontFamily: SERIF, fontSize: 15, letterSpacing: 1 },
   rule: { height: StyleSheet.hairlineWidth, backgroundColor: C.line, marginVertical: 12 },
   key: {

@@ -24,10 +24,16 @@ export default function ShimmerText({
   children,
   style,
   delay = 0,
+  adjustsFontSizeToFit,
+  minimumFontScale,
+  numberOfLines,
 }: {
   children: string;
   style?: TextStyle;
   delay?: number;
+  adjustsFontSizeToFit?: boolean;
+  minimumFontScale?: number;
+  numberOfLines?: number;
 }) {
   const [w, setW] = React.useState(0);
   const p = useSharedValue(0);
@@ -54,12 +60,26 @@ export default function ShimmerText({
 
   return (
     <View onLayout={(e) => setW(e.nativeEvent.layout.width)}>
-      <Text style={[styles.base, style]}>{children}</Text>
+      <Text
+        style={[styles.base, style]}
+        adjustsFontSizeToFit={adjustsFontSizeToFit}
+        minimumFontScale={minimumFontScale}
+        numberOfLines={numberOfLines}
+      >
+        {children}
+      </Text>
 
       {w > 0 && (
         <Animated.View style={[styles.window, windowStyle]} pointerEvents="none">
           <Animated.View style={innerStyle}>
-            <Text style={[styles.base, style, styles.shine, { width: w }]}>{children}</Text>
+            <Text
+              style={[styles.base, style, styles.shine, { width: w }]}
+              adjustsFontSizeToFit={adjustsFontSizeToFit}
+              minimumFontScale={minimumFontScale}
+              numberOfLines={numberOfLines}
+            >
+              {children}
+            </Text>
           </Animated.View>
         </Animated.View>
       )}

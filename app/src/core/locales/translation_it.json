@@ -1,8 +1,4 @@
 {
-  "errorMessages": {
-    "networkError": "Errore di rete. Controlla la connessione internet.",
-    "unauthorized": "Non autorizzato. Accedi di nuovo."
-  },
   "app": {
     "vault": "IL TUO TESORO PERSONALE",
     "title": "LA MIA RICCHEZZA",

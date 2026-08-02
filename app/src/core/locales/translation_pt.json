@@ -1,8 +1,4 @@
 {
-  "errorMessages": {
-    "networkError": "Erro de rede. Verifique sua conexão com a internet.",
-    "unauthorized": "Não autorizado. Faça login novamente."
-  },
   "app": {
     "vault": "SEU COFRE PESSOAL",
     "title": "MEU PATRIMÔNIO",

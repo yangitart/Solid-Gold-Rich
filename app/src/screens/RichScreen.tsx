@@ -33,11 +33,13 @@ function parseNetWorth(value: string) {
 }
 
 export default function RichScreen() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const enter = useSharedValue(0);
   const [netWorthInput, setNetWorthInput] = React.useState('0');
   const netWorth = parseNetWorth(netWorthInput);
   const level = diamondLevel(netWorth);
+  const language = i18n.resolvedLanguage ?? i18n.language ?? 'en';
+  const formattedNetWorth = netWorth.toLocaleString(language);
   const loaded = React.useRef(false);
   const { height } = useWindowDimensions();
   const fit = Math.min(1, Math.max(0.74, height / 820));
@@ -71,21 +73,22 @@ export default function RichScreen() {
         <View style={[styles.stack, { transform: [{ scale: fit }] }]}>
           <Animated.View style={[styles.header, sTop]}>
             <View style={styles.hairline} />
-            <Text style={styles.eyebrow}>{t('app.vault')}</Text>
+            <Text style={styles.eyebrow} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{t('app.vault')}</Text>
             <View style={styles.hairline} />
           </Animated.View>
           <Animated.View style={[styles.gemWrap, sGem]}><Gem netWorth={netWorth} accessibilityLabel={t(`app.diamonds.${level.key}`)} /></Animated.View>
           <Animated.View style={[styles.center, sTitle]}>
-            <ShimmerText style={styles.title}>{t('app.title')}</ShimmerText>
-            <View style={styles.rankPill}><View style={styles.rankDot} /><Text style={styles.rankText}>{t(`app.diamonds.${level.key}`).toUpperCase()} · {DIAMOND_LEVELS.indexOf(level) + 1}/{DIAMOND_LEVELS.length}</Text></View>
+            <ShimmerText style={styles.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.55}>{t('app.title')}</ShimmerText>
+            <View style={styles.rankPill}><View style={styles.rankDot} /><Text style={styles.rankText}>{t(`app.diamonds.${level.key}`).toLocaleUpperCase(language)} · {DIAMOND_LEVELS.indexOf(level) + 1}/{DIAMOND_LEVELS.length}</Text></View>
           </Animated.View>
           <Animated.View style={[styles.center, sValue]}>
-            <Text style={styles.inputLabel}>{t('app.enterNetWorth')}</Text>
+            <Text style={styles.inputLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{t('app.enterNetWorth')}</Text>
             <View style={styles.inputShell}>
               <Text style={styles.currency}>$</Text>
               <TextInput
                 value={netWorthInput}
                 onChangeText={(value) => setNetWorthInput(value.replace(/[^0-9]/g, ''))}
+                accessibilityLabel={t('app.enterNetWorth')}
                 keyboardType="numeric"
                 placeholder="0"
                 placeholderTextColor="rgba(255,244,208,0.28)"
@@ -97,10 +100,10 @@ export default function RichScreen() {
               />
             </View>
             <Text style={[styles.value, { fontSize: valueFontSize(netWorth) }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.55}>
-              {`$${netWorth.toLocaleString('en-US')}`}
+              {`$${formattedNetWorth}`}
             </Text>
-            <Text style={styles.valueNote}>{t('app.currentNetWorth')}</Text>
-            <Text style={styles.diamondDescription}>{diamondDescription(netWorth, level.key, t)}</Text>
+            <Text style={styles.valueNote} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.75}>{t('app.currentNetWorth')}</Text>
+            <Text style={styles.diamondDescription}>{diamondDescription(level.key, t)}</Text>
           </Animated.View>
           <Animated.View style={[styles.center, sCard]}>
             <CertificateCard serial={serial} />
@@ -111,16 +114,7 @@ export default function RichScreen() {
   );
 }
 
-function diamondDescription(value: number, key: string, translate: (key: string) => string) {
-  if (value >= 1_000_000_000_000) return translate('app.descriptions.infinity');
-  if (value >= 100_000_000_000) return translate('app.descriptions.cosmic');
-  if (value >= 10_000_000_000) return translate('app.descriptions.emerald');
-  if (value >= 1_000_000_000) return translate('app.descriptions.imperial');
-  if (value >= 100_000_000) return translate('app.descriptions.black');
-  if (value >= 10_000_000) return translate('app.descriptions.red');
-  if (value >= 1_000_000) return translate('app.descriptions.pink');
-  if (value >= 100_000) return translate('app.descriptions.blue');
-  if (value >= 10_000) return translate('app.descriptions.white');
+function diamondDescription(key: string, translate: (key: string) => string) {
   return translate(`app.descriptions.${key}`);
 }
 
@@ -132,9 +126,9 @@ function valueFontSize(value: number) {
 
 const styles = StyleSheet.create({
   root: { flex: 1 }, safe: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingVertical: 8 }, stack: { alignItems: 'center' },
-  header: { position: 'relative', flexDirection: 'row', alignItems: 'center', gap: 12 }, hairline: { width: 34, height: StyleSheet.hairlineWidth, backgroundColor: C.line }, eyebrow: { color: 'rgba(233,200,119,0.6)', fontFamily: SANS, fontSize: 9, letterSpacing: 3.4 },
-  gemWrap: { marginTop: -6, marginBottom: -18 }, center: { alignItems: 'center' }, title: { fontFamily: SERIF, fontSize: 44, letterSpacing: 7, lineHeight: 56, textAlign: 'center' },
+  header: { position: 'relative', flexDirection: 'row', alignItems: 'center', gap: 12 }, hairline: { width: 34, height: StyleSheet.hairlineWidth, backgroundColor: C.line }, eyebrow: { width: 208, color: 'rgba(233,200,119,0.6)', fontFamily: SANS, fontSize: 9, letterSpacing: 3.4, textAlign: 'center' },
+  gemWrap: { marginTop: -6, marginBottom: -18 }, center: { alignItems: 'center' }, title: { width: 300, fontFamily: SERIF, fontSize: 44, letterSpacing: 7, lineHeight: 56, textAlign: 'center' },
   rankPill: { flexDirection: 'row', alignItems: 'center', gap: 7, marginTop: 4, paddingHorizontal: 11, paddingVertical: 6, borderRadius: 99, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.05)' }, rankDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: C.gold }, rankText: { color: 'rgba(255,244,208,0.78)', fontFamily: SANS, fontSize: 9, letterSpacing: 1.8 },
-  inputLabel: { color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 9, letterSpacing: 2.2, marginTop: 12, marginBottom: 7 }, inputShell: { width: 280, height: 52, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, borderRadius: 16, borderWidth: 1, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.055)', overflow: 'hidden' }, currency: { width: 22, color: C.gold, fontFamily: SERIF, fontSize: 23 }, netWorthInput: { flex: 1, minWidth: 0, height: 50, paddingHorizontal: 4, paddingVertical: 0, color: C.goldLight, fontFamily: SERIF, fontSize: 24, lineHeight: 30, textAlign: 'right', includeFontPadding: false },
-  value: { width: 280, color: C.gold, fontFamily: SERIF, fontSize: 30, letterSpacing: 1, marginTop: 12, textAlign: 'center' }, valueNote: { color: 'rgba(255,244,208,0.34)', fontFamily: SANS, fontSize: 9, letterSpacing: 2.2, marginTop: 4 }, diamondDescription: { width: 250, color: 'rgba(255,244,208,0.54)', fontFamily: SANS, fontSize: 10, lineHeight: 16, letterSpacing: 0.5, textAlign: 'center', marginTop: 12, marginBottom: 14 },
+  inputLabel: { width: 280, color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 9, letterSpacing: 2.2, marginTop: 12, marginBottom: 7, textAlign: 'center' }, inputShell: { width: 280, height: 52, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, borderRadius: 16, borderWidth: 1, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.055)', overflow: 'hidden' }, currency: { width: 22, color: C.gold, fontFamily: SERIF, fontSize: 23 }, netWorthInput: { flex: 1, minWidth: 0, height: 50, paddingHorizontal: 4, paddingVertical: 0, color: C.goldLight, fontFamily: SERIF, fontSize: 24, lineHeight: 30, textAlign: 'right', includeFontPadding: false },
+  value: { width: 280, color: C.gold, fontFamily: SERIF, fontSize: 30, letterSpacing: 1, marginTop: 12, textAlign: 'center' }, valueNote: { width: 280, color: 'rgba(255,244,208,0.34)', fontFamily: SANS, fontSize: 9, letterSpacing: 2.2, marginTop: 4, textAlign: 'center' }, diamondDescription: { width: 250, color: 'rgba(255,244,208,0.54)', fontFamily: SANS, fontSize: 10, lineHeight: 16, letterSpacing: 0.5, textAlign: 'center', marginTop: 12, marginBottom: 14 },
 });

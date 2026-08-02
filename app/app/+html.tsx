@@ -18,9 +18,10 @@ export default function Root({ children }: PropsWithChildren) {
           content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"
         />
         <meta name="theme-color" content="#04050A" />
-        <title>I&apos;m Rich</title>
+        <title>Solid Gold Rich</title>
         <ScrollViewStyleReset />
         <style dangerouslySetInnerHTML={{ __html: APP_CSS }} />
+        <script dangerouslySetInnerHTML={{ __html: SET_DOCUMENT_LANGUAGE_JS }} />
         <script dangerouslySetInnerHTML={{ __html: BLOCK_PAGE_ZOOM_JS }} />
       </head>
       <body>{children}</body>
@@ -44,6 +45,12 @@ body {
 #root {
   height: 100%;
 }
+`;
+
+const SET_DOCUMENT_LANGUAGE_JS = `
+var supportedLanguages = ['en', 'es', 'pt', 'fr', 'de', 'it'];
+var browserLanguage = (navigator.language || 'en').toLowerCase().split('-')[0];
+document.documentElement.lang = supportedLanguages.includes(browserLanguage) ? browserLanguage : 'en';
 `;
 
 const BLOCK_PAGE_ZOOM_JS = `

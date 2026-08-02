@@ -1,4 +1,4 @@
-import i18n from 'i18next';
+import { createInstance } from 'i18next';
 import { initReactI18next } from 'react-i18next';
 import { getLocales } from 'expo-localization';
 import enTranslation from './translation_en.json';
@@ -7,6 +7,11 @@ import ptTranslation from './translation_pt.json';
 import frTranslation from './translation_fr.json';
 import deTranslation from './translation_de.json';
 import itTranslation from './translation_it.json';
+
+export const supportedLanguages = ['en', 'es', 'pt', 'fr', 'de', 'it'] as const;
+export type SupportedLanguage = (typeof supportedLanguages)[number];
+
+const i18n = createInstance();
 
 const resources = {
   en: {
@@ -29,17 +34,20 @@ const resources = {
   },
 };
 
-const phoneLanguage = getLocales()[0]?.languageCode?.toLowerCase().split('-')[0] ?? 'en';
-const supportedLanguages = ['en', 'es', 'pt', 'fr', 'de', 'it'] as const;
-const initialLanguage = supportedLanguages.includes(phoneLanguage as (typeof supportedLanguages)[number])
-  ? phoneLanguage
-  : 'en';
+export function getPhoneLanguage(): SupportedLanguage {
+  const phoneLanguage = getLocales()[0]?.languageCode?.toLowerCase() ?? 'en';
+
+  return supportedLanguages.includes(phoneLanguage as SupportedLanguage)
+    ? (phoneLanguage as SupportedLanguage)
+    : 'en';
+}
 
 i18n.use(initReactI18next).init({
   resources,
-  lng: initialLanguage,
+  lng: getPhoneLanguage(),
   fallbackLng: 'en',
   supportedLngs: supportedLanguages,
+  initAsync: false,
   interpolation: {
     escapeValue: false,
   },

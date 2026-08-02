@@ -1,8 +1,4 @@
 {
-  "errorMessages": {
-    "networkError": "Error de red. Comprueba tu conexi\u00f3n a internet.",
-    "unauthorized": "No autorizado. Inicia sesi\u00f3n de nuevo."
-  },
   "app": {
     "vault": "TU B\u00d3VEDA PERSONAL",
     "title": "MI PATRIMONIO",

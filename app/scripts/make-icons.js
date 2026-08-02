@@ -171,6 +171,4 @@ write('icon.png', render(1024, 0.62));
 // adaptive-icon: Android recorta a círculo/squircle — la piedra se queda dentro
 // de la zona segura (66% central) o le rebana el culet.
 write('adaptive-icon.png', render(1024, 0.40));
-// splash: fondo transparente, el color lo pone app.json.
-write('splash-icon.png', render(1024, 0.58, { transparent: true }));
 write('favicon.png', render(64, 0.68));

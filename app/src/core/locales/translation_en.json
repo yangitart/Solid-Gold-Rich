@@ -1,8 +1,4 @@
 {
-  "errorMessages": {
-    "networkError": "Network error. Please check your internet connection.",
-    "unauthorized": "Unauthorized. Please log in again."
-  },
   "app": {
     "vault": "YOUR PERSONAL VAULT",
     "title": "MY WEALTH",

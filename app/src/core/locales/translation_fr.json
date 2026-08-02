@@ -1,8 +1,4 @@
 {
-  "errorMessages": {
-    "networkError": "Erreur réseau. Vérifiez votre connexion internet.",
-    "unauthorized": "Non autorisé. Reconnectez-vous."
-  },
   "app": {
     "vault": "VOTRE COFFRE PERSONNEL",
     "title": "MA FORTUNE",

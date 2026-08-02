@@ -111,7 +111,7 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
 
   return (
     <Animated.View style={[styles.root, rootStyle]} pointerEvents="none">
-      <Text style={styles.kicker}>{t('app.loading.kicker')}</Text>
+      <Text style={styles.kicker} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{t('app.loading.kicker')}</Text>
       {/* Marca: un rombo hueco girando dentro de un anillo partido */}
       <View style={styles.markStage}>
         <Animated.View style={[styles.ring, ringStyle]} />
@@ -131,11 +131,11 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
       </View>
 
       <Text style={styles.brand}>SOLID GOLD RICH</Text>
-      <Text style={styles.subtitle}>{t('app.loading.subtitle')}</Text>
+      <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{t('app.loading.subtitle')}</Text>
       <View style={styles.securityPill}><View style={styles.securityDot} /><Text style={styles.securityText}>{t('app.loading.security')}</Text></View>
 
       <View style={styles.statusCard}>
-        <View style={styles.statusTop}><Text style={styles.statusLabel}>{t('app.loading.initialization')}</Text><Text style={styles.percentage}>{percentage}%</Text></View>
+        <View style={styles.statusTop}><Text style={styles.statusLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{t('app.loading.initialization')}</Text><Text style={styles.percentage}>{percentage}%</Text></View>
         <View style={styles.bar}>
           <Animated.View style={[styles.fill, fillStyle]}>
             <LinearGradient colors={[C.goldDeep, C.gold, C.goldLight]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={StyleSheet.absoluteFill} />
@@ -143,7 +143,7 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
           <Animated.View style={[styles.head, headStyle]} />
         </View>
         <View style={styles.stageRow}>{STAGE_KEYS.map((item, index) => <View key={item} style={[styles.stageDot, index <= stage && styles.stageDotActive]} />)}</View>
-        <Text style={styles.stageText}>{t(`app.loading.stages.${STAGE_KEYS[stage]}`)}</Text>
+        <Text style={styles.stageText} numberOfLines={2}>{t(`app.loading.stages.${STAGE_KEYS[stage]}`)}</Text>
       </View>
     </Animated.View>
   );
@@ -151,7 +151,7 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
 
 const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
-  kicker: { color: 'rgba(233,200,119,0.48)', fontFamily: SANS, fontSize: 9, letterSpacing: 3.2, marginBottom: 18 },
+  kicker: { width: 300, color: 'rgba(233,200,119,0.48)', fontFamily: SANS, fontSize: 9, letterSpacing: 3.2, marginBottom: 18, textAlign: 'center' },
   markStage: { width: 144, height: 144, alignItems: 'center', justifyContent: 'center' },
   ring: {
     position: 'absolute',
@@ -186,13 +186,13 @@ const styles = StyleSheet.create({
     // compensa para que el texto quede ópticamente centrado.
     marginLeft: 5.5,
   },
-  subtitle: { color: 'rgba(255,244,208,0.38)', fontFamily: SANS, fontSize: 9, letterSpacing: 2.1, marginTop: -15, marginBottom: 12 },
+  subtitle: { width: 300, color: 'rgba(255,244,208,0.38)', fontFamily: SANS, fontSize: 9, letterSpacing: 2.1, marginTop: -15, marginBottom: 12, textAlign: 'center' },
   securityPill: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.18)', backgroundColor: 'rgba(233,200,119,0.035)', marginBottom: 22 },
   securityDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: C.gold },
   securityText: { color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 7, letterSpacing: 1.5 },
   statusCard: { width: 288, padding: 16, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.04)', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 8 },
   statusTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  statusLabel: { color: 'rgba(255,244,208,0.58)', fontFamily: SANS, fontSize: 8, letterSpacing: 1.7 },
+  statusLabel: { flex: 1, minWidth: 0, color: 'rgba(255,244,208,0.58)', fontFamily: SANS, fontSize: 8, letterSpacing: 1.7 },
   percentage: { color: C.gold, fontFamily: SERIF, fontSize: 16 },
   bar: {
     width: BAR_W,
@@ -223,6 +223,7 @@ const styles = StyleSheet.create({
     fontSize: 9,
     letterSpacing: 2.8,
     marginTop: 10,
+    minHeight: 28,
     textAlign: 'center',
   },
 });
