@@ -50,8 +50,9 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "7b34d53a-80cc-48bc-b1ff-80cf3d1beacb"
+        "projectId": "6c97965e-d56f-420e-b83c-ecea6cf66ed7"
       }
-    }
+    },
+    "owner": "yangitart"
   }
 }
