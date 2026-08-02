@@ -1,0 +1,17 @@
+# The Expo project lives inside the repository under /app.
+/app/node_modules/
+/app/android/
+/app/dist/
+/app/.expo/
+/app/.idea/
+/app/.vscode/
+/app/.env*
+/app/*.tsbuildinfo
+
+# Repository and local tooling files are not needed by EAS Build.
+/.git/
+/.codex/
+/.agents/
+*.log
+Thumbs.db
+.DS_Store
