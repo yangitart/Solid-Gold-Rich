@@ -17,7 +17,7 @@
         "backgroundColor": "#04050A"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.yangitart.imrich",
+      "package": "com.escobar.solidgold",
       "blockedPermissions": [
         "android.permission.INTERNET",
         "android.permission.READ_EXTERNAL_STORAGE",

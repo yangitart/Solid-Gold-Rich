@@ -4,7 +4,7 @@
 
 - Esta carpeta contiene una app Expo/React Native enfocada en Android.
 - La entrada visual es `src/screens/AppRoot.tsx`; la ficha principal está en `src/screens/RichScreen.tsx`.
-- El nombre público es `Solid Gold Rich` y el package Android es `com.yangitart.imrich`. No cambiar ninguno sin autorización explícita.
+- El nombre público es `Solid Gold Rich` y el package Android es `com.escobar.solidgold`. No cambiar ninguno sin autorización explícita.
 - No recrear archivos de documentación de Play Store que el usuario haya eliminado. No modificar archivos generados dentro de `dist/` o `android/`.
 
 ## Decisiones de producto que se deben preservar

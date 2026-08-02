@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import Animated, {
@@ -41,6 +41,12 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
   const evolve = useSharedValue(1);
   const [stage, setStage] = React.useState(0);
   const [percentage, setPercentage] = React.useState(0);
+  const { width, height } = useWindowDimensions();
+  const isTablet = Math.min(width, height) >= 600;
+  const fit = Math.min(
+    isTablet ? 1.16 : 1,
+    Math.max(0.78, Math.min(width / 320, (height - 64) / 500)),
+  );
 
   React.useEffect(() => {
     // La barra no va lineal: arranca rápida, se atasca a media altura y remata.
@@ -84,8 +90,11 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
 
   const rootStyle = useAnimatedStyle(() => ({
     opacity: 1 - exit.value,
-    transform: [{ translateY: interpolate(exit.value, [0, 1], [0, -26]) }],
-  }));
+    transform: [
+      { translateY: interpolate(exit.value, [0, 1], [0, -26]) },
+      { scale: fit },
+    ],
+  }), [fit]);
 
   const fillStyle = useAnimatedStyle(() => ({
     width: interpolate(progress.value, [0, 1], [0, BAR_W], Extrapolation.CLAMP),

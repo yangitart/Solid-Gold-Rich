@@ -19,6 +19,9 @@ import { C, SANS, SERIF } from '../theme/luxury';
 
 const ENTER_MS = 1800;
 const NET_WORTH_KEY = '@im-rich/net-worth';
+const BASE_CONTENT_WIDTH = 300;
+const BASE_CONTENT_HEIGHT = 720;
+const TABLET_SCALE_CAP = 1.16;
 
 function useStage(enter: SharedValue<number>, from: number, to: number, lift = 18) {
   return useAnimatedStyle(() => {
@@ -41,8 +44,14 @@ export default function RichScreen() {
   const language = i18n.resolvedLanguage ?? i18n.language ?? 'en';
   const formattedNetWorth = netWorth.toLocaleString(language);
   const loaded = React.useRef(false);
-  const { height } = useWindowDimensions();
-  const fit = Math.min(1, Math.max(0.74, height / 820));
+  const { width, height } = useWindowDimensions();
+  const isTablet = Math.min(width, height) >= 600;
+  const widthFit = (width - 32) / BASE_CONTENT_WIDTH;
+  const heightFit = (height - 32) / BASE_CONTENT_HEIGHT;
+  const fit = Math.min(
+    isTablet ? TABLET_SCALE_CAP : 1,
+    Math.max(0.74, Math.min(widthFit, heightFit)),
+  );
   const serial = React.useRef(`IR-${Math.floor(Math.random() * 9000 + 1000)}-${Math.floor(Math.random() * 9000 + 1000)}`).current;
 
   React.useEffect(() => {
