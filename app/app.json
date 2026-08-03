@@ -4,7 +4,7 @@
     "slug": "solid-gold-rich",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/iconapp.png",
     "scheme": "imrich",
     "userInterfaceStyle": "dark",
     "newArchEnabled": true,
@@ -13,7 +13,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
+        "foregroundImage": "./assets/images/iconapp-playstore-rounded-final.png",
         "backgroundColor": "#04050A"
       },
       "edgeToEdgeEnabled": true,
@@ -29,14 +29,14 @@
     "web": {
       "bundler": "metro",
       "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/iconapp-playstore-rounded-final.png"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/icon.png",
+          "image": "./assets/images/iconapp.png",
           "imageWidth": 260,
           "resizeMode": "contain",
           "backgroundColor": "#04050A"

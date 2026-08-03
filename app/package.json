@@ -6,7 +6,6 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "icons": "node ./scripts/make-icons.js",
     "lint": "expo lint"
   },
   "dependencies": {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import Animated, {
@@ -9,7 +9,6 @@ import Animated, {
   useSharedValue,
   withDelay,
   withRepeat,
-  withSpring,
   withTiming,
   interpolate,
   Extrapolation,
@@ -24,13 +23,6 @@ const BAR_W = 256;
 // fortuna antes de dejarte pasar.
 const STAGE_KEYS = ['line', 'funds', 'stone', 'access'] as const;
 
-const BOOT_DIAMONDS = [
-  ['#B4B0C0', '#555260', '#23222B'],
-  ['#FFFFFF', '#A6E8FF', '#3A6299'],
-  ['#FFF7FF', '#FF9ED9', '#8A386F'],
-  ['#FFFCEB', '#FFE07A', '#9B4D16'],
-] as const;
-
 // Pantalla de carga. Comparte fondo con la pantalla principal, así que la
 // transición no es un corte: la carga se desvanece y la joya aparece encima del
 // MISMO negro. Ese detalle es lo que hace que no parezca "otra pantalla".
@@ -38,7 +30,6 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
   const { t } = useTranslation();
   const progress = useSharedValue(0);
   const spin = useSharedValue(0);
-  const evolve = useSharedValue(1);
   const [stage, setStage] = React.useState(0);
   const [percentage, setPercentage] = React.useState(0);
   const { width, height } = useWindowDimensions();
@@ -72,11 +63,6 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
     return () => clearInterval(timer);
   }, []);
 
-  React.useEffect(() => {
-    evolve.value = 0;
-    evolve.value = withSpring(1, { damping: 10, stiffness: 145, mass: 0.6 });
-  }, [evolve, stage]);
-
   // Salida: cuando la barra termina, todo el bloque se va hacia arriba y avisa.
   const exit = useSharedValue(0);
   React.useEffect(() => {
@@ -106,10 +92,10 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
     transform: [{ translateX: interpolate(progress.value, [0, 1], [0, BAR_W], Extrapolation.CLAMP) }],
   }));
 
-  const markStyle = useAnimatedStyle(() => ({
+  const markImageStyle = useAnimatedStyle(() => ({
     transform: [
       { rotate: `${interpolate(spin.value, [0, 1], [45, 405])}deg` },
-      { scale: interpolate(progress.value, [0, 1], [0.86, 1]) * interpolate(evolve.value, [0, 0.65, 1], [0.68, 1.12, 1]) },
+      { scale: interpolate(progress.value, [0, 1], [0.86, 1]) },
     ],
   }));
 
@@ -126,16 +112,12 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
         <Animated.View style={[styles.ring, ringStyle]} />
         <Animated.View style={[styles.ringFine, ringStyle]} />
         <View style={styles.orbitDot} />
-        <Animated.View style={[styles.mark, markStyle]}>
-          <LinearGradient
-            colors={BOOT_DIAMONDS[stage]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={StyleSheet.absoluteFill}
+        <Animated.View style={markImageStyle}>
+          <Image
+            source={require('../../assets/images/iconapp.png')}
+            style={styles.markImage}
+            resizeMode="contain"
           />
-          <View style={styles.markCore} />
-          <View style={styles.markFacetH} />
-          <View style={styles.markFacetV} />
         </Animated.View>
       </View>
 
@@ -173,17 +155,7 @@ const styles = StyleSheet.create({
   },
   ringFine: { position: 'absolute', width: 98, height: 98, borderRadius: 49, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.22)', borderBottomColor: 'transparent' },
   orbitDot: { position: 'absolute', top: 8, width: 5, height: 5, borderRadius: 3, backgroundColor: C.goldLight, shadowColor: C.gold, shadowOpacity: 0.9, shadowRadius: 8 },
-  mark: {
-    width: 54,
-    height: 54,
-    borderRadius: 7,
-    borderWidth: 1.2,
-    borderColor: 'rgba(255,244,208,0.75)',
-    overflow: 'hidden',
-  },
-  markCore: { position: 'absolute', left: 13, top: 13, width: 26, height: 26, borderRadius: 4, borderWidth: 1, borderColor: 'rgba(255,244,208,0.5)', backgroundColor: 'rgba(255,244,208,0.07)' },
-  markFacetH: { position: 'absolute', left: 0, right: 0, top: 26, height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,244,208,0.34)' },
-  markFacetV: { position: 'absolute', top: 0, bottom: 0, left: 26, width: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,244,208,0.34)' },
+  markImage: { width: 86, height: 86, borderRadius: 18 },
   brand: {
     color: C.gold,
     fontFamily: SERIF,
