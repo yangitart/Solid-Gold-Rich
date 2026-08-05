@@ -4,6 +4,7 @@ import type {
   FinanceCategory,
   FinanceCategories,
   FinanceState,
+  NoteFolder,
   PaymentMethod,
   Transaction,
   TransactionKind,
@@ -47,8 +48,9 @@ export const emptyFinanceState = (): FinanceState => ({
   savingsGoals: [],
   reminders: [],
   notes: [],
+  noteFolders: [],
   categories: cloneCategories(DEFAULT_CATEGORIES),
-  settings: { preferredCurrency: 'USD', firstDayOfWeek: 1, dateFormat: 'system' },
+  settings: { preferredCurrency: 'USD', exchangeRates: { USD: 1 }, firstDayOfWeek: 1, dateFormat: 'system' },
 });
 
 function text(value: unknown, fallback = '') {
@@ -142,16 +144,24 @@ function normalizeState(value: Partial<FinanceState>): FinanceState {
   state.debts = Array.isArray(value.debts) ? value.debts : [];
   state.savingsGoals = Array.isArray(value.savingsGoals) ? value.savingsGoals : [];
   state.reminders = Array.isArray(value.reminders) ? value.reminders : [];
-  state.notes = Array.isArray(value.notes) ? value.notes : [];
+  state.notes = Array.isArray(value.notes) ? value.notes.map((note) => ({ ...note, folderId: typeof note.folderId === 'string' ? note.folderId : undefined })) : [];
+  state.noteFolders = Array.isArray(value.noteFolders)
+    ? value.noteFolders.filter((folder): folder is NoteFolder => Boolean(folder && typeof folder.id === 'string' && typeof folder.name === 'string')).map((folder) => ({ ...folder, createdAt: text(folder.createdAt, new Date().toISOString()), updatedAt: text(folder.updatedAt, new Date().toISOString()) }))
+    : [];
   state.categories = {
     expense: normalizeCategories(value.categories?.expense, DEFAULT_CATEGORIES.expense),
     income: normalizeCategories(value.categories?.income, DEFAULT_CATEGORIES.income),
     tag: normalizeCategories(value.categories?.tag, DEFAULT_CATEGORIES.tag),
   };
+  const exchangeRates = Object.entries(value.settings?.exchangeRates ?? {}).reduce<Record<string, number>>((all, [currency, rate]) => {
+    if (Number.isFinite(rate) && rate > 0) all[currency.toUpperCase()] = rate;
+    return all;
+  }, { USD: 1 });
   state.settings = {
     ...state.settings,
     ...(value.settings ?? {}),
     preferredCurrency: text(value.settings?.preferredCurrency, 'USD'),
+    exchangeRates,
     language: SUPPORTED_LANGUAGES.includes(value.settings?.language as AppLanguage) ? value.settings?.language as AppLanguage : undefined,
     pinHash: text(value.settings?.pinHash) || undefined,
   };

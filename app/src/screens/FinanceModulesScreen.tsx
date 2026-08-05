@@ -43,6 +43,7 @@ const TOOL_OPTIONS: { key: ToolKey; icon: IconName }[] = [
   { key: 'discountTax', icon: 'pricetag-outline' },
   { key: 'interest', icon: 'trending-up-outline' },
 ];
+const CURRENCY_OPTIONS = ['USD', 'CUP', 'EUR'];
 
 function Field({ title, value, onChangeText, placeholder, multiline = false, numeric = false, secureTextEntry = false, maxLength }: { title: string; value: string; onChangeText: (value: string) => void; placeholder?: string; multiline?: boolean; numeric?: boolean; secureTextEntry?: boolean; maxLength?: number }) {
   return <View style={styles.field}><Text style={styles.fieldLabel}>{title}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="rgba(255,244,208,0.3)" keyboardType={numeric ? 'number-pad' : 'default'} multiline={multiline} secureTextEntry={secureTextEntry} maxLength={maxLength} style={[styles.input, multiline && styles.multiline]} /></View>;
@@ -54,6 +55,10 @@ function Choice({ values, value, onChange, labels }: { values: string[]; value: 
 
 function Empty({ title, body }: { title: string; body: string }) {
   return <View style={styles.empty}><View style={styles.diamond} /><Text style={styles.emptyTitle}>{title}</Text><Text style={styles.emptyBody}>{body}</Text></View>;
+}
+
+function BackButton({ onPress }: { onPress: () => void }) {
+  return <Pressable onPress={onPress} style={styles.backButton} hitSlop={8} accessibilityRole="button" accessibilityLabel="Go back"><Ionicons name="arrow-back-outline" size={19} color={C.goldLight} /></Pressable>;
 }
 
 export default function FinanceModulesScreen({ module: initialModule, onBack }: { module: FinanceModuleName; onBack: () => void }) {
@@ -80,6 +85,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
   const [categoryName, setCategoryName] = React.useState('');
   const [categoryIcon, setCategoryIcon] = React.useState<IconName>('pricetag-outline');
   const [categoryCreateOpen, setCategoryCreateOpen] = React.useState(false);
+  const [iconPickerOpen, setIconPickerOpen] = React.useState(false);
   const [categoryError, setCategoryError] = React.useState('');
   const [importOpen, setImportOpen] = React.useState(false);
   const [importText, setImportText] = React.useState('');
@@ -102,14 +108,32 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
   const [pinError, setPinError] = React.useState('');
   const [calendarMonth, setCalendarMonth] = React.useState(() => new Date());
   const [settingsSection, setSettingsSection] = React.useState<SettingsSection | null>(null);
+  const [currencyRateCurrency, setCurrencyRateCurrency] = React.useState('USD');
+  const [currencyRate, setCurrencyRate] = React.useState('1');
+  const [currencyRateError, setCurrencyRateError] = React.useState('');
 
   React.useEffect(() => {
     setModule(initialModule);
     if (initialModule === 'tools') setActiveTool(null);
     if (initialModule === 'settings') setSettingsSection(null);
   }, [initialModule]);
+  React.useEffect(() => {
+    if (settingsSection === 'currency') setCurrencyRateCurrency(state.settings.preferredCurrency || 'USD');
+  }, [settingsSection, state.settings.preferredCurrency]);
+  React.useEffect(() => {
+    const configured = state.settings.exchangeRates?.[currencyRateCurrency];
+    setCurrencyRate(currencyRateCurrency === 'USD' ? '1' : configured ? String(configured) : '');
+    setCurrencyRateError('');
+  }, [currencyRateCurrency, state.settings.exchangeRates]);
   const accounts = state.accounts.filter((item) => !item.archived);
   const baseCurrency = state.settings.preferredCurrency || 'USD';
+  const currencyRates = React.useMemo(() => state.settings.exchangeRates ?? { USD: 1 }, [state.settings.exchangeRates]);
+  const rateBetweenCurrencies = React.useCallback((fromCurrency: string, toCurrency: string) => {
+    if (fromCurrency === toCurrency) return 1;
+    const fromRate = currencyRates[fromCurrency] ?? (fromCurrency === 'USD' ? 1 : undefined);
+    const toRate = currencyRates[toCurrency] ?? (toCurrency === 'USD' ? 1 : undefined);
+    return fromRate && toRate ? fromRate / toRate : undefined;
+  }, [currencyRates]);
   const accountBalance = (item: Account) => state.transactions.filter((transaction) => transaction.accountId === item.id && transaction.status !== 'void').reduce((total, transaction) => transaction.kind === 'income' || transaction.kind === 'adjustment' ? total + transaction.amount : total - transaction.amount, item.openingBalance);
 
   const openNewAccount = () => {
@@ -132,7 +156,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
   const saveAccount = () => {
     if (!account.name.trim()) return;
     const currency = account.currency.toUpperCase() || baseCurrency;
-    const exchangeRate = currency === baseCurrency ? 1 : Number(account.exchangeRate);
+    const exchangeRate = currency === baseCurrency ? 1 : rateBetweenCurrencies(currency, baseCurrency) ?? Number(account.exchangeRate);
     if (currency !== baseCurrency && (!Number.isFinite(exchangeRate) || exchangeRate <= 0)) {
       setAccountError(t('finance.exchangeRateRequired', { defaultValue: `Enter the exchange rate from ${currency} to ${baseCurrency}.` }));
       return;
@@ -142,14 +166,34 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
     else finance.addAccount({ id: uid('account'), ...values });
     closeAccountEditor();
   };
+  const choosePrimaryCurrency = (currency: string) => {
+    setCurrencyRateCurrency(currency);
+    setCurrencyRateError('');
+    finance.updateState((current) => ({ ...current, settings: { ...current.settings, preferredCurrency: currency } }));
+  };
+  const saveCurrencyRate = () => {
+    const value = Number(currencyRate);
+    if (currencyRateCurrency !== 'USD' && (!Number.isFinite(value) || value <= 0)) {
+      setCurrencyRateError(t('finance.exchangeRateRequired', { defaultValue: `Enter how much 1 ${currencyRateCurrency} is worth in USD.` }));
+      return;
+    }
+    finance.updateState((current) => ({
+      ...current,
+      settings: {
+        ...current.settings,
+        exchangeRates: { ...(current.settings.exchangeRates ?? {}), USD: 1, [currencyRateCurrency]: currencyRateCurrency === 'USD' ? 1 : value },
+      },
+    }));
+    setCurrencyRateError('');
+  };
   React.useEffect(() => {
     if (!loaded || module !== 'accounts') return;
-    const accountNeedingRate = accounts.find((item) => item.currency !== baseCurrency && !item.exchangeRate);
+    const accountNeedingRate = accounts.find((item) => item.currency !== baseCurrency && !item.exchangeRate && !rateBetweenCurrencies(item.currency, baseCurrency));
     if (accountNeedingRate && promptedAccountRef.current !== accountNeedingRate.id) {
       promptedAccountRef.current = accountNeedingRate.id;
       openAccountEditor(accountNeedingRate);
     }
-  }, [accounts, baseCurrency, loaded, module]);
+  }, [accounts, baseCurrency, loaded, module, rateBetweenCurrencies]);
   const addRecurring = () => {
     const selected = accounts.find((item) => item.id === recurring.accountId) ?? accounts[0];
     if (!selected || !Number(recurring.amount)) return;
@@ -170,7 +214,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
   };
   const addNote = () => {
     if (!note.title.trim() && !note.body.trim()) return;
-    const now = new Date().toISOString(); finance.addNote({ id: uid('note'), title: note.title || 'Untitled note', body: note.body, tags: note.tags.split(',').map((item) => item.trim()).filter(Boolean), createdAt: now, updatedAt: now, pinned: false }); setNoteOpen(false);
+    const now = new Date().toISOString(); finance.addNote({ id: uid('note'), title: note.title || t('finance.untitled'), body: note.body, tags: note.tags.split(',').map((item) => item.trim()).filter(Boolean), createdAt: now, updatedAt: now, pinned: false }); setNoteOpen(false);
   };
   const addCategory = () => {
     const name = categoryName.trim().toLowerCase();
@@ -269,7 +313,10 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
             <Text style={styles.cardTitle}>{item.name}</Text>
             <Text style={styles.cardMeta}>{item.type.toUpperCase()} · {item.currency}{item.currency !== baseCurrency ? ` · 1 ${item.currency} = ${item.exchangeRate ?? '?'} ${baseCurrency}` : ''}</Text>
           </View>
-          <Text style={styles.positive}>{money(accountBalance(item), item.currency)}</Text>
+          <View style={styles.accountAmount}>
+            <Text style={styles.positive}>{money(accountBalance(item), item.currency)}</Text>
+            {item.currency !== baseCurrency && <Text style={styles.cardMeta}>≈ {money(accountBalance(item) * (rateBetweenCurrencies(item.currency, baseCurrency) ?? item.exchangeRate ?? 1), baseCurrency)}</Text>}
+          </View>
           <Ionicons name="chevron-forward-outline" size={17} color="rgba(255,244,208,0.35)" />
         </Pressable>
       ))}
@@ -324,19 +371,28 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
   const renderNotes = () => <View style={styles.panel}>{state.notes.map((item) => <Pressable key={item.id} style={styles.module} onPress={() => finance.updateNote({ ...item, pinned: !item.pinned, updatedAt: new Date().toISOString() })}><View style={styles.row}><Text style={styles.cardTitle}>{item.title}</Text><Text style={styles.cardMeta}>{item.pinned ? 'PINNED' : 'PIN'}</Text></View><Text style={styles.body}>{item.body}</Text><Text style={styles.cardMeta}>{item.tags.join(' · ')}</Text></Pressable>)}{!state.notes.length && <Empty title="No notes" body="Keep plans and money context here." />}<Pressable style={styles.primary} onPress={() => setNoteOpen(true)}><Text style={styles.primaryText}>+ NOTE</Text></Pressable></View>;
   const renderCategories = () => {
     const selectedCategories = state.categories[categoryType];
+    const categoryTabs = [
+      { key: 'expense' as const, label: 'EXPENSES' },
+      { key: 'income' as const, label: 'INCOME' },
+      { key: 'tag' as const, label: 'TAGS' },
+    ];
     return (
       <View style={styles.panel}>
-        <Text style={styles.fieldLabel}>{t('finance.categoryType')}</Text>
-        <Choice values={['expense', 'income', 'tag']} value={categoryType} onChange={(value) => setCategoryType(value as 'expense' | 'income' | 'tag')} labels={{ expense: 'EXPENSES', income: 'INCOME', tag: 'TAGS' }} />
+        <View style={styles.categoryTabShell}>
+          <View style={styles.categoryTabRow}>
+            {categoryTabs.map((tab) => <Pressable key={tab.key} style={[styles.categoryTab, categoryType === tab.key && styles.categoryTabActive]} onPress={() => setCategoryType(tab.key)}><Text style={[styles.categoryTabText, categoryType === tab.key && styles.categoryTabTextActive]}>{tab.label}</Text></Pressable>)}
+          </View>
+        </View>
         {selectedCategories.map((item) => (
           <View key={`${categoryType}-${item.id}`} style={styles.row}>
+            <View style={styles.categoryRowIcon}><Ionicons name={item.icon as IconName} size={18} color={C.gold} /></View>
             <Text style={[styles.cardTitle, styles.categoryRowName]}>{item.id}</Text>
             {item.id !== 'other' && <Pressable onPress={() => removeCategory(categoryType, item.id)} accessibilityLabel={t('finance.deleteCategory')}><Ionicons name="trash-outline" size={19} color={C.red} /></Pressable>}
           </View>
         ))}
         <Pressable
           style={styles.addCategoryItem}
-          onPress={() => { setCategoryName(''); setCategoryIcon('pricetag-outline'); setCategoryError(''); setCategoryCreateOpen(true); }}
+          onPress={() => { setCategoryName(''); setCategoryIcon('pricetag-outline'); setCategoryError(''); setIconPickerOpen(false); setCategoryCreateOpen(true); }}
           accessibilityLabel={t('finance.addCategory')}
         >
           <Ionicons name="add-circle-outline" size={22} color={C.gold} />
@@ -366,10 +422,10 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
             </Pressable>
           ))}
         </View> : <View style={styles.toolWorkspace}>
-          <Pressable style={styles.toolBack} onPress={() => setActiveTool(null)}>
-            <Ionicons name="chevron-back-outline" size={18} color={C.gold} />
+          <View style={styles.toolBack}>
+            <BackButton onPress={() => setActiveTool(null)} />
             <Text style={styles.toolBackText}>{t('finance.tools')}</Text>
-          </Pressable>
+          </View>
           <Text style={styles.toolWorkspaceTitle}>{t(`finance.toolCalculators.${activeTool}`)}</Text>
 
         {activeTool === 'calculator' && <>
@@ -437,10 +493,10 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
 
     return (
       <View style={styles.panel}>
-        <Pressable style={styles.settingsBack} onPress={() => setSettingsSection(null)}>
-          <Ionicons name="chevron-back-outline" size={18} color={C.gold} />
+        <View style={styles.settingsBack}>
+          <BackButton onPress={() => setSettingsSection(null)} />
           <Text style={styles.settingsBackText}>SETTINGS</Text>
-        </Pressable>
+        </View>
         {settingsSection === 'language' && <>
           <Text style={styles.fieldLabel}>{t('finance.language')}</Text>
           <View style={styles.settingsOptionList}>
@@ -450,8 +506,12 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
         {settingsSection === 'currency' && <>
           <Text style={styles.fieldLabel}>{t('finance.currency')}</Text>
           <View style={styles.settingsOptionList}>
-            {['USD', 'CUP', 'EUR'].map((currency) => <Pressable key={currency} style={styles.settingsOption} onPress={() => finance.updateState((current) => ({ ...current, settings: { ...current.settings, preferredCurrency: currency } }))}><Text style={[styles.settingsOptionText, state.settings.preferredCurrency === currency && styles.settingsOptionTextActive]}>{currency}</Text>{state.settings.preferredCurrency === currency && <Ionicons name="checkmark-outline" size={18} color={C.gold} />}</Pressable>)}
+            {CURRENCY_OPTIONS.map((currency) => <Pressable key={currency} style={styles.settingsOption} onPress={() => choosePrimaryCurrency(currency)}><View style={styles.settingsRowMain}><Text style={[styles.settingsOptionText, state.settings.preferredCurrency === currency && styles.settingsOptionTextActive]}>{currency}</Text>{currency !== 'USD' && <Text style={styles.settingsRowValue}>{t('finance.currencyRateValue', { currency, rate: state.settings.exchangeRates?.[currency] ?? '?' })}</Text>}</View>{state.settings.preferredCurrency === currency && <Ionicons name="checkmark-outline" size={18} color={C.gold} />}</Pressable>)}
           </View>
+          <Text style={styles.fieldLabel}>{t('finance.currencyRateLabel', { currency: currencyRateCurrency })}</Text>
+          <Field title={t('finance.exchangeRate')} value={currencyRate} onChangeText={(value) => { setCurrencyRate(value.replace(/[^0-9.]/g, '')); setCurrencyRateError(''); }} numeric placeholder={currencyRateCurrency === 'USD' ? '1' : '670'} />
+          {Boolean(currencyRateError) && <Text style={styles.pinError}>{currencyRateError}</Text>}
+          <Pressable style={styles.primary} onPress={saveCurrencyRate}><Text style={styles.primaryText}>{t('finance.done')}</Text></Pressable>
         </>}
         {settingsSection === 'pin' && <>
           <Text style={styles.settingsTitle}>{t('finance.pin.title')}</Text>
@@ -476,8 +536,39 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
   const content = module === 'accounts' ? renderAccounts() : module === 'activity' ? renderActivity() : module === 'calendar' ? renderCalendar() : module === 'charts' ? renderCharts() : module === 'recurring' ? renderRecurring() : module === 'categories' ? renderCategories() : module === 'debt' ? renderDebts() : module === 'savings' ? renderSavings() : module === 'reminders' ? renderReminders() : module === 'notes' ? renderNotes() : module === 'tools' ? renderTools() : module === 'settings' ? renderSettings() : module === 'about' ? <View style={styles.panel}><Text style={styles.about}>SGR</Text><Text style={styles.aboutTitle}>Solid Gold Rich</Text><Text style={styles.body}>A local-first wealth manager. Your data stays on this device unless you export it.</Text></View> : module === 'budget' ? <View style={styles.panel}><Text style={styles.body}>Use the account manager and main dashboard to review current account limits. Flexible category budgets can be added from this module in the next data migration pass.</Text></View> : renderMore();
   const titles: Record<FinanceModuleName, string> = { accounts: 'ACCOUNTS', reminders: 'REMINDERS', debt: 'DEBT', notes: 'NOTES', tools: 'TOOLS', savings: 'SAVINGS', budget: 'BUDGET', calendar: 'CALENDAR', charts: 'CHARTS', activity: 'ACTIVITY', recurring: 'RECURRING', categories: 'CATEGORIES', more: 'MORE FEATURES', settings: 'SETTINGS', about: 'ABOUT' };
 
-  return <SafeAreaView style={styles.root} edges={['top', 'bottom']}><View style={styles.header}><Pressable onPress={onBack} style={styles.back}><Text style={styles.backText}>‹</Text></Pressable><Text style={styles.headerTitle}>{titles[module]}</Text><View style={styles.headerSpace} /></View><ScrollView contentContainerStyle={styles.content}>{content}</ScrollView>
-    <Modal visible={categoryCreateOpen} transparent animationType="slide" onRequestClose={() => setCategoryCreateOpen(false)}><KeyboardAvoidingView style={styles.modalBackdrop}><View style={styles.sheet}><Text style={styles.sheetTitle}>{t('finance.newCategory')}</Text><Text style={styles.cardMeta}>{categoryType === 'expense' ? 'EXPENSES' : categoryType === 'income' ? 'INCOME' : 'TAGS'}</Text><Field title={t('finance.category')} value={categoryName} onChangeText={(value) => { setCategoryName(value); setCategoryError(''); }} placeholder={t('finance.categoryPlaceholder')} /><Text style={styles.fieldLabel}>{t('finance.chooseIcon')}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.iconChoices}>{CATEGORY_ICON_OPTIONS.map((item) => <Pressable key={item.name} onPress={() => setCategoryIcon(item.name)} style={[styles.iconChoice, categoryIcon === item.name && styles.iconChoiceActive]} accessibilityLabel={item.label}><Ionicons name={item.name} size={21} color={categoryIcon === item.name ? C.void : C.goldLight} /></Pressable>)}</ScrollView>{Boolean(categoryError) && <Text style={styles.pinError}>{categoryError}</Text>}<Pressable style={styles.primary} onPress={addCategory}><Text style={styles.primaryText}>{t('finance.addCategory')}</Text></Pressable><Pressable style={styles.secondary} onPress={() => setCategoryCreateOpen(false)}><Text style={styles.secondaryText}>{t('finance.cancel')}</Text></Pressable></View></KeyboardAvoidingView></Modal>
+  return <SafeAreaView style={styles.root} edges={['top', 'bottom']}><View style={styles.header}><BackButton onPress={onBack} /><Text style={styles.headerTitle}>{titles[module]}</Text><View style={styles.headerSpace} /></View><ScrollView contentContainerStyle={[styles.content, styles.moduleContent]}>{content}</ScrollView>
+    <Modal visible={categoryCreateOpen} transparent animationType="slide" onRequestClose={() => setCategoryCreateOpen(false)}>
+      <KeyboardAvoidingView style={styles.modalBackdrop}>
+        <View style={styles.sheet}>
+          <Text style={styles.sheetTitle}>{t('finance.newCategory')}</Text>
+          <Text style={styles.cardMeta}>{categoryType === 'expense' ? 'EXPENSES' : categoryType === 'income' ? 'INCOME' : 'TAGS'}</Text>
+          <Field title={t('finance.category')} value={categoryName} onChangeText={(value) => { setCategoryName(value); setCategoryError(''); }} placeholder={t('finance.categoryPlaceholder')} />
+          <Text style={styles.fieldLabel}>{t('finance.chooseIcon')}</Text>
+          <Pressable style={styles.iconPreviewRow} onPress={() => setIconPickerOpen(true)} accessibilityLabel={t('finance.chooseIcon')}>
+            <View style={styles.iconPreviewButton}><Ionicons name={categoryIcon} size={21} color={C.gold} /></View>
+            <Text style={styles.iconPreviewText}>Tap to choose an icon</Text>
+            <Ionicons name="chevron-forward-outline" size={18} color="rgba(255,244,208,0.35)" />
+          </Pressable>
+          {Boolean(categoryError) && <Text style={styles.pinError}>{categoryError}</Text>}
+          <Pressable style={styles.primary} onPress={addCategory}><Text style={styles.primaryText}>{t('finance.addCategory')}</Text></Pressable>
+          <Pressable style={styles.secondary} onPress={() => setCategoryCreateOpen(false)}><Text style={styles.secondaryText}>{t('finance.cancel')}</Text></Pressable>
+        </View>
+      </KeyboardAvoidingView>
+    </Modal>
+    <Modal visible={iconPickerOpen} transparent animationType="fade" onRequestClose={() => setIconPickerOpen(false)}>
+      <View style={styles.iconPickerBackdrop}>
+        <Pressable style={StyleSheet.absoluteFill} onPress={() => setIconPickerOpen(false)} />
+        <View style={styles.iconPickerSheet}>
+          <View style={styles.iconPickerHeader}>
+            <Text style={styles.sheetTitle}>{t('finance.chooseIcon')}</Text>
+            <Pressable onPress={() => setIconPickerOpen(false)} accessibilityLabel={t('finance.cancel')}><Ionicons name="close-outline" size={24} color={C.goldLight} /></Pressable>
+          </View>
+          <ScrollView contentContainerStyle={styles.iconPickerGrid} showsVerticalScrollIndicator={false}>
+            {CATEGORY_ICON_OPTIONS.map((item) => <Pressable key={item.name} onPress={() => { setCategoryIcon(item.name); setIconPickerOpen(false); }} style={[styles.iconPickerChoice, categoryIcon === item.name && styles.iconChoiceActive]} accessibilityLabel={item.label}><Ionicons name={item.name} size={22} color={categoryIcon === item.name ? C.void : C.goldLight} /></Pressable>)}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
     <Modal visible={accountOpen} transparent animationType="slide" onRequestClose={closeAccountEditor}>
       <KeyboardAvoidingView style={styles.modalBackdrop}>
         <View style={styles.sheet}>
@@ -515,14 +606,29 @@ const styles = StyleSheet.create({
   settingsRowValue: { color: 'rgba(255,244,208,0.4)', fontFamily: SANS, fontSize: 9, marginTop: 5 },
   settingsBack: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 },
   settingsBackText: { color: C.gold, fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 1 },
-  toolGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 10 },
-  toolCard: { width: '48.5%', minHeight: 112, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.035)', padding: 13, justifyContent: 'space-between' },
+  iconPreviewRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingHorizontal: 10, marginBottom: 8 },
+  iconPreviewButton: { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(233,200,119,0.1)', alignItems: 'center', justifyContent: 'center' },
+  iconPreviewText: { flex: 1, color: 'rgba(255,244,208,0.46)', fontFamily: SANS, fontSize: 9 },
+  iconPickerBackdrop: { flex: 1, justifyContent: 'center', padding: 18, backgroundColor: 'rgba(0,0,0,0.72)' },
+  iconPickerSheet: { maxHeight: '78%', borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14', padding: 18 },
+  iconPickerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  iconPickerGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingTop: 10, paddingBottom: 4 },
+  iconPickerChoice: { width: 46, height: 46, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', alignItems: 'center', justifyContent: 'center' },
+  accountAmount: { alignItems: 'flex-end', marginLeft: 8 },
+  categoryTabShell: { height: 50, marginHorizontal: -14, marginTop: -14, marginBottom: 12, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.11)' },
+  categoryTabRow: { flex: 1, flexDirection: 'row', paddingHorizontal: 10 },
+  categoryTab: { flex: 1, height: 50, alignItems: 'center', justifyContent: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  categoryTabActive: { borderBottomColor: C.gold },
+  categoryTabText: { color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 9, letterSpacing: 0.5 },
+  categoryTabTextActive: { color: C.goldLight, fontWeight: '600' },
+  toolGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 12, alignItems: 'stretch' },
+  toolCard: { width: '48.5%', minHeight: 116, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.035)', padding: 14, justifyContent: 'space-between' },
   toolCardActive: { borderColor: C.gold, backgroundColor: 'rgba(233,200,119,0.12)' },
   toolCardIcon: { width: 40, height: 40, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.2)', alignItems: 'center', justifyContent: 'center' },
   toolCardIconActive: { backgroundColor: C.gold, borderColor: C.gold },
-  toolCardTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 10, lineHeight: 14 },
+  toolCardTitle: { minHeight: 28, color: C.goldLight, fontFamily: SANS, fontSize: 10, lineHeight: 14 },
   toolCardTitleActive: { color: C.goldLight, fontWeight: '700' },
-  toolBack: { minHeight: 34, flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10 },
+  toolBack: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 14 },
   toolBackText: { color: C.gold, fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 1 },
   toolWorkspace: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, marginTop: 18, paddingTop: 14 },
   toolWorkspaceTitle: { color: C.gold, fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 1, marginBottom: 8 },
@@ -551,5 +657,7 @@ const styles = StyleSheet.create({
   settingsDivider: { height: StyleSheet.hairlineWidth, backgroundColor: C.line, marginVertical: 20 },
   settingsTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 18, marginTop: 4 },
   pinError: { color: C.red, fontFamily: SANS, fontSize: 10, marginTop: 8 },
+  backButton: { width: 42, height: 42, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center' },
+  moduleContent: { paddingTop: 24 },
   root: { flex: 1, backgroundColor: C.void }, header: { height: 78, paddingTop: 12, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, back: { width: 42 }, backText: { color: C.goldLight, fontSize: 34, fontWeight: '200' }, headerTitle: { flex: 1, textAlign: 'center', color: C.goldLight, fontFamily: SERIF, fontSize: 21 }, headerSpace: { width: 42 }, content: { paddingHorizontal: 16, paddingTop: 50, paddingBottom: 50 }, panel: { borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.72)', padding: 14, marginBottom: 15 }, row: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)' }, rowMain: { flex: 1, minWidth: 0 }, accountStripe: { width: 5, height: 38, borderRadius: 3 }, cardTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 12 }, cardMeta: { color: 'rgba(255,244,208,0.4)', fontFamily: SANS, fontSize: 9, marginTop: 4 }, positive: { color: C.green, fontFamily: SERIF, fontSize: 14 }, negative: { color: C.red, fontFamily: SERIF, fontSize: 14 }, primary: { minHeight: 46, borderRadius: 14, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center', marginTop: 14 }, primaryText: { color: C.void, fontFamily: SANS, fontSize: 10, fontWeight: '700', letterSpacing: 1 }, secondary: { minHeight: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.gold, alignItems: 'center', justifyContent: 'center', marginTop: 10 }, secondaryText: { color: C.gold, fontFamily: SANS, fontSize: 10, fontWeight: '700' }, danger: { minHeight: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.red, alignItems: 'center', justifyContent: 'center', marginTop: 10 }, dangerText: { color: C.red, fontFamily: SANS, fontSize: 10, fontWeight: '700' }, module: { paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, body: { color: 'rgba(255,244,208,0.66)', fontFamily: SANS, fontSize: 11, lineHeight: 18, marginVertical: 10 }, track: { height: 6, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.1)', overflow: 'hidden', marginVertical: 9 }, fill: { height: '100%', borderRadius: 4, backgroundColor: C.gold }, chart: { marginBottom: 14 }, chartTop: { flexDirection: 'row', justifyContent: 'space-between' }, check: { width: 25, height: 25, borderRadius: 13, borderWidth: 1, borderColor: C.gold, color: C.gold, textAlign: 'center', textAlignVertical: 'center' }, checkDone: { backgroundColor: C.green, borderColor: C.green, color: C.void }, strike: { textDecorationLine: 'line-through', opacity: 0.5 }, toolResult: { color: C.goldLight, fontFamily: SERIF, fontSize: 29, marginBottom: 15 }, toolChoices: { gap: 7, paddingBottom: 8 }, toolChoice: { minHeight: 42, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 6 }, toolChoiceActive: { backgroundColor: C.gold, borderColor: C.gold }, toolChoiceText: { color: 'rgba(255,244,208,0.55)', fontFamily: SANS, fontSize: 8.5 }, toolChoiceTextActive: { color: C.void, fontWeight: '700' }, menuLink: { paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, field: { marginTop: 11 }, fieldLabel: { color: 'rgba(233,200,119,0.62)', fontFamily: SANS, fontSize: 9, letterSpacing: 1, marginBottom: 6 }, input: { minHeight: 45, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', color: C.goldLight, fontFamily: SANS, fontSize: 12, paddingHorizontal: 12, paddingVertical: 10 }, multiline: { minHeight: 80, textAlignVertical: 'top' }, import: { minHeight: 210, textAlignVertical: 'top', marginTop: 12 }, choices: { gap: 7, paddingVertical: 8 }, choice: { minHeight: 34, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingHorizontal: 12, justifyContent: 'center' }, choiceActive: { backgroundColor: 'rgba(233,200,119,0.14)', borderColor: C.gold }, choiceText: { color: 'rgba(255,244,208,0.5)', fontFamily: SANS, fontSize: 9 }, choiceTextActive: { color: C.goldLight }, iconChoices: { gap: 8, paddingVertical: 8 }, iconChoice: { width: 44, height: 44, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', alignItems: 'center', justifyContent: 'center' }, iconChoiceActive: { backgroundColor: C.gold, borderColor: C.gold }, categoryRowIcon: { width: 34, height: 34, borderRadius: 11, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.06)', alignItems: 'center', justifyContent: 'center' }, categoryRowName: { flex: 1 }, empty: { alignItems: 'center', paddingVertical: 28 }, diamond: { width: 22, height: 22, borderWidth: 1, borderColor: C.gold, transform: [{ rotate: '45deg' }], marginBottom: 15 }, emptyTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 12 }, emptyBody: { color: 'rgba(255,244,208,0.38)', fontFamily: SANS, fontSize: 9, marginTop: 7, textAlign: 'center' }, modalBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.72)' }, sheet: { maxHeight: '90%', borderTopLeftRadius: 25, borderTopRightRadius: 25, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14', padding: 18 }, sheetTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 23, marginBottom: 12 }, about: { color: C.gold, fontFamily: SERIF, fontSize: 48, textAlign: 'center', marginTop: 20 }, aboutTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 24, textAlign: 'center', marginBottom: 12 },
 });

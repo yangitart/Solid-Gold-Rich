@@ -8,6 +8,7 @@ import { C } from '../theme/luxury';
 import i18n, { getPhoneLanguage } from '../core/locales/i18next';
 import { FinanceProvider, useFinance } from '../core/finance/FinanceContext';
 import FinanceModulesScreen, { type FinanceModuleName } from './FinanceModulesScreen';
+import NotesFoldersScreen from './NotesFoldersScreen';
 
 // The background is mounted once so the transition from loading to the card
 // stays continuous and the ambient animation never restarts.
@@ -52,7 +53,7 @@ function AppContent() {
     <View style={styles.root}>
       <AuroraBackground />
       {booted && loaded && hasPin && !unlocked ? <PinScreen pinHash={state.settings.pinHash ?? ''} onUnlock={() => setUnlocked(true)} /> : booted ? (
-        moduleScreen ? <FinanceModulesScreen module={moduleScreen} onBack={() => setModuleScreen(null)} /> : <RichScreen onOpenModule={setModuleScreen} />
+        moduleScreen ? moduleScreen === 'notes' ? <NotesFoldersScreen onBack={() => setModuleScreen(null)} /> : <FinanceModulesScreen module={moduleScreen} onBack={() => setModuleScreen(null)} /> : <RichScreen onOpenModule={setModuleScreen} />
       ) : <BootScreen onDone={onDone} />}
     </View>
   );

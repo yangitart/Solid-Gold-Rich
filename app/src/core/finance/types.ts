@@ -144,6 +144,7 @@ export type Note = {
   title: string;
   body: string;
   tags: string[];
+  folderId?: string;
   createdAt: string;
   updatedAt: string;
   linkedAccountId?: string;
@@ -151,8 +152,16 @@ export type Note = {
   pinned: boolean;
 };
 
+export type NoteFolder = {
+  id: string;
+  name: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type AppSettings = {
   preferredCurrency: Currency;
+  exchangeRates?: Record<string, number>;
   firstDayOfWeek: 0 | 1;
   dateFormat: 'system' | 'iso';
   language?: AppLanguage;
@@ -183,6 +192,7 @@ export type FinanceState = {
   savingsGoals: SavingsGoal[];
   reminders: Reminder[];
   notes: Note[];
+  noteFolders: NoteFolder[];
   categories: FinanceCategories;
   settings: AppSettings;
 };

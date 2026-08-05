@@ -6,6 +6,7 @@ import type {
   Debt,
   FinanceState,
   Note,
+  NoteFolder,
   Reminder,
   RecurringTransaction,
   SavingsGoal,
@@ -39,6 +40,9 @@ type FinanceContextValue = {
   updateReminder: (item: Reminder) => void;
   addNote: (item: Note) => void;
   updateNote: (item: Note) => void;
+  addNoteFolder: (folder: NoteFolder) => void;
+  updateNoteFolder: (folder: NoteFolder) => void;
+  deleteNoteFolder: (id: string) => void;
   updateCategories: (categories: FinanceState['categories']) => void;
   importJson: (json: string) => boolean;
   importCsvText: (csv: string, accountId: string) => string[];
@@ -146,6 +150,9 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   const updateReminder = React.useCallback((item: Reminder) => updateState((current) => ({ ...current, reminders: replaceById(current.reminders, item) })), [updateState]);
   const addNote = React.useCallback((item: Note) => updateState((current) => ({ ...current, notes: [...current.notes, item] })), [updateState]);
   const updateNote = React.useCallback((item: Note) => updateState((current) => ({ ...current, notes: replaceById(current.notes, item) })), [updateState]);
+  const addNoteFolder = React.useCallback((folder: NoteFolder) => updateState((current) => ({ ...current, noteFolders: [...current.noteFolders, folder] })), [updateState]);
+  const updateNoteFolder = React.useCallback((folder: NoteFolder) => updateState((current) => ({ ...current, noteFolders: replaceById(current.noteFolders, folder) })), [updateState]);
+  const deleteNoteFolder = React.useCallback((id: string) => updateState((current) => ({ ...current, noteFolders: current.noteFolders.filter((folder) => folder.id !== id), notes: current.notes.map((note) => note.folderId === id ? { ...note, folderId: undefined } : note) })), [updateState]);
   const updateCategories = React.useCallback((categories: FinanceState['categories']) => updateState((current) => ({ ...current, categories })), [updateState]);
 
   const importJson = React.useCallback((json: string) => {
@@ -177,8 +184,8 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     state, loaded, updateState, addAccount, updateAccount, archiveAccount, addTransaction, updateTransaction,
     deleteTransaction, addTransfer, deleteTransfer, addBudget, updateBudget, deleteBudget, addRecurring,
     updateRecurring, addDebt, updateDebt, addSavingsGoal, updateSavingsGoal, addReminder, updateReminder,
-    addNote, updateNote, updateCategories, importJson, importCsvText, resetData,
-  }), [state, loaded, updateState, addAccount, updateAccount, archiveAccount, addTransaction, updateTransaction, deleteTransaction, addTransfer, deleteTransfer, addBudget, updateBudget, deleteBudget, addRecurring, updateRecurring, addDebt, updateDebt, addSavingsGoal, updateSavingsGoal, addReminder, updateReminder, addNote, updateNote, updateCategories, importJson, importCsvText, resetData]);
+    addNote, updateNote, addNoteFolder, updateNoteFolder, deleteNoteFolder, updateCategories, importJson, importCsvText, resetData,
+  }), [state, loaded, updateState, addAccount, updateAccount, archiveAccount, addTransaction, updateTransaction, deleteTransaction, addTransfer, deleteTransfer, addBudget, updateBudget, deleteBudget, addRecurring, updateRecurring, addDebt, updateDebt, addSavingsGoal, updateSavingsGoal, addReminder, updateReminder, addNote, updateNote, addNoteFolder, updateNoteFolder, deleteNoteFolder, updateCategories, importJson, importCsvText, resetData]);
 
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;
 }
