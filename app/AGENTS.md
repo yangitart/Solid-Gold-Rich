@@ -1,22 +1,30 @@
 # Solid Gold Rich
 
-## Alcance
+## Alcance y estructura
 
-- Esta carpeta contiene una app Expo/React Native enfocada en Android.
-- La entrada visual es `src/screens/AppRoot.tsx`; la ficha principal está en `src/screens/RichScreen.tsx`.
+- Esta carpeta contiene una app Expo/React Native con Expo Router, orientada principalmente a Android.
+- La entrada de la app es `app/index.tsx`; el layout raíz está en `app/_layout.tsx`.
+- `src/screens/AppRoot.tsx` coordina la pantalla de carga (`BootScreen`) y el panel principal (`RichScreen`).
+- La composicion visual de `RichScreen` es estable y no debe redisenarse sin peticion explicita; las funciones nuevas se abren desde los accesos del encabezado en `src/screens/FinanceModulesScreen.tsx`.
+- `FinanceProvider` mantiene el modelo financiero versionado para cuentas, transferencias, presupuestos, recurrentes, deudas, ahorros, recordatorios, notas y respaldos locales.
+- `src/components/AuroraBackground.tsx` proporciona el fondo oscuro con gradientes animados. No hay partículas ni polvo dorado de fondo.
 - El nombre público es `Solid Gold Rich` y el package Android es `com.escobar.solidgold`. No cambiar ninguno sin autorización explícita.
 - No recrear archivos de documentación de Play Store que el usuario haya eliminado. No modificar archivos generados dentro de `dist/` o `android/`.
 
-## Decisiones de producto que se deben preservar
+## Producto y comportamiento actual
 
-- Es una app meme presentada como una ficha premium de riqueza; no es un juego de taps.
-- El usuario introduce su patrimonio y el diamante cambia según la escala definida en `src/components/Gem.tsx`.
-- El patrimonio comienza en `0` y se conserva con AsyncStorage usando `@im-rich/net-worth`.
-- No mostrar mensajes técnicos como “guardado localmente”.
-- Tocar el diamante solo activa una animación satisfactoria; nunca cambia el patrimonio ni crea un contador.
-- Mantener la interfaz estable: ningún texto o número grande debe desbordarse ni cambiar el tamaño general del layout.
-- La estética debe seguir siendo oscura, dorada, exagerada y premium.
+- Es un gestor de patrimonio y presupuestos con estética oscura, dorada y premium.
+- El usuario puede crear varias cuentas de presupuesto, elegir una cuenta activa y registrar ingresos o gastos por categoría.
+- El panel muestra saldo, flujo de caja, actividad reciente, actividad global, límites de gasto y totales por período.
+- El diamante de `src/components/Gem.tsx` evoluciona según el saldo positivo de la cuenta activa. Tocar el diamante solo activa su animación.
+- Los presupuestos, la cuenta activa y las transacciones se guardan localmente con AsyncStorage usando las claves definidas en `src/screens/RichScreen.tsx`.
+- Se conserva la migración de los datos antiguos `@solid-gold/transactions` y `@solid-gold/monthly-budget`.
 - No reintroducir autenticación, huella, foto, captura o compartir salvo petición explícita del usuario.
+- Mantener la interfaz estable: ningún texto o número grande debe desbordarse ni cambiar el tamaño general del layout.
+
+## Fondo visual
+
+- Mantener el fondo limpio: no agregar partículas, polvo dorado ni otros elementos flotantes decorativos.
 
 ## Idiomas
 

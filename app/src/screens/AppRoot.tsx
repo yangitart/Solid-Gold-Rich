@@ -1,16 +1,18 @@
 import React from 'react';
 import { AppState, StyleSheet, View } from 'react-native';
 import AuroraBackground from '../components/AuroraBackground';
-import GoldDust from '../components/GoldDust';
 import BootScreen from './BootScreen';
 import RichScreen from './RichScreen';
 import { C } from '../theme/luxury';
 import i18n, { getPhoneLanguage } from '../core/locales/i18next';
+import { FinanceProvider } from '../core/finance/FinanceContext';
+import FinanceModulesScreen, { type FinanceModuleName } from './FinanceModulesScreen';
 
 // The background is mounted once so the transition from loading to the card
 // stays continuous and the ambient animation never restarts.
 export default function AppRoot() {
   const [booted, setBooted] = React.useState(false);
+  const [moduleScreen, setModuleScreen] = React.useState<FinanceModuleName | null>(null);
   const onDone = React.useCallback(() => setBooted(true), []);
 
   React.useEffect(() => {
@@ -30,11 +32,14 @@ export default function AppRoot() {
   }, []);
 
   return (
-    <View style={styles.root}>
-      <AuroraBackground />
-      <GoldDust />
-      {booted ? <RichScreen /> : <BootScreen onDone={onDone} />}
-    </View>
+    <FinanceProvider>
+      <View style={styles.root}>
+        <AuroraBackground />
+        {booted ? (
+          moduleScreen ? <FinanceModulesScreen module={moduleScreen} onBack={() => setModuleScreen(null)} /> : <RichScreen onOpenModule={setModuleScreen} />
+        ) : <BootScreen onDone={onDone} />}
+      </View>
+    </FinanceProvider>
   );
 }
 
