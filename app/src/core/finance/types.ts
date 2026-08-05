@@ -40,6 +40,7 @@ export type Account = {
   name: string;
   type: AccountType;
   currency: Currency;
+  exchangeRate?: number;
   openingBalance: number;
   color: string;
   archived: boolean;
@@ -154,11 +155,21 @@ export type AppSettings = {
   preferredCurrency: Currency;
   firstDayOfWeek: 0 | 1;
   dateFormat: 'system' | 'iso';
+  language?: AppLanguage;
+  pinHash?: string;
+};
+
+export type AppLanguage = 'en' | 'es' | 'pt' | 'fr' | 'de' | 'it';
+
+export type FinanceCategory = {
+  id: string;
+  icon: string;
 };
 
 export type FinanceCategories = {
-  expense: string[];
-  income: string[];
+  expense: FinanceCategory[];
+  income: FinanceCategory[];
+  tag: FinanceCategory[];
 };
 
 export type FinanceState = {

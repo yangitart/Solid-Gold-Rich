@@ -1,5 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type {
+  AppLanguage,
+  FinanceCategory,
   FinanceCategories,
   FinanceState,
   PaymentMethod,
@@ -16,8 +18,22 @@ const LEGACY_BUDGET_KEY = '@solid-gold/monthly-budget';
 
 export const DEFAULT_COLORS = ['#E9C877', '#7DD9B2', '#80B9FF', '#D99BEF', '#F08B88'];
 export const DEFAULT_CATEGORIES: FinanceCategories = {
-  expense: ['food', 'housing', 'transport', 'shopping', 'health', 'other'],
-  income: ['salary', 'business', 'gift', 'refund', 'other'],
+  expense: [
+    { id: 'food', icon: 'restaurant-outline' },
+    { id: 'housing', icon: 'home-outline' },
+    { id: 'transport', icon: 'car-outline' },
+    { id: 'shopping', icon: 'cart-outline' },
+    { id: 'health', icon: 'medkit-outline' },
+    { id: 'other', icon: 'pricetag-outline' },
+  ],
+  income: [
+    { id: 'salary', icon: 'cash-outline' },
+    { id: 'business', icon: 'briefcase-outline' },
+    { id: 'gift', icon: 'gift-outline' },
+    { id: 'refund', icon: 'refresh-outline' },
+    { id: 'other', icon: 'pricetag-outline' },
+  ],
+  tag: [],
 };
 
 export const emptyFinanceState = (): FinanceState => ({
@@ -31,7 +47,7 @@ export const emptyFinanceState = (): FinanceState => ({
   savingsGoals: [],
   reminders: [],
   notes: [],
-  categories: { expense: [...DEFAULT_CATEGORIES.expense], income: [...DEFAULT_CATEGORIES.income] },
+  categories: cloneCategories(DEFAULT_CATEGORIES),
   settings: { preferredCurrency: 'USD', firstDayOfWeek: 1, dateFormat: 'system' },
 });
 
@@ -42,6 +58,36 @@ function text(value: unknown, fallback = '') {
 function number(value: unknown, fallback = 0) {
   const result = Number(value);
   return Number.isFinite(result) ? result : fallback;
+}
+
+const SUPPORTED_LANGUAGES: AppLanguage[] = ['en', 'es', 'pt', 'fr', 'de', 'it'];
+
+const DEFAULT_CATEGORY_ICONS: Record<string, string> = Object.fromEntries(
+  [...DEFAULT_CATEGORIES.expense, ...DEFAULT_CATEGORIES.income, ...DEFAULT_CATEGORIES.tag].map((category) => [category.id, category.icon]),
+);
+
+function cloneCategories(categories: FinanceCategories): FinanceCategories {
+  return {
+    expense: categories.expense.map((category) => ({ ...category })),
+    income: categories.income.map((category) => ({ ...category })),
+    tag: categories.tag.map((category) => ({ ...category })),
+  };
+}
+
+function normalizeCategory(value: unknown): FinanceCategory | null {
+  if (typeof value === 'string') {
+    return { id: value, icon: DEFAULT_CATEGORY_ICONS[value] ?? 'pricetag-outline' };
+  }
+  if (!value || typeof value !== 'object') return null;
+  const record = value as Record<string, unknown>;
+  const id = text(record.id).trim().toLowerCase();
+  if (!id) return null;
+  return { id, icon: text(record.icon, DEFAULT_CATEGORY_ICONS[id] ?? 'pricetag-outline') };
+}
+
+function normalizeCategories(value: unknown, fallback: FinanceCategory[]) {
+  const normalized = Array.isArray(value) ? value.map(normalizeCategory).filter((item): item is FinanceCategory => Boolean(item)) : [];
+  return normalized.length ? normalized : fallback.map((category) => ({ ...category }));
 }
 
 function normalizeTransaction(value: Partial<Transaction>, accountId: string): Transaction {
@@ -81,6 +127,7 @@ function normalizeState(value: Partial<FinanceState>): FinanceState {
     name: text(account.name, `Account ${index + 1}`),
     type: ['cash', 'bank', 'card', 'savings', 'debt'].includes(account.type ?? '') ? account.type! : 'other',
     currency: text(account.currency, 'USD'),
+    exchangeRate: typeof account.exchangeRate === 'number' && Number.isFinite(account.exchangeRate) && account.exchangeRate > 0 ? account.exchangeRate : undefined,
     openingBalance: number(account.openingBalance),
     color: text(account.color, DEFAULT_COLORS[index % DEFAULT_COLORS.length]),
     archived: Boolean(account.archived),
@@ -97,13 +144,16 @@ function normalizeState(value: Partial<FinanceState>): FinanceState {
   state.reminders = Array.isArray(value.reminders) ? value.reminders : [];
   state.notes = Array.isArray(value.notes) ? value.notes : [];
   state.categories = {
-    expense: Array.isArray(value.categories?.expense) && value.categories.expense.length ? value.categories.expense : [...DEFAULT_CATEGORIES.expense],
-    income: Array.isArray(value.categories?.income) && value.categories.income.length ? value.categories.income : [...DEFAULT_CATEGORIES.income],
+    expense: normalizeCategories(value.categories?.expense, DEFAULT_CATEGORIES.expense),
+    income: normalizeCategories(value.categories?.income, DEFAULT_CATEGORIES.income),
+    tag: normalizeCategories(value.categories?.tag, DEFAULT_CATEGORIES.tag),
   };
   state.settings = {
     ...state.settings,
     ...(value.settings ?? {}),
     preferredCurrency: text(value.settings?.preferredCurrency, 'USD'),
+    language: SUPPORTED_LANGUAGES.includes(value.settings?.language as AppLanguage) ? value.settings?.language as AppLanguage : undefined,
+    pinHash: text(value.settings?.pinHash) || undefined,
   };
   return state;
 }

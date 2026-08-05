@@ -2,7 +2,9 @@ import React from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   KeyboardAvoidingView,
+  Alert,
   Modal,
+  PanResponder,
   Platform,
   Pressable,
   ScrollView,
@@ -14,9 +16,10 @@ import {
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
+import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
-import Gem, { diamondLevel, DIAMOND_LEVELS } from '../components/Gem';
+import Gem from '../components/Gem';
 import { C, SANS, SERIF } from '../theme/luxury';
 import type { FinanceModuleName } from './FinanceModulesScreen';
 import { useFinance } from '../core/finance/FinanceContext';
@@ -124,6 +127,18 @@ function AccountsGlyph() {
   );
 }
 
+function DrawerModuleGlyph({ module }: { module: string }) {
+  const iconName: React.ComponentProps<typeof Ionicons>['name'] = module === 'tools'
+    ? 'construct-outline'
+    : module === 'categories'
+      ? 'grid-outline'
+      : module === 'notes'
+        ? 'document-text-outline'
+        : 'settings-outline';
+
+  return <Ionicons name={iconName} size={20} color={C.gold} />;
+}
+
 function ProgressBar({ progress, color }: { progress: number; color: string }) {
   return (
     <View style={styles.progressTrack}>
@@ -136,26 +151,6 @@ function ProgressBar({ progress, color }: { progress: number; color: string }) {
           },
         ]}
       />
-    </View>
-  );
-}
-
-function Metric({ label, value, tone }: { label: string; value: string; tone: 'gold' | 'green' | 'red' }) {
-  return (
-    <View style={styles.metric}>
-      <Text style={styles.metricLabel} numberOfLines={1}>{label}</Text>
-      <Text
-        style={[
-          styles.metricValue,
-          tone === 'green' && styles.incomeText,
-          tone === 'red' && styles.expenseText,
-        ]}
-        numberOfLines={1}
-        adjustsFontSizeToFit
-        minimumFontScale={0.68}
-      >
-        {value}
-      </Text>
     </View>
   );
 }
@@ -204,6 +199,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [managerOpen, setManagerOpen] = React.useState(false);
   const [statsOpen, setStatsOpen] = React.useState(false);
+  const [quickMenuOpen, setQuickMenuOpen] = React.useState(false);
   const [entryOpen, setEntryOpen] = React.useState(false);
   const [entryKind, setEntryKind] = React.useState<TransactionKind>('expense');
   const [entryTitle, setEntryTitle] = React.useState('');
@@ -219,6 +215,8 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
   const [newBudgetCurrency, setNewBudgetCurrency] = React.useState('USD');
   const [newBudgetExchangeRate, setNewBudgetExchangeRate] = React.useState('1');
   const [newBudgetColor, setNewBudgetColor] = React.useState(ACCOUNT_COLORS[0]);
+  const [editingBudget, setEditingBudget] = React.useState<BudgetAccount | null>(null);
+  const [editingTransaction, setEditingTransaction] = React.useState<{ budgetId: string; transaction: Transaction } | null>(null);
 
 
   React.useEffect(() => {
@@ -284,17 +282,16 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
   }, [activeBudgetId, budgets, loaded]);
 
   const activeBudget = budgets.find((budget) => budget.id === activeBudgetId) ?? budgets[0];
+  const entryBudget = editingTransaction ? budgets.find((budget) => budget.id === editingTransaction.budgetId) : activeBudget;
   const operationCategories = entryKind === 'income' ? financeState.categories.income : financeState.categories.expense;
   const expenses = activeBudget ? expensesFor(activeBudget) : 0;
   const balance = activeBudget ? balanceFor(activeBudget) : 0;
   const positiveBalance = Math.max(0, balance);
-  const level = diamondLevel(positiveBalance);
   const budgetProgress = activeBudget?.limit ? expenses / activeBudget.limit : 0;
   const baseCurrency = financeState.settings.preferredCurrency || 'USD';
   const toBaseCurrency = (budget: BudgetAccount, value: number) => value * (budget.exchangeRate || 1);
   const portfolioBalance = budgets.reduce((sum, budget) => sum + toBaseCurrency(budget, balanceFor(budget)), 0);
-  const portfolioIncome = budgets.reduce((sum, budget) => sum + toBaseCurrency(budget, incomeFor(budget)), 0);
-  const portfolioExpenses = budgets.reduce((sum, budget) => sum + toBaseCurrency(budget, expensesFor(budget)), 0);
+  const portfolioPositiveBalance = Math.max(0, portfolioBalance);
   const allTransactions: PortfolioTransaction[] = budgets
     .flatMap((budget) => budget.transactions.map((transaction) => ({
       ...transaction,
@@ -345,12 +342,12 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
   const statsCurrency = screenMode === 'allActivity' ? baseCurrency : activeBudget?.currency ?? baseCurrency;
   const statsCategories = financeState.categories.expense.map((category) => {
     const total = screenMode === 'allActivity'
-      ? allTransactions.filter((item) => item.category === category && item.kind === 'expense').reduce((sum, item) => {
+      ? allTransactions.filter((item) => item.category === category.id && item.kind === 'expense').reduce((sum, item) => {
         const budget = budgets.find((candidate) => candidate.id === item.budgetId);
         return sum + toBaseCurrency(budget ?? createDefaultBudget(''), item.amount);
       }, 0)
-      : activeBudget?.transactions.filter((item) => item.category === category && item.kind === 'expense').reduce((sum, item) => sum + item.amount, 0) ?? 0;
-    return { category, total };
+      : activeBudget?.transactions.filter((item) => item.category === category.id && item.kind === 'expense').reduce((sum, item) => sum + item.amount, 0) ?? 0;
+    return { category: category.id, icon: category.icon, total };
   });
   const recentOperationLimit = height < 700 ? 1 : height < 760 ? 2 : height < 850 ? 3 : 4;
 
@@ -359,9 +356,41 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
     setScreenMode('budget');
   }, []);
 
+  const openQuickModule = React.useCallback((module: FinanceModuleName) => {
+    setQuickMenuOpen(false);
+    onOpenModule?.(module);
+  }, [onOpenModule]);
+
+  const budgetSwipeResponder = React.useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gestureState) => (
+      screenMode === 'budget'
+      && Math.abs(gestureState.dx) > 12
+      && Math.abs(gestureState.dx) > Math.abs(gestureState.dy)
+    ),
+    onMoveShouldSetPanResponderCapture: (_, gestureState) => (
+      screenMode === 'budget'
+      && Math.abs(gestureState.dx) > 12
+      && Math.abs(gestureState.dx) > Math.abs(gestureState.dy)
+    ),
+    onPanResponderRelease: (_, gestureState) => {
+      const currentIndex = budgets.findIndex((budget) => budget.id === activeBudgetId);
+      if (currentIndex < 0) return;
+
+      const isHorizontalSwipe = Math.abs(gestureState.dx) >= 36 || Math.abs(gestureState.vx) >= 0.35;
+      if (!isHorizontalSwipe || Math.abs(gestureState.dx) <= Math.abs(gestureState.dy)) return;
+
+      const nextIndex = currentIndex + (gestureState.dx > 0 ? 1 : -1);
+      const nextBudget = budgets[nextIndex];
+      if (nextBudget) selectBudget(nextBudget.id);
+    },
+    onPanResponderTerminationRequest: () => false,
+    onShouldBlockNativeResponder: () => true,
+  }), [activeBudgetId, budgets, screenMode, selectBudget]);
+
 
   const closeEntry = React.useCallback(() => {
     setEntryOpen(false);
+    setEditingTransaction(null);
     setEntryTitle('');
     setEntryAmount('');
     setEntryCategory('other');
@@ -372,6 +401,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
   }, []);
 
   const openEntry = React.useCallback((kind: TransactionKind) => {
+    setEditingTransaction(null);
     setEntryKind(kind);
     if (kind === 'transfer') {
       const sourceId = activeBudget?.id ?? budgets[0]?.id ?? '';
@@ -383,18 +413,53 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
     setEntryOpen(true);
   }, [activeBudget?.id, budgets]);
 
-  const openCategoryEntry = React.useCallback((kind: 'expense' | 'income', category: string) => {
-    setDrawerOpen(false);
-    setEntryKind(kind);
-    setEntryTitle('');
-    setEntryAmount('');
-    setEntryCategory(category);
+  const openTransactionEditor = React.useCallback((budgetId: string, transaction: Transaction) => {
+    if (transaction.transferId) return;
+    setEditingTransaction({ budgetId, transaction: { ...transaction } });
+    setEntryKind(transaction.kind);
+    setEntryTitle(transaction.title);
+    setEntryAmount(String(transaction.amount));
+    setEntryCategory(transaction.category);
     setEntryOpen(true);
   }, []);
+
+  const removeTransaction = React.useCallback((budgetId: string, transaction: Transaction) => {
+    Alert.alert(
+      t('finance.deleteEntry', { defaultValue: 'Delete operation' }),
+      t('finance.deleteEntryConfirm', { defaultValue: 'Delete this operation?' }),
+      [
+        { text: t('finance.cancel'), style: 'cancel' },
+        {
+          text: t('finance.deleteAction', { defaultValue: 'Delete' }),
+          style: 'destructive',
+          onPress: () => setBudgets((current) => current.map((budget) => ({
+            ...budget,
+            transactions: budget.transactions.filter((item) => {
+              if (transaction.transferId) return item.transferId !== transaction.transferId;
+              return !(budget.id === budgetId && item.id === transaction.id);
+            }),
+          }))),
+        },
+      ],
+    );
+  }, [t]);
 
   const addTransaction = React.useCallback(() => {
     const amount = parseAmount(entryAmount);
     if (amount <= 0) return;
+
+    if (editingTransaction) {
+      setBudgets((current) => current.map((budget) => budget.id === editingTransaction.budgetId
+        ? {
+          ...budget,
+          transactions: budget.transactions.map((item) => item.id === editingTransaction.transaction.id
+            ? { ...item, title: entryTitle.trim() || t('finance.untitled'), category: entryCategory, amount, kind: entryKind, currency: budget.currency }
+            : item),
+        }
+        : budget));
+      closeEntry();
+      return;
+    }
 
     if (entryKind === 'transfer') {
       const source = budgets.find((budget) => budget.id === transferSourceId);
@@ -434,7 +499,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
         : budget
     )));
     closeEntry();
-  }, [activeBudget, budgets, closeEntry, entryAmount, entryCategory, entryKind, entryTitle, t, transferRate, transferReceivedAmount, transferSourceId, transferTargetId]);
+  }, [activeBudget, budgets, closeEntry, editingTransaction, entryAmount, entryCategory, entryKind, entryTitle, t, transferRate, transferReceivedAmount, transferSourceId, transferTargetId]);
 
   const createBudget = React.useCallback(() => {
     const name = newBudgetName.trim();
@@ -463,6 +528,22 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
     setManagerOpen(false);
   }, [newBudgetBalance, newBudgetColor, newBudgetCurrency, newBudgetExchangeRate, newBudgetLimit, newBudgetName]);
 
+  const openBudgetEditor = React.useCallback((budget: BudgetAccount) => {
+    setEditingBudget({ ...budget, transactions: [...budget.transactions] });
+  }, []);
+
+  const saveBudgetEdit = React.useCallback(() => {
+    if (!editingBudget || !editingBudget.name.trim()) return;
+    setBudgets((current) => current.map((budget) => budget.id === editingBudget.id ? {
+      ...editingBudget,
+      name: editingBudget.name.trim(),
+      openingBalance: Number.isFinite(editingBudget.openingBalance) ? editingBudget.openingBalance : 0,
+      limit: editingBudget.limitSet ? Math.max(0, editingBudget.limit) : 0,
+      exchangeRate: editingBudget.exchangeRate > 0 ? editingBudget.exchangeRate : 1,
+    } : budget));
+    setEditingBudget(null);
+  }, [editingBudget]);
+
   const renderTransactions = (items: PortfolioTransaction[] | Transaction[], showBudgetName = false) => {
     if (items.length === 0) {
       return (
@@ -476,6 +557,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
 
     return items.map((item) => {
       const portfolioItem = item as PortfolioTransaction;
+      const transactionBudgetId = showBudgetName ? portfolioItem.budgetId : activeBudgetId;
       const categoryLabel = t(`finance.categories.${item.category}`, { defaultValue: item.category });
       const detail = showBudgetName
         ? `${portfolioItem.budgetName} / ${categoryLabel}`
@@ -508,6 +590,14 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
           >
             {item.kind === 'income' ? '+' : '-'}{formatMoney(item.amount, language, item.currency ?? activeBudget?.currency ?? baseCurrency)}
           </Text>
+          <View style={styles.transactionActions}>
+            {!item.transferId && <Pressable style={styles.transactionAction} onPress={() => openTransactionEditor(transactionBudgetId, item)} accessibilityLabel={t('finance.editEntry', { defaultValue: 'Edit operation' })}>
+              <Ionicons name="create-outline" size={17} color={C.gold} />
+            </Pressable>}
+            <Pressable style={styles.transactionAction} onPress={() => removeTransaction(transactionBudgetId, item)} accessibilityLabel={t('finance.deleteEntry', { defaultValue: 'Delete operation' })}>
+              <Ionicons name="trash-outline" size={17} color={C.red} />
+            </Pressable>
+          </View>
         </View>
       );
     });
@@ -532,13 +622,6 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
               </Text>
             </View>
 
-            <View style={styles.compactTierBlock}>
-              <Text style={styles.microLabel}>{t('finance.currentTier')}</Text>
-              <Text style={[styles.tierName, { color: level.accent }]} numberOfLines={1}>
-                {t(`app.diamonds.${level.key}`)} / {DIAMOND_LEVELS.indexOf(level) + 1}/{DIAMOND_LEVELS.length}
-              </Text>
-            </View>
-
             {activeBudget.limit > 0 && (
               <>
                 <View style={styles.compactLimitTop}>
@@ -554,7 +637,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
 
           <View style={styles.compactGemWindow} pointerEvents="box-none">
             <View style={styles.compactGemCanvas}>
-              <Gem netWorth={positiveBalance} accessibilityLabel={t(`app.diamonds.${level.key}`)} />
+              <Gem netWorth={positiveBalance} />
             </View>
           </View>
         </View>
@@ -563,13 +646,16 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
           <View>
             <Text style={styles.sectionEyebrow}>{t('finance.thisBudget')}</Text>
             <Text style={styles.sectionTitle}>{t('finance.operations')}</Text>
-          </View>
-          <View style={styles.operationHeaderActions}>
-            <Pressable style={styles.statsIconButton} onPress={() => setStatsOpen(true)} accessibilityLabel={t('finance.statistics')}>
-              <View style={styles.statsIcon}><View style={styles.statsBarShort} /><View style={styles.statsBarTall} /><View style={styles.statsBarMid} /></View>
-            </Pressable>
-            <Text style={styles.operationCount}>{activeBudget.transactions.length}</Text>
-          </View>
+           </View>
+           <View style={styles.operationHeaderActions}>
+             <Text style={styles.operationCount}>{activeBudget.transactions.length}</Text>
+             <Pressable style={styles.statsIconButton} onPress={() => setStatsOpen(true)} accessibilityLabel={t('finance.statistics')}>
+               <View style={styles.statsIcon}><View style={styles.statsBarShort} /><View style={styles.statsBarTall} /><View style={styles.statsBarMid} /></View>
+             </Pressable>
+             <Pressable style={styles.statsIconButton} onPress={() => setQuickMenuOpen(true)} accessibilityLabel={t('finance.quickOptions')}>
+               <Ionicons name="ellipsis-vertical" size={19} color={C.gold} />
+             </Pressable>
+           </View>
         </View>
         <View style={[styles.panel, styles.fixedOperationsPanel]}>
           {renderTransactions(activeBudget.transactions.slice(0, recentOperationLimit))}
@@ -584,26 +670,39 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
 
   const renderPortfolioActivity = () => (
     <>
-      <View style={styles.portfolioCard}>
-        <Text style={styles.eyebrow}>{t('finance.totalAcrossBudgets')}</Text>
-        <Text style={styles.portfolioBalance} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>
-          {formatMoney(portfolioBalance, language, baseCurrency)}
-        </Text>
-        <View style={styles.portfolioMetrics}>
-          <Metric label={t('finance.income')} value={formatMoney(portfolioIncome, language, baseCurrency)} tone="green" />
-          <Metric label={t('finance.expenses')} value={formatMoney(portfolioExpenses, language, baseCurrency)} tone="red" />
+      <View style={styles.compactHero}>
+        <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
+        <LinearGradient
+          colors={[`${C.gold}22`, 'rgba(10,12,20,0.25)', 'rgba(10,12,20,0.72)']}
+          style={StyleSheet.absoluteFill}
+        />
+        <View style={styles.compactHeroInfo}>
+          <View>
+            <Text style={styles.eyebrow}>{t('finance.totalAcrossBudgets')}</Text>
+            <Text style={styles.compactBalance} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.58}>
+              {formatMoney(portfolioBalance, language, baseCurrency)}
+            </Text>
+          </View>
+        </View>
+        <View style={styles.compactGemWindow} pointerEvents="none">
+          <View style={styles.compactGemCanvas}>
+            <Gem netWorth={portfolioPositiveBalance} />
+          </View>
         </View>
       </View>
-      <View style={styles.sectionHeader}>
+      <View style={styles.fixedSectionHeader}>
         <View>
           <Text style={styles.sectionEyebrow}>{t('finance.portfolio')}</Text>
           <Text style={styles.sectionTitle}>{t('finance.allActivity')}</Text>
         </View>
         <View style={styles.operationHeaderActions}>
+          <Text style={styles.operationCount}>{allTransactions.length}</Text>
           <Pressable style={styles.statsIconButton} onPress={() => setStatsOpen(true)} accessibilityLabel={t('finance.statistics')}>
             <View style={styles.statsIcon}><View style={styles.statsBarShort} /><View style={styles.statsBarTall} /><View style={styles.statsBarMid} /></View>
           </Pressable>
-          <Text style={styles.operationCount}>{allTransactions.length}</Text>
+          <Pressable style={styles.statsIconButton} onPress={() => setQuickMenuOpen(true)} accessibilityLabel={t('finance.quickOptions')}>
+            <Ionicons name="ellipsis-vertical" size={19} color={C.gold} />
+          </Pressable>
         </View>
       </View>
 
@@ -616,7 +715,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <View style={styles.root}>
+      <View style={styles.root} {...budgetSwipeResponder.panHandlers}>
         <View style={styles.header}>
           <Pressable
             style={styles.headerButton}
@@ -683,64 +782,19 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
               </View>
 
               <View style={styles.drawerNav}>
-                <Pressable
-                  style={[styles.drawerItem, screenMode === 'budget' && styles.drawerItemActive]}
-                  onPress={() => { setScreenMode('budget'); setDrawerOpen(false); }}
-                >
-                  <View style={styles.drawerItemIcon}><View style={styles.drawerHomeIcon} /></View>
-                  <Text style={styles.drawerItemText}>{t('finance.dashboard')}</Text>
-                </Pressable>
               {[
-                ['reminders', 'Reminder'],
-                ['debt', 'Debt'],
-                ['notes', 'Note'],
                 ['tools', 'Tools'],
-                ['savings', 'Savings'],
                 ['categories', 'Categories'],
-                ['more', 'More Features'],
+                ['notes', 'Notes'],
                 ['settings', 'Settings'],
-                ['about', 'About'],
               ].map(([module, title]) => (
                 <Pressable key={module} style={styles.drawerItem} onPress={() => onOpenModule?.(module as FinanceModuleName)}>
-                  <View style={styles.drawerItemIcon}><View style={styles.drawerActivityIcon}><View style={styles.drawerActivityIconRow} /></View></View>
+                  <View style={styles.drawerItemIcon}><DrawerModuleGlyph module={module} /></View>
                   <Text style={styles.drawerItemText}>{title}</Text>
                 </Pressable>
               ))}
               </View>
 
-              <View style={styles.drawerCategorySection}>
-                <Text style={styles.drawerSectionLabel}>EXPENSE CATEGORIES</Text>
-                <View style={styles.drawerCategoryList}>
-                  {financeState.categories.expense.map((category) => (
-                    <Pressable key={`drawer-expense-${category}`} style={styles.drawerCategoryItem} onPress={() => openCategoryEntry('expense', category)}>
-                      <Text style={styles.drawerCategoryText} numberOfLines={1}>{t(`finance.categories.${category}`, { defaultValue: category })}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-                <Text style={styles.drawerSectionLabel}>INCOME CATEGORIES</Text>
-                <View style={styles.drawerCategoryList}>
-                  {financeState.categories.income.map((category) => (
-                    <Pressable key={`drawer-income-${category}`} style={styles.drawerCategoryItem} onPress={() => openCategoryEntry('income', category)}>
-                      <Text style={styles.drawerCategoryText} numberOfLines={1}>{t(`finance.categories.${category}`, { defaultValue: category })}</Text>
-                    </Pressable>
-                  ))}
-                </View>
-              </View>
-
-              <Text style={styles.drawerSectionLabel}>{t('finance.yourBudgets')}</Text>
-              <View style={styles.drawerBudgets}>
-                {budgets.map((budget) => (
-                  <Pressable
-                    key={budget.id}
-                    style={styles.drawerBudgetRow}
-                    onPress={() => { selectBudget(budget.id); setDrawerOpen(false); }}
-                  >
-                    <View style={[styles.drawerBudgetDot, { backgroundColor: budget.color }]} />
-                    <Text style={styles.drawerBudgetName} numberOfLines={1}>{budget.name}</Text>
-                    <Text style={styles.drawerBudgetValue}>{formatMoney(balanceFor(budget), language, budget.currency)}</Text>
-                  </Pressable>
-                ))}
-              </View>
             </ScrollView>
 
             <Text style={styles.drawerPrivacy}>{t('finance.privacyCopy')}</Text>
@@ -764,8 +818,8 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
               </View>
               <Text style={styles.managerEyebrow}>{t('finance.categoryBreakdown')}</Text>
               <View style={styles.managerAccounts}>
-                {statsCategories.map(({ category, total }) => {
-                  return <View key={category} style={styles.statsCategoryRow}><Text style={styles.managerAccountName}>{t(`finance.categories.${category}`)}</Text><Text style={styles.managerAccountBalance}>{formatMoney(total, language, statsCurrency)}</Text></View>;
+                {statsCategories.map(({ category, icon, total }) => {
+                  return <View key={category} style={styles.statsCategoryRow}><View style={styles.statsCategoryName}><Ionicons name={icon as React.ComponentProps<typeof Ionicons>['name']} size={16} color={C.gold} /><Text style={styles.managerAccountName}>{t(`finance.categories.${category}`, { defaultValue: category })}</Text></View><Text style={styles.managerAccountBalance}>{formatMoney(total, language, statsCurrency)}</Text></View>;
                 })}
               </View>
             </ScrollView>
@@ -773,21 +827,42 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
         </View>
       </Modal>
 
-      <Modal visible={managerOpen} animationType="slide" onRequestClose={() => setManagerOpen(false)}>
+      <Modal visible={quickMenuOpen} transparent animationType="fade" onRequestClose={() => setQuickMenuOpen(false)}>
+        <View style={styles.quickMenuBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setQuickMenuOpen(false)} />
+          <View style={styles.quickMenuPanel}>
+            <Text style={styles.quickMenuTitle}>{t('finance.quickOptions')}</Text>
+            {[
+              { module: 'calendar' as FinanceModuleName, label: t('finance.toolsList.calendar'), icon: 'calendar-outline' as const },
+              { module: 'recurring' as FinanceModuleName, label: t('finance.toolsList.recurring'), icon: 'repeat-outline' as const },
+              { module: 'debt' as FinanceModuleName, label: t('finance.toolsList.debt'), icon: 'card-outline' as const },
+            ].map((item) => (
+              <Pressable key={item.module} style={styles.quickMenuItem} onPress={() => openQuickModule(item.module)}>
+                <View style={styles.quickMenuIcon}><Ionicons name={item.icon} size={19} color={C.gold} /></View>
+                <Text style={styles.quickMenuItemText}>{item.label}</Text>
+                <Ionicons name="chevron-forward-outline" size={17} color="rgba(255,244,208,0.35)" />
+              </Pressable>
+            ))}
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={managerOpen} animationType="slide" onRequestClose={() => editingBudget ? setEditingBudget(null) : setManagerOpen(false)}>
         <View style={styles.managerRoot}>
           <LinearGradient colors={['rgba(233,200,119,0.12)', 'transparent']} style={StyleSheet.absoluteFill} />
           <SafeAreaView style={styles.managerSafe} edges={['top', 'bottom']}>
             <View style={styles.managerHeader}>
-              <Pressable onPress={() => setManagerOpen(false)} style={styles.managerHeaderSide}>
+              <Pressable onPress={() => editingBudget ? setEditingBudget(null) : setManagerOpen(false)} style={styles.managerHeaderSide}>
                 <Text style={styles.managerHeaderAction}>{t('finance.cancel')}</Text>
               </Pressable>
-              <Text style={styles.managerHeaderTitle}>{t('finance.manageBudgets')}</Text>
-              <Pressable onPress={() => setManagerOpen(false)} style={[styles.managerHeaderSide, styles.managerHeaderRight]}>
+              <Text style={styles.managerHeaderTitle}>{editingBudget ? t('finance.editBudget') : t('finance.manageBudgets')}</Text>
+              <Pressable onPress={() => editingBudget ? saveBudgetEdit() : setManagerOpen(false)} style={[styles.managerHeaderSide, styles.managerHeaderRight]}>
                 <Text style={styles.managerHeaderAction}>{t('finance.done')}</Text>
               </Pressable>
             </View>
 
             <ScrollView contentContainerStyle={styles.managerContent} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              {!editingBudget && <>
               <Text style={styles.managerEyebrow}>{t('finance.yourBudgets')}</Text>
               <View style={styles.managerAccounts}>
                 {budgets.map((budget) => {
@@ -796,7 +871,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
                     <Pressable
                       key={budget.id}
                       style={[styles.managerAccount, selected && styles.managerAccountSelected]}
-                      onPress={() => { selectBudget(budget.id); setManagerOpen(false); }}
+                      onPress={() => openBudgetEditor(budget)}
                     >
                       <View style={[styles.managerAccountMark, { backgroundColor: `${budget.color}22`, borderColor: budget.color }]}>
                         <View style={[styles.managerAccountMarkDot, { backgroundColor: budget.color }]} />
@@ -808,15 +883,50 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
                       <View style={styles.managerAccountRight}>
                         <Text style={styles.managerAccountBalance}>{formatMoney(balanceFor(budget), language, budget.currency)}</Text>
                         <Text style={[styles.managerSelected, selected && { color: budget.color }]}>
-                          {selected ? t('finance.selected') : t('finance.select')}
+                          {selected ? t('finance.selected') : t('finance.configure')}
                         </Text>
                       </View>
                     </Pressable>
                   );
                 })}
               </View>
+              </>}
 
-              <View style={styles.createCard}>
+              {editingBudget && (
+                <View style={styles.createCard}>
+                  <Text style={styles.createEyebrow}>{t('finance.editBudget')}</Text>
+                  <Text style={styles.createTitle}>{editingBudget.name}</Text>
+                  <Text style={styles.inputLabel}>{t('finance.budgetName')}</Text>
+                  <TextInput value={editingBudget.name} onChangeText={(value) => setEditingBudget((current) => current ? { ...current, name: value } : current)} placeholder={t('finance.budgetNamePlaceholder')} placeholderTextColor="rgba(255,244,208,0.28)" style={styles.textInput} maxLength={24} />
+                  <View style={styles.managerInputRow}>
+                    <View style={styles.managerInputColumn}>
+                      <Text style={styles.inputLabel}>{t('finance.openingBalance')}</Text>
+                      <View style={styles.moneyInputShell}>
+                        <Text style={styles.moneyInputCurrency}>{editingBudget.currency}</Text>
+                        <TextInput value={String(editingBudget.openingBalance)} onChangeText={(value) => setEditingBudget((current) => current ? { ...current, openingBalance: parseAmount(value) } : current)} keyboardType="decimal-pad" style={styles.moneyInput} />
+                      </View>
+                    </View>
+                    <View style={styles.managerInputColumn}>
+                      <Text style={styles.inputLabel}>{t('finance.spendingLimit')}</Text>
+                      <View style={styles.moneyInputShell}>
+                        <Text style={styles.moneyInputCurrency}>{editingBudget.currency}</Text>
+                        <TextInput value={editingBudget.limitSet ? String(editingBudget.limit) : ''} onChangeText={(value) => setEditingBudget((current) => current ? { ...current, limit: parseAmount(value), limitSet: parseAmount(value) > 0 } : current)} keyboardType="decimal-pad" placeholder="—" placeholderTextColor="rgba(255,244,208,0.28)" style={styles.moneyInput} />
+                      </View>
+                    </View>
+                  </View>
+                  <Text style={styles.inputLabel}>{t('finance.currency')}</Text>
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChips}>
+                    {['USD', 'CUP', 'EUR'].map((currency) => <Pressable key={currency} onPress={() => setEditingBudget((current) => current ? { ...current, currency, exchangeRate: currency === baseCurrency ? 1 : current.exchangeRate } : current)} style={[styles.categoryChip, editingBudget.currency === currency && styles.categoryChipActive]}><Text style={[styles.categoryChipText, editingBudget.currency === currency && styles.categoryChipTextActive]}>{currency}</Text></Pressable>)}
+                  </ScrollView>
+                  <Text style={styles.inputLabel}>1 {editingBudget.currency} = ? {baseCurrency}</Text>
+                  <TextInput value={String(editingBudget.exchangeRate)} onChangeText={(value) => setEditingBudget((current) => current ? { ...current, exchangeRate: parseAmount(value) } : current)} keyboardType="decimal-pad" style={styles.textInput} editable={editingBudget.currency !== baseCurrency} />
+                  <Text style={styles.inputLabel}>{t('finance.accentColor')}</Text>
+                  <View style={styles.colorRow}>{ACCOUNT_COLORS.map((color) => <Pressable key={color} onPress={() => setEditingBudget((current) => current ? { ...current, color } : current)} style={[styles.colorButton, editingBudget.color === color && styles.colorButtonSelected]}><View style={[styles.colorDot, { backgroundColor: color }]} /></Pressable>)}</View>
+                  <View style={styles.editActions}><Pressable style={[styles.editCancelButton, styles.editAction]} onPress={() => setEditingBudget(null)}><Text style={styles.editCancelText}>{t('finance.cancel')}</Text></Pressable><Pressable style={[styles.createButton, styles.editAction]} onPress={saveBudgetEdit}><Text style={styles.createButtonText}>{t('finance.done')}</Text></Pressable></View>
+                </View>
+              )}
+
+              {!editingBudget && <View style={styles.createCard}>
                 <Text style={styles.createEyebrow}>{t('finance.newBudget')}</Text>
                 <Text style={styles.createTitle}>{t('finance.createBudget')}</Text>
 
@@ -908,7 +1018,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
                 >
                   <Text style={styles.createButtonText}>{t('finance.createBudget')}</Text>
                 </Pressable>
-              </View>
+              </View>}
             </ScrollView>
           </SafeAreaView>
         </View>
@@ -922,13 +1032,13 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
             <View style={styles.entryHeader}>
               <View>
                 <Text style={styles.createEyebrow}>{activeBudget?.name}</Text>
-                <Text style={styles.entryTitle}>{t('finance.newEntry')}</Text>
+                <Text style={styles.entryTitle}>{editingTransaction ? t('finance.editEntry', { defaultValue: 'EDIT OPERATION' }) : t('finance.newEntry')}</Text>
               </View>
               <Pressable style={styles.entryClose} onPress={closeEntry}><Text style={styles.entryCloseText}>x</Text></Pressable>
             </View>
 
             <View style={styles.kindControl}>
-              {(['expense', 'income', 'transfer'] as TransactionKind[]).map((kind) => (
+              {((editingTransaction ? ['expense', 'income'] : ['expense', 'income', 'transfer']) as TransactionKind[]).map((kind) => (
                 <Pressable
                   key={kind}
                   onPress={() => setEntryKind(kind)}
@@ -985,7 +1095,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
               <>
                 <Text style={styles.inputLabel}>{t('finance.amount')}</Text>
                 <View style={styles.amountInputShell}>
-                  <Text style={styles.amountCurrency}>$</Text>
+                  <Text style={styles.amountCurrency}>{entryBudget?.currency ?? baseCurrency}</Text>
                   <TextInput value={entryAmount} onChangeText={(value) => setEntryAmount(value.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" autoFocus placeholder="0" placeholderTextColor="rgba(255,244,208,0.25)" style={styles.amountInput} />
                 </View>
                 <Text style={styles.inputLabel}>{t('finance.description')}</Text>
@@ -993,8 +1103,8 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
                 <Text style={styles.inputLabel}>{t('finance.category')}</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChips}>
                   {operationCategories.map((category) => (
-                    <Pressable key={category} onPress={() => setEntryCategory(category)} style={[styles.categoryChip, entryCategory === category && styles.categoryChipActive]}>
-                      <Text style={[styles.categoryChipText, entryCategory === category && styles.categoryChipTextActive]}>{t(`finance.categories.${category}`)}</Text>
+                    <Pressable key={category.id} onPress={() => setEntryCategory(category.id)} style={[styles.categoryChip, entryCategory === category.id && styles.categoryChipActive]}>
+                      <Text style={[styles.categoryChipText, entryCategory === category.id && styles.categoryChipTextActive]}>{t(`finance.categories.${category.id}`, { defaultValue: category.id })}</Text>
                     </Pressable>
                   ))}
                 </ScrollView>
@@ -1006,7 +1116,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
               onPress={addTransaction}
               disabled={parseAmount(entryAmount) <= 0}
             >
-              <Text style={styles.saveButtonText}>{t('finance.saveEntry')}</Text>
+              <Text style={styles.saveButtonText}>{editingTransaction ? t('finance.updateEntry', { defaultValue: 'UPDATE OPERATION' }) : t('finance.saveEntry')}</Text>
             </Pressable>
           </View>
         </KeyboardAvoidingView>
@@ -1016,6 +1126,16 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
 }
 
 const styles = StyleSheet.create({
+  editActions: { flexDirection: 'row', gap: 9, marginTop: 14 },
+  editAction: { flex: 1, marginTop: 0 },
+  editCancelButton: { minHeight: 46, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.gold, alignItems: 'center', justifyContent: 'center' },
+  editCancelText: { color: C.gold, fontFamily: SANS, fontSize: 10, fontWeight: '700' },
+  quickMenuBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.68)', justifyContent: 'center', paddingHorizontal: 24 },
+  quickMenuPanel: { borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#090B12', padding: 16 },
+  quickMenuTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 22, marginBottom: 12 },
+  quickMenuItem: { minHeight: 54, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(233,200,119,0.12)', gap: 11 },
+  quickMenuIcon: { width: 30, alignItems: 'center' },
+  quickMenuItemText: { flex: 1, color: C.goldLight, fontFamily: SANS, fontSize: 11, letterSpacing: 0.5 },
   safe: { flex: 1 },
   root: { flex: 1 },
   header: { height: 78, paddingTop: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' },
@@ -1036,13 +1156,12 @@ const styles = StyleSheet.create({
   budgetTabActive: { borderBottomColor: C.gold },
   budgetTabText: { flexShrink: 1, color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 10, letterSpacing: 0.5 },
   budgetTabTextActive: { color: C.goldLight, fontWeight: '600' },
-  content: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 34 },
+  content: { paddingHorizontal: 18, paddingTop: 13, paddingBottom: 13 },
   fixedContent: { flex: 1, paddingHorizontal: 18, paddingTop: 13, paddingBottom: 13 },
   fixedBudgetView: { flex: 1 },
   compactHero: { height: 146, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, flexDirection: 'row', overflow: 'hidden', backgroundColor: 'rgba(10,12,20,0.66)' },
   compactHeroInfo: { flex: 1, minWidth: 0, paddingLeft: 16, paddingTop: 14, paddingBottom: 14, justifyContent: 'space-between' },
   compactBalance: { maxWidth: 205, color: C.goldLight, fontFamily: SERIF, fontSize: 30, letterSpacing: 0.3, marginTop: 5 },
-  compactTierBlock: { marginTop: 3 },
   compactLimitTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7, paddingRight: 3 },
   compactLimitLabel: { flex: 1, color: 'rgba(255,244,208,0.34)', fontFamily: SANS, fontSize: 7, letterSpacing: 0.8 },
   compactLimitValue: { maxWidth: 116, color: 'rgba(255,244,208,0.6)', fontFamily: SERIF, fontSize: 9.5, textAlign: 'right' },
@@ -1078,7 +1197,6 @@ const styles = StyleSheet.create({
   heroFooterBlock: { flex: 1, minWidth: 0 },
   heroFooterRight: { alignItems: 'flex-end' },
   microLabel: { color: 'rgba(255,244,208,0.34)', fontFamily: SANS, fontSize: 7.5, letterSpacing: 1.4, marginBottom: 5 },
-  tierName: { maxWidth: 180, color: C.goldLight, fontFamily: SANS, fontSize: 9, letterSpacing: 1.1 },
   actions: { flexDirection: 'row', gap: 9, marginTop: 11 },
   actionButton: { flex: 1, height: 54, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   expenseButton: { borderColor: 'rgba(240,139,136,0.32)', backgroundColor: 'rgba(240,139,136,0.075)' },
@@ -1090,13 +1208,8 @@ const styles = StyleSheet.create({
   incomeSymbol: { color: '#7DD9B2', fontFamily: SANS, fontSize: 17, lineHeight: 19 },
   actionText: { color: C.goldLight, fontFamily: SANS, fontSize: 9, letterSpacing: 0.8 },
 
-  metricsRow: { flexDirection: 'row', gap: 8, marginTop: 10 },
-  metric: { flex: 1, minWidth: 0, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.5)', paddingHorizontal: 11, paddingVertical: 12 },
-  metricLabel: { color: 'rgba(255,244,208,0.34)', fontFamily: SANS, fontSize: 7.5, letterSpacing: 0.8, marginBottom: 7 },
-  metricValue: { color: C.gold, fontFamily: SERIF, fontSize: 16 },
   incomeText: { color: '#7DD9B2' },
   expenseText: { color: '#F08B88' },
-  sectionHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 24, marginBottom: 9 },
   sectionEyebrow: { color: 'rgba(233,200,119,0.45)', fontFamily: SANS, fontSize: 7.5, letterSpacing: 1.7, marginBottom: 5 },
   sectionTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 12, fontWeight: '600', letterSpacing: 0.7 },
   operationCount: { minWidth: 27, height: 27, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, color: C.gold, fontFamily: SANS, fontSize: 9, textAlign: 'center', textAlignVertical: 'center', paddingHorizontal: 7 },
@@ -1109,6 +1222,8 @@ const styles = StyleSheet.create({
   transactionTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 11.5, letterSpacing: 0.2 },
   transactionMeta: { color: 'rgba(255,244,208,0.33)', fontFamily: SANS, fontSize: 8.5, letterSpacing: 0.3, marginTop: 5 },
   transactionAmount: { width: 91, fontFamily: SERIF, fontSize: 14, textAlign: 'right' },
+  transactionActions: { flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: 7 },
+  transactionAction: { width: 27, height: 32, alignItems: 'center', justifyContent: 'center' },
   emptyState: { alignItems: 'center', paddingHorizontal: 20, paddingVertical: 31 },
   emptyDiamond: { width: 19, height: 19, borderWidth: 1, borderColor: C.gold, transform: [{ rotate: '45deg' }], marginBottom: 13, opacity: 0.75 },
   emptyTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 11, letterSpacing: 0.8 },
@@ -1120,9 +1235,6 @@ const styles = StyleSheet.create({
   limitPercent: { color: C.gold, fontFamily: SANS, fontSize: 10, letterSpacing: 0.5 },
   progressTrack: { width: '100%', height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.08)', overflow: 'hidden' },
   progressFill: { height: 6, borderRadius: 3 },
-  portfolioCard: { borderRadius: 25, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.6)', padding: 19 },
-  portfolioBalance: { color: C.goldLight, fontFamily: SERIF, fontSize: 39, marginTop: 8, marginBottom: 14 },
-  portfolioMetrics: { flexDirection: 'row', gap: 8 },
   drawerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.68)' },
   drawer: { width: '84%', height: '100%', backgroundColor: '#090B12', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.line, paddingHorizontal: 18 },
   drawerMenuScroll: { flex: 1 },
@@ -1135,19 +1247,6 @@ const styles = StyleSheet.create({
   drawerItemActive: { backgroundColor: 'rgba(233,200,119,0.09)' },
   drawerItemIcon: { width: 31, alignItems: 'flex-start' },
   drawerItemText: { color: C.goldLight, fontFamily: SANS, fontSize: 10, letterSpacing: 0.6 },
-  drawerHomeIcon: { width: 14, height: 14, borderWidth: 1, borderColor: C.gold, borderRadius: 3 },
-  drawerActivityIcon: { width: 15, gap: 2.5 },
-  drawerActivityIconRow: { width: 15, height: 1, backgroundColor: C.gold },
-  drawerCategorySection: { marginTop: 8, paddingBottom: 4 },
-  drawerCategoryList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 6 },
-  drawerCategoryItem: { minHeight: 30, maxWidth: '48%', borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.16)', backgroundColor: 'rgba(233,200,119,0.04)', justifyContent: 'center', paddingHorizontal: 9 },
-  drawerCategoryText: { color: 'rgba(255,244,208,0.7)', fontFamily: SANS, fontSize: 9 },
-  drawerSectionLabel: { color: 'rgba(233,200,119,0.43)', fontFamily: SANS, fontSize: 7.5, letterSpacing: 1.7, marginTop: 24, marginBottom: 7, marginLeft: 6 },
-  drawerBudgets: { paddingBottom: 5 },
-  drawerBudgetRow: { height: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 7 },
-  drawerBudgetDot: { width: 8, height: 8, borderRadius: 4, marginRight: 10 },
-  drawerBudgetName: { flex: 1, minWidth: 0, color: C.goldLight, fontFamily: SANS, fontSize: 10 },
-  drawerBudgetValue: { width: 86, color: 'rgba(255,244,208,0.48)', fontFamily: SERIF, fontSize: 11, textAlign: 'right' },
   drawerPrivacy: { color: 'rgba(255,244,208,0.24)', fontFamily: SANS, fontSize: 8.5, lineHeight: 13, marginTop: 'auto', marginBottom: 14 },
   managerRoot: { flex: 1, backgroundColor: C.void },
   managerSafe: { flex: 1 },
@@ -1173,6 +1272,7 @@ const styles = StyleSheet.create({
   statsSafe: { flex: 1 },
   statsContent: { padding: 18, paddingBottom: 38 },
   statsCategoryRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.09)' },
+  statsCategoryName: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   createCard: { borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.62)', padding: 17, marginTop: 22 },
   createEyebrow: { color: 'rgba(233,200,119,0.55)', fontFamily: SANS, fontSize: 8, letterSpacing: 1.7 },
   createTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 27, marginTop: 7, marginBottom: 8 },
@@ -1207,7 +1307,7 @@ const styles = StyleSheet.create({
   amountCurrency: { color: C.gold, fontFamily: SERIF, fontSize: 26, marginRight: 7 },
   amountInput: { flex: 1, color: C.goldLight, fontFamily: SERIF, fontSize: 27, paddingVertical: 0 },
   categoryChips: { gap: 7, paddingBottom: 2 },
-  categoryChip: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingHorizontal: 12, paddingVertical: 9 },
+  categoryChip: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingHorizontal: 12, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 6 },
   categoryChipActive: { borderColor: C.gold, backgroundColor: 'rgba(233,200,119,0.13)' },
   categoryChipText: { color: 'rgba(255,244,208,0.43)', fontFamily: SANS, fontSize: 9 },
   categoryChipTextActive: { color: C.goldLight },
