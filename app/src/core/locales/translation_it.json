@@ -128,6 +128,13 @@
     "today": "OGGI",
     "thisWeek": "QUESTA SETTIMANA",
     "thisMonth": "QUESTO MESE",
-    "yearToDate": "QUEST'ANNO"
+    "yearToDate": "QUEST'ANNO",
+    "statistics": "STATISTICHE",
+    "statisticsCopy": "Esamina questo budget per periodo e categoria.",
+    "currency": "VALUTA",
+    "transferTo": "TRASFERISCI A",
+    "transferFrom": "TRASFERISCI DA",
+    "receivedAmount": "IMPORTO RICEVUTO",
+    "exchangeRate": "TASSO DI CAMBIO"
   }
 }

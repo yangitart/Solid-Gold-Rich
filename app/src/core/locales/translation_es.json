@@ -128,6 +128,13 @@
     "today": "HOY",
     "thisWeek": "ESTA SEMANA",
     "thisMonth": "ESTE MES",
-    "yearToDate": "ESTE ANO"
+    "yearToDate": "ESTE ANO",
+    "statistics": "ESTADISTICAS",
+    "statisticsCopy": "Revisa este presupuesto por periodo y categoria.",
+    "currency": "MONEDA",
+    "transferTo": "TRANSFERIR A",
+    "transferFrom": "TRANSFERIR DESDE",
+    "receivedAmount": "IMPORTE RECIBIDO",
+    "exchangeRate": "TIPO DE CAMBIO"
   }
 }

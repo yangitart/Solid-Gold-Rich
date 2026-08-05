@@ -128,6 +128,13 @@
     "today": "HEUTE",
     "thisWeek": "DIESE WOCHE",
     "thisMonth": "DIESER MONAT",
-    "yearToDate": "DIESES JAHR"
+    "yearToDate": "DIESES JAHR",
+    "statistics": "STATISTIKEN",
+    "statisticsCopy": "Dieses Budget nach Zeitraum und Kategorie ansehen.",
+    "currency": "WÄHRUNG",
+    "transferTo": "UBERTRAGEN AN",
+    "transferFrom": "UBERTRAGEN VON",
+    "receivedAmount": "ERHALTENER BETRAG",
+    "exchangeRate": "WECHSELKURS"
   }
 }

@@ -128,6 +128,13 @@
     "today": "HOJE",
     "thisWeek": "ESTA SEMANA",
     "thisMonth": "ESTE MES",
-    "yearToDate": "ESTE ANO"
+    "yearToDate": "ESTE ANO",
+    "statistics": "ESTATISTICAS",
+    "statisticsCopy": "Veja este orcamento por periodo e categoria.",
+    "currency": "MOEDA",
+    "transferTo": "TRANSFERIR PARA",
+    "transferFrom": "TRANSFERIR DE",
+    "receivedAmount": "VALOR RECEBIDO",
+    "exchangeRate": "TAXA DE CAMBIO"
   }
 }

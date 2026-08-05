@@ -128,6 +128,13 @@
     "today": "TODAY",
     "thisWeek": "THIS WEEK",
     "thisMonth": "THIS MONTH",
-    "yearToDate": "YEAR TO DATE"
+    "yearToDate": "YEAR TO DATE",
+    "statistics": "STATISTICS",
+    "statisticsCopy": "Review this budget by period and category.",
+    "currency": "CURRENCY",
+    "transferTo": "TRANSFER TO",
+    "transferFrom": "TRANSFER FROM",
+    "receivedAmount": "RECEIVED AMOUNT",
+    "exchangeRate": "EXCHANGE RATE"
   }
 }

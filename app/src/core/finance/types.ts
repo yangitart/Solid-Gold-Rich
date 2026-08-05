@@ -156,6 +156,11 @@ export type AppSettings = {
   dateFormat: 'system' | 'iso';
 };
 
+export type FinanceCategories = {
+  expense: string[];
+  income: string[];
+};
+
 export type FinanceState = {
   schemaVersion: 2;
   accounts: Account[];
@@ -167,5 +172,6 @@ export type FinanceState = {
   savingsGoals: SavingsGoal[];
   reminders: Reminder[];
   notes: Note[];
+  categories: FinanceCategories;
   settings: AppSettings;
 };

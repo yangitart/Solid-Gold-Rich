@@ -128,6 +128,13 @@
     "today": "AUJOURD'HUI",
     "thisWeek": "CETTE SEMAINE",
     "thisMonth": "CE MOIS",
-    "yearToDate": "CETTE ANNEE"
+    "yearToDate": "CETTE ANNEE",
+    "statistics": "STATISTIQUES",
+    "statisticsCopy": "Consultez ce budget par periode et categorie.",
+    "currency": "DEVISE",
+    "transferTo": "TRANSFERER VERS",
+    "transferFrom": "TRANSFERER DEPUIS",
+    "receivedAmount": "MONTANT RECU",
+    "exchangeRate": "TAUX DE CHANGE"
   }
 }

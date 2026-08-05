@@ -1,5 +1,12 @@
 # Solid Gold Rich
 
+## Commit convention
+
+- Use Conventional Commits with the format `type(scope): description`.
+- The `scope` must always be `front` or `back`.
+- Write messages in English; keep them brief, clear, and descriptive.
+- Examples: `feat(front): add budget categories` or `fix(back): handle invalid imports`.
+
 ## Alcance y estructura
 
 - Esta carpeta contiene una app Expo/React Native con Expo Router, orientada principalmente a Android.
@@ -18,6 +25,7 @@
 - El panel muestra saldo, flujo de caja, actividad reciente, actividad global, límites de gasto y totales por período.
 - El diamante de `src/components/Gem.tsx` evoluciona según el saldo positivo de la cuenta activa. Tocar el diamante solo activa su animación.
 - Los presupuestos, la cuenta activa y las transacciones se guardan localmente con AsyncStorage usando las claves definidas en `src/screens/RichScreen.tsx`.
+- Las categorías de gastos e ingresos se administran desde el módulo `Categories` del menú izquierdo y se usan en el formulario de operaciones.
 - Se conserva la migración de los datos antiguos `@solid-gold/transactions` y `@solid-gold/monthly-budget`.
 - No reintroducir autenticación, huella, foto, captura o compartir salvo petición explícita del usuario.
 - Mantener la interfaz estable: ningún texto o número grande debe desbordarse ni cambiar el tamaño general del layout.

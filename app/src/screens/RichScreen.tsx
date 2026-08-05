@@ -19,12 +19,12 @@ import { useTranslation } from 'react-i18next';
 import Gem, { diamondLevel, DIAMOND_LEVELS } from '../components/Gem';
 import { C, SANS, SERIF } from '../theme/luxury';
 import type { FinanceModuleName } from './FinanceModulesScreen';
+import { useFinance } from '../core/finance/FinanceContext';
 
-type TransactionKind = 'expense' | 'income';
+type TransactionKind = 'expense' | 'income' | 'transfer';
 type ScreenMode = 'budget' | 'allActivity';
 
-const CATEGORIES = ['food', 'housing', 'transport', 'shopping', 'other'] as const;
-type Category = (typeof CATEGORIES)[number];
+type Category = string;
 
 type Transaction = {
   id: string;
@@ -33,6 +33,8 @@ type Transaction = {
   amount: number;
   kind: TransactionKind;
   date: string;
+  transferId?: string;
+  currency?: string;
 };
 
 type BudgetAccount = {
@@ -40,6 +42,9 @@ type BudgetAccount = {
   name: string;
   openingBalance: number;
   limit: number;
+  limitSet: boolean;
+  currency: string;
+  exchangeRate: number;
   color: string;
   transactions: Transaction[];
 };
@@ -58,7 +63,10 @@ function createDefaultBudget(name: string): BudgetAccount {
     id: 'personal',
     name,
     openingBalance: 0,
-    limit: DEFAULT_LIMIT,
+    limit: 0,
+    limitSet: false,
+    currency: 'USD',
+    exchangeRate: 1,
     color: ACCOUNT_COLORS[0],
     transactions: [],
   };
@@ -82,13 +90,15 @@ function expensesFor(budget: BudgetAccount) {
 }
 
 function balanceFor(budget: BudgetAccount) {
-  return budget.openingBalance + incomeFor(budget) - expensesFor(budget);
+  return budget.openingBalance + incomeFor(budget) - expensesFor(budget) - budget.transactions
+    .filter((item) => item.kind === 'transfer')
+    .reduce((sum, item) => sum + item.amount, 0);
 }
 
-function formatMoney(value: number, language: string) {
+function formatMoney(value: number, language: string, currency = 'USD') {
   return value.toLocaleString(language, {
     style: 'currency',
-    currency: 'USD',
+    currency,
     maximumFractionDigits: 0,
   });
 }
@@ -155,11 +165,13 @@ function PeriodCard({
   income,
   expenses,
   language,
+  currency = 'USD',
 }: {
   label: string;
   income: number;
   expenses: number;
   language: string;
+  currency?: string;
 }) {
   const net = income - expenses;
   return (
@@ -167,13 +179,13 @@ function PeriodCard({
       <View style={styles.periodTop}>
         <Text style={styles.periodLabel} numberOfLines={1}>{label}</Text>
         <Text style={[styles.periodNet, net < 0 ? styles.expenseText : styles.incomeText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-          {formatMoney(net, language)}
+          {formatMoney(net, language, currency)}
         </Text>
       </View>
       <View style={styles.periodValues}>
-        <Text style={[styles.periodValue, styles.incomeText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>+{formatMoney(income, language)}</Text>
+        <Text style={[styles.periodValue, styles.incomeText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>+{formatMoney(income, language, currency)}</Text>
         <View style={styles.periodDivider} />
-        <Text style={[styles.periodValue, styles.expenseText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>-{formatMoney(expenses, language)}</Text>
+        <Text style={[styles.periodValue, styles.expenseText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>-{formatMoney(expenses, language, currency)}</Text>
       </View>
     </View>
   );
@@ -181,6 +193,7 @@ function PeriodCard({
 
 export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: FinanceModuleName) => void }) {
   const { t, i18n } = useTranslation();
+  const { state: financeState } = useFinance();
   const language = i18n.resolvedLanguage ?? i18n.language ?? 'en';
   const { height } = useWindowDimensions();
   const initialBudgetName = React.useRef(t('finance.defaultBudget'));
@@ -190,14 +203,21 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
   const [screenMode, setScreenMode] = React.useState<ScreenMode>('budget');
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [managerOpen, setManagerOpen] = React.useState(false);
+  const [statsOpen, setStatsOpen] = React.useState(false);
   const [entryOpen, setEntryOpen] = React.useState(false);
   const [entryKind, setEntryKind] = React.useState<TransactionKind>('expense');
   const [entryTitle, setEntryTitle] = React.useState('');
   const [entryAmount, setEntryAmount] = React.useState('');
   const [entryCategory, setEntryCategory] = React.useState<Category>('other');
+  const [transferTargetId, setTransferTargetId] = React.useState('');
+  const [transferSourceId, setTransferSourceId] = React.useState('');
+  const [transferReceivedAmount, setTransferReceivedAmount] = React.useState('');
+  const [transferRate, setTransferRate] = React.useState('1');
   const [newBudgetName, setNewBudgetName] = React.useState('');
   const [newBudgetBalance, setNewBudgetBalance] = React.useState('');
-  const [newBudgetLimit, setNewBudgetLimit] = React.useState(`${DEFAULT_LIMIT}`);
+  const [newBudgetLimit, setNewBudgetLimit] = React.useState('');
+  const [newBudgetCurrency, setNewBudgetCurrency] = React.useState('USD');
+  const [newBudgetExchangeRate, setNewBudgetExchangeRate] = React.useState('1');
   const [newBudgetColor, setNewBudgetColor] = React.useState(ACCOUNT_COLORS[0]);
 
 
@@ -219,7 +239,10 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
                   ? (index === 0 ? initialBudgetName.current : `${initialBudgetName.current} ${index + 1}`)
                   : budget.name,
                 openingBalance: Number.isFinite(Number(budget.openingBalance)) ? Number(budget.openingBalance) : 0,
-                limit: Number.isFinite(Number(budget.limit)) && Number(budget.limit) > 0 ? Number(budget.limit) : DEFAULT_LIMIT,
+                limitSet: budget.limitSet === true || (budget.limitSet !== false && Number(budget.limit) > 0 && Number(budget.limit) !== DEFAULT_LIMIT),
+                limit: budget.limitSet === true || (budget.limitSet !== false && Number(budget.limit) !== DEFAULT_LIMIT) ? (Number.isFinite(Number(budget.limit)) && Number(budget.limit) > 0 ? Number(budget.limit) : 0) : 0,
+                currency: typeof budget.currency === 'string' && budget.currency ? budget.currency : 'USD',
+                exchangeRate: Number.isFinite(Number(budget.exchangeRate)) && Number(budget.exchangeRate) > 0 ? Number(budget.exchangeRate) : 1,
                 color: budget.color || ACCOUNT_COLORS[index % ACCOUNT_COLORS.length],
                 transactions: Array.isArray(budget.transactions) ? budget.transactions : [],
               }));
@@ -244,7 +267,9 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
             fallback.transactions = [];
           }
         }
-        fallback.limit = parseAmount(legacyLimit ?? '') || DEFAULT_LIMIT;
+        const legacyLimitAmount = parseAmount(legacyLimit ?? '');
+        fallback.limit = legacyLimitAmount && legacyLimitAmount !== DEFAULT_LIMIT ? legacyLimitAmount : 0;
+        fallback.limitSet = fallback.limit > 0;
         setBudgets([fallback]);
         setActiveBudgetId(fallback.id);
       })
@@ -259,14 +284,17 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
   }, [activeBudgetId, budgets, loaded]);
 
   const activeBudget = budgets.find((budget) => budget.id === activeBudgetId) ?? budgets[0];
+  const operationCategories = entryKind === 'income' ? financeState.categories.income : financeState.categories.expense;
   const expenses = activeBudget ? expensesFor(activeBudget) : 0;
   const balance = activeBudget ? balanceFor(activeBudget) : 0;
   const positiveBalance = Math.max(0, balance);
   const level = diamondLevel(positiveBalance);
   const budgetProgress = activeBudget?.limit ? expenses / activeBudget.limit : 0;
-  const portfolioBalance = budgets.reduce((sum, budget) => sum + balanceFor(budget), 0);
-  const portfolioIncome = budgets.reduce((sum, budget) => sum + incomeFor(budget), 0);
-  const portfolioExpenses = budgets.reduce((sum, budget) => sum + expensesFor(budget), 0);
+  const baseCurrency = financeState.settings.preferredCurrency || 'USD';
+  const toBaseCurrency = (budget: BudgetAccount, value: number) => value * (budget.exchangeRate || 1);
+  const portfolioBalance = budgets.reduce((sum, budget) => sum + toBaseCurrency(budget, balanceFor(budget)), 0);
+  const portfolioIncome = budgets.reduce((sum, budget) => sum + toBaseCurrency(budget, incomeFor(budget)), 0);
+  const portfolioExpenses = budgets.reduce((sum, budget) => sum + toBaseCurrency(budget, expensesFor(budget)), 0);
   const allTransactions: PortfolioTransaction[] = budgets
     .flatMap((budget) => budget.transactions.map((transaction) => ({
       ...transaction,
@@ -294,6 +322,36 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
     { key: 'month', label: t('finance.thisMonth'), ...periodTotals(monthStart) },
     { key: 'year', label: t('finance.yearToDate'), ...periodTotals(yearStart) },
   ];
+  const portfolioPeriodTotals = (start: Date) => {
+    const items = allTransactions.filter((item) => new Date(item.date).getTime() >= start.getTime());
+    return {
+      income: items.filter((item) => item.kind === 'income' && !item.transferId).reduce((sum, item) => {
+        const budget = budgets.find((candidate) => candidate.id === item.budgetId);
+        return sum + toBaseCurrency(budget ?? createDefaultBudget(''), item.amount);
+      }, 0),
+      expenses: items.filter((item) => item.kind === 'expense').reduce((sum, item) => {
+        const budget = budgets.find((candidate) => candidate.id === item.budgetId);
+        return sum + toBaseCurrency(budget ?? createDefaultBudget(''), item.amount);
+      }, 0),
+    };
+  };
+  const portfolioPeriods = [
+    { key: 'today', label: t('finance.today'), ...portfolioPeriodTotals(todayStart) },
+    { key: 'week', label: t('finance.thisWeek'), ...portfolioPeriodTotals(weekStart) },
+    { key: 'month', label: t('finance.thisMonth'), ...portfolioPeriodTotals(monthStart) },
+    { key: 'year', label: t('finance.yearToDate'), ...portfolioPeriodTotals(yearStart) },
+  ];
+  const statsPeriods = screenMode === 'allActivity' ? portfolioPeriods : periods;
+  const statsCurrency = screenMode === 'allActivity' ? baseCurrency : activeBudget?.currency ?? baseCurrency;
+  const statsCategories = financeState.categories.expense.map((category) => {
+    const total = screenMode === 'allActivity'
+      ? allTransactions.filter((item) => item.category === category && item.kind === 'expense').reduce((sum, item) => {
+        const budget = budgets.find((candidate) => candidate.id === item.budgetId);
+        return sum + toBaseCurrency(budget ?? createDefaultBudget(''), item.amount);
+      }, 0)
+      : activeBudget?.transactions.filter((item) => item.category === category && item.kind === 'expense').reduce((sum, item) => sum + item.amount, 0) ?? 0;
+    return { category, total };
+  });
   const recentOperationLimit = height < 700 ? 1 : height < 760 ? 2 : height < 850 ? 3 : 4;
 
   const selectBudget = React.useCallback((budgetId: string) => {
@@ -307,16 +365,58 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
     setEntryTitle('');
     setEntryAmount('');
     setEntryCategory('other');
+    setTransferTargetId('');
+    setTransferSourceId('');
+    setTransferReceivedAmount('');
+    setTransferRate('1');
   }, []);
 
   const openEntry = React.useCallback((kind: TransactionKind) => {
     setEntryKind(kind);
+    if (kind === 'transfer') {
+      const sourceId = activeBudget?.id ?? budgets[0]?.id ?? '';
+      setTransferSourceId(sourceId);
+      setTransferTargetId(budgets.find((budget) => budget.id !== sourceId)?.id ?? '');
+      setTransferReceivedAmount('');
+      setTransferRate('1');
+    }
+    setEntryOpen(true);
+  }, [activeBudget?.id, budgets]);
+
+  const openCategoryEntry = React.useCallback((kind: 'expense' | 'income', category: string) => {
+    setDrawerOpen(false);
+    setEntryKind(kind);
+    setEntryTitle('');
+    setEntryAmount('');
+    setEntryCategory(category);
     setEntryOpen(true);
   }, []);
 
   const addTransaction = React.useCallback(() => {
     const amount = parseAmount(entryAmount);
-    if (!activeBudget || amount <= 0) return;
+    if (amount <= 0) return;
+
+    if (entryKind === 'transfer') {
+      const source = budgets.find((budget) => budget.id === transferSourceId);
+      const target = budgets.find((budget) => budget.id === transferTargetId);
+      const rate = parseAmount(transferRate) || 1;
+      const received = parseAmount(transferReceivedAmount) || amount * rate;
+      if (!source || !target || source.id === target.id || received <= 0) return;
+      const transferId = `${Date.now()}`;
+      const outgoing: Transaction = {
+        id: `${transferId}-out`, title: t('finance.toolsList.transfer'), category: 'other', amount, kind: 'transfer', date: new Date().toISOString(), transferId, currency: source.currency,
+      };
+      const incoming: Transaction = {
+        id: `${transferId}-in`, title: t('finance.toolsList.transfer'), category: 'other', amount: received, kind: 'income', date: new Date().toISOString(), transferId, currency: target.currency,
+      };
+      setBudgets((current) => current.map((budget) => {
+        if (budget.id === source.id) return { ...budget, transactions: [outgoing, ...budget.transactions] };
+        if (budget.id === target.id) return { ...budget, transactions: [incoming, ...budget.transactions] };
+        return budget;
+      }));
+      closeEntry();
+      return;
+    }
 
     const transaction: Transaction = {
       id: `${Date.now()}`,
@@ -325,15 +425,16 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
       amount,
       kind: entryKind,
       date: new Date().toISOString(),
+      currency: activeBudget?.currency,
     };
 
     setBudgets((current) => current.map((budget) => (
-      budget.id === activeBudget.id
+      activeBudget && budget.id === activeBudget.id
         ? { ...budget, transactions: [transaction, ...budget.transactions] }
         : budget
     )));
     closeEntry();
-  }, [activeBudget, closeEntry, entryAmount, entryCategory, entryKind, entryTitle, t]);
+  }, [activeBudget, budgets, closeEntry, entryAmount, entryCategory, entryKind, entryTitle, t, transferRate, transferReceivedAmount, transferSourceId, transferTargetId]);
 
   const createBudget = React.useCallback(() => {
     const name = newBudgetName.trim();
@@ -343,7 +444,10 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
       id: `budget-${Date.now()}`,
       name,
       openingBalance: parseAmount(newBudgetBalance),
-      limit: parseAmount(newBudgetLimit) || DEFAULT_LIMIT,
+      limit: parseAmount(newBudgetLimit) || 0,
+      limitSet: parseAmount(newBudgetLimit) > 0,
+      currency: newBudgetCurrency,
+      exchangeRate: parseAmount(newBudgetExchangeRate) || 1,
       color: newBudgetColor,
       transactions: [],
     };
@@ -353,14 +457,11 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
     setScreenMode('budget');
     setNewBudgetName('');
     setNewBudgetBalance('');
-    setNewBudgetLimit(`${DEFAULT_LIMIT}`);
+    setNewBudgetLimit('');
+    setNewBudgetCurrency('USD');
+    setNewBudgetExchangeRate('1');
     setManagerOpen(false);
-  }, [newBudgetBalance, newBudgetColor, newBudgetLimit, newBudgetName]);
-
-  const openManagerFromDrawer = React.useCallback(() => {
-    setDrawerOpen(false);
-    requestAnimationFrame(() => setManagerOpen(true));
-  }, []);
+  }, [newBudgetBalance, newBudgetColor, newBudgetCurrency, newBudgetExchangeRate, newBudgetLimit, newBudgetName]);
 
   const renderTransactions = (items: PortfolioTransaction[] | Transaction[], showBudgetName = false) => {
     if (items.length === 0) {
@@ -375,7 +476,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
 
     return items.map((item) => {
       const portfolioItem = item as PortfolioTransaction;
-      const categoryLabel = t(`finance.categories.${item.category}`);
+      const categoryLabel = t(`finance.categories.${item.category}`, { defaultValue: item.category });
       const detail = showBudgetName
         ? `${portfolioItem.budgetName} / ${categoryLabel}`
         : `${categoryLabel} / ${new Date(item.date).toLocaleDateString(language, { month: 'short', day: 'numeric' })}`;
@@ -405,7 +506,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
 
             minimumFontScale={0.7}
           >
-            {item.kind === 'income' ? '+' : '-'}{formatMoney(item.amount, language)}
+            {item.kind === 'income' ? '+' : '-'}{formatMoney(item.amount, language, item.currency ?? activeBudget?.currency ?? baseCurrency)}
           </Text>
         </View>
       );
@@ -427,7 +528,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
             <View>
               <Text style={styles.eyebrow}>{t('finance.availableBalance')}</Text>
               <Text style={styles.compactBalance} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.58}>
-                {formatMoney(balance, language)}
+                {formatMoney(balance, language, activeBudget.currency)}
               </Text>
             </View>
 
@@ -438,13 +539,17 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
               </Text>
             </View>
 
-            <View style={styles.compactLimitTop}>
-              <Text style={styles.compactLimitLabel}>{t('finance.budgetLimit')}</Text>
-              <Text style={[styles.compactLimitValue, budgetProgress > 1 && styles.expenseText]}>
-                {formatMoney(expenses, language)} / {formatMoney(activeBudget.limit, language)}
-              </Text>
-            </View>
-            <ProgressBar progress={budgetProgress} color={budgetProgress > 1 ? '#F08B88' : activeBudget.color} />
+            {activeBudget.limit > 0 && (
+              <>
+                <View style={styles.compactLimitTop}>
+                  <Text style={styles.compactLimitLabel}>{t('finance.budgetLimit')}</Text>
+                  <Text style={[styles.compactLimitValue, budgetProgress > 1 && styles.expenseText]}>
+                    {formatMoney(expenses, language, activeBudget.currency)} / {formatMoney(activeBudget.limit, language, activeBudget.currency)}
+                  </Text>
+                </View>
+                <ProgressBar progress={budgetProgress} color={budgetProgress > 1 ? '#F08B88' : activeBudget.color} />
+              </>
+            )}
           </View>
 
           <View style={styles.compactGemWindow} pointerEvents="box-none">
@@ -454,24 +559,17 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
           </View>
         </View>
 
-        <View style={styles.periodGrid}>
-          {periods.map((period) => (
-            <PeriodCard
-              key={period.key}
-              label={period.label}
-              income={period.income}
-              expenses={period.expenses}
-              language={language}
-            />
-          ))}
-        </View>
-
         <View style={styles.fixedSectionHeader}>
           <View>
             <Text style={styles.sectionEyebrow}>{t('finance.thisBudget')}</Text>
             <Text style={styles.sectionTitle}>{t('finance.operations')}</Text>
           </View>
-          <Text style={styles.operationCount}>{activeBudget.transactions.length}</Text>
+          <View style={styles.operationHeaderActions}>
+            <Pressable style={styles.statsIconButton} onPress={() => setStatsOpen(true)} accessibilityLabel={t('finance.statistics')}>
+              <View style={styles.statsIcon}><View style={styles.statsBarShort} /><View style={styles.statsBarTall} /><View style={styles.statsBarMid} /></View>
+            </Pressable>
+            <Text style={styles.operationCount}>{activeBudget.transactions.length}</Text>
+          </View>
         </View>
         <View style={[styles.panel, styles.fixedOperationsPanel]}>
           {renderTransactions(activeBudget.transactions.slice(0, recentOperationLimit))}
@@ -489,11 +587,11 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
       <View style={styles.portfolioCard}>
         <Text style={styles.eyebrow}>{t('finance.totalAcrossBudgets')}</Text>
         <Text style={styles.portfolioBalance} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>
-          {formatMoney(portfolioBalance, language)}
+          {formatMoney(portfolioBalance, language, baseCurrency)}
         </Text>
         <View style={styles.portfolioMetrics}>
-          <Metric label={t('finance.income')} value={formatMoney(portfolioIncome, language)} tone="green" />
-          <Metric label={t('finance.expenses')} value={formatMoney(portfolioExpenses, language)} tone="red" />
+          <Metric label={t('finance.income')} value={formatMoney(portfolioIncome, language, baseCurrency)} tone="green" />
+          <Metric label={t('finance.expenses')} value={formatMoney(portfolioExpenses, language, baseCurrency)} tone="red" />
         </View>
       </View>
       <View style={styles.sectionHeader}>
@@ -501,7 +599,12 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
           <Text style={styles.sectionEyebrow}>{t('finance.portfolio')}</Text>
           <Text style={styles.sectionTitle}>{t('finance.allActivity')}</Text>
         </View>
-        <Text style={styles.operationCount}>{allTransactions.length}</Text>
+        <View style={styles.operationHeaderActions}>
+          <Pressable style={styles.statsIconButton} onPress={() => setStatsOpen(true)} accessibilityLabel={t('finance.statistics')}>
+            <View style={styles.statsIcon}><View style={styles.statsBarShort} /><View style={styles.statsBarTall} /><View style={styles.statsBarMid} /></View>
+          </Pressable>
+          <Text style={styles.operationCount}>{allTransactions.length}</Text>
+        </View>
       </View>
 
       <View style={styles.panel}>{renderTransactions(allTransactions, true)}</View>
@@ -538,27 +641,18 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
         </View>
 
         <View style={styles.tabShell}>
-          <BlurView intensity={18} tint="dark" style={StyleSheet.absoluteFill} />
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.budgetTabs}
-          >
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.budgetTabs}>
             {budgets.map((budget) => {
-              const active = screenMode === 'budget' && budget.id === activeBudgetId;
+                const active = screenMode === 'budget' && budget.id === activeBudgetId;
               return (
-                <Pressable
-                  key={budget.id}
-                  onPress={() => selectBudget(budget.id)}
-                  style={[styles.budgetTab, active && styles.budgetTabActive]}
-                >
-                  <View style={[styles.budgetTabDot, { backgroundColor: budget.color }]} />
-                  <Text style={[styles.budgetTabText, active && styles.budgetTabTextActive]} numberOfLines={1}>
-                    {budget.name}
-                  </Text>
+                <Pressable key={budget.id} onPress={() => selectBudget(budget.id)} style={[styles.budgetTab, active && styles.budgetTabActive]}>
+                  <Text style={[styles.budgetTabText, active && styles.budgetTabTextActive]} numberOfLines={1}>{budget.name}</Text>
                 </Pressable>
               );
             })}
+            <Pressable onPress={() => setScreenMode('allActivity')} style={[styles.budgetTab, screenMode === 'allActivity' && styles.budgetTabActive]}>
+              <Text style={[styles.budgetTabText, screenMode === 'allActivity' && styles.budgetTabTextActive]}>ALL</Text>
+            </Pressable>
           </ScrollView>
         </View>
 
@@ -579,57 +673,31 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
         <View style={styles.drawerBackdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setDrawerOpen(false)} />
           <SafeAreaView style={styles.drawer} edges={['top', 'bottom']}>
-            <View style={styles.drawerBrand}>
-              <View style={styles.drawerMonogram}><Text style={styles.drawerMonogramText}>SG</Text></View>
-              <View>
-                <Text style={styles.drawerBrandName}>{t('finance.brandName')}</Text>
-                <Text style={styles.drawerBrandCopy}>{t('finance.wealthManager')}</Text>
+            <ScrollView style={styles.drawerMenuScroll} contentContainerStyle={styles.drawerMenuContent} showsVerticalScrollIndicator={false}>
+              <View style={styles.drawerBalanceCard}>
+                <Text style={styles.microLabel}>{t('finance.totalAcrossBudgets')}</Text>
+                <Text style={styles.drawerBalance} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>
+                  {formatMoney(portfolioBalance, language, baseCurrency)}
+                </Text>
+                <Text style={styles.drawerBudgetCount}>{budgets.length} {t('finance.budgetAccounts')}</Text>
               </View>
-            </View>
 
-            <View style={styles.drawerBalanceCard}>
-              <Text style={styles.microLabel}>{t('finance.totalAcrossBudgets')}</Text>
-              <Text style={styles.drawerBalance} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>
-                {formatMoney(portfolioBalance, language)}
-              </Text>
-              <Text style={styles.drawerBudgetCount}>{budgets.length} {t('finance.budgetAccounts')}</Text>
-            </View>
-
-            <View style={styles.drawerNav}>
-              <Pressable
-                style={[styles.drawerItem, screenMode === 'budget' && styles.drawerItemActive]}
-                onPress={() => { setScreenMode('budget'); setDrawerOpen(false); }}
-              >
-                <View style={styles.drawerItemIcon}><View style={styles.drawerHomeIcon} /></View>
-                <Text style={styles.drawerItemText}>{t('finance.dashboard')}</Text>
-              </Pressable>
-              <Pressable
-
-                style={[styles.drawerItem, screenMode === 'allActivity' && styles.drawerItemActive]}
-                onPress={() => { setScreenMode('allActivity'); setDrawerOpen(false); }}
-              >
-                <View style={styles.drawerItemIcon}>
-                  <View style={styles.drawerActivityIcon}>
-                    <View style={styles.drawerActivityIconRow} />
-                    <View style={styles.drawerActivityIconRow} />
-                    <View style={styles.drawerActivityIconRow} />
-                  </View>
-                </View>
-                <Text style={styles.drawerItemText}>{t('finance.allActivity')}</Text>
-              </Pressable>
-              <Pressable style={styles.drawerItem} onPress={openManagerFromDrawer}>
-                <View style={styles.drawerItemIcon}><AccountsGlyph /></View>
-                <Text style={styles.drawerItemText}>{t('finance.manageBudgets')}</Text>
-              </Pressable>
+              <View style={styles.drawerNav}>
+                <Pressable
+                  style={[styles.drawerItem, screenMode === 'budget' && styles.drawerItemActive]}
+                  onPress={() => { setScreenMode('budget'); setDrawerOpen(false); }}
+                >
+                  <View style={styles.drawerItemIcon}><View style={styles.drawerHomeIcon} /></View>
+                  <Text style={styles.drawerItemText}>{t('finance.dashboard')}</Text>
+                </Pressable>
               {[
                 ['reminders', 'Reminder'],
                 ['debt', 'Debt'],
                 ['notes', 'Note'],
                 ['tools', 'Tools'],
                 ['savings', 'Savings'],
-                ['budget', 'Budget'],
-                ['calendar', 'Calendar'],
-                ['charts', 'Charts'],
+                ['categories', 'Categories'],
+                ['more', 'More Features'],
                 ['settings', 'Settings'],
                 ['about', 'About'],
               ].map(([module, title]) => (
@@ -638,24 +706,69 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
                   <Text style={styles.drawerItemText}>{title}</Text>
                 </Pressable>
               ))}
-            </View>
+              </View>
 
-            <Text style={styles.drawerSectionLabel}>{t('finance.yourBudgets')}</Text>
-            <ScrollView style={styles.drawerBudgets} showsVerticalScrollIndicator={false}>
-              {budgets.map((budget) => (
-                <Pressable
-                  key={budget.id}
-                  style={styles.drawerBudgetRow}
-                  onPress={() => { selectBudget(budget.id); setDrawerOpen(false); }}
-                >
-                  <View style={[styles.drawerBudgetDot, { backgroundColor: budget.color }]} />
-                  <Text style={styles.drawerBudgetName} numberOfLines={1}>{budget.name}</Text>
-                  <Text style={styles.drawerBudgetValue}>{formatMoney(balanceFor(budget), language)}</Text>
-                </Pressable>
-              ))}
+              <View style={styles.drawerCategorySection}>
+                <Text style={styles.drawerSectionLabel}>EXPENSE CATEGORIES</Text>
+                <View style={styles.drawerCategoryList}>
+                  {financeState.categories.expense.map((category) => (
+                    <Pressable key={`drawer-expense-${category}`} style={styles.drawerCategoryItem} onPress={() => openCategoryEntry('expense', category)}>
+                      <Text style={styles.drawerCategoryText} numberOfLines={1}>{t(`finance.categories.${category}`, { defaultValue: category })}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+                <Text style={styles.drawerSectionLabel}>INCOME CATEGORIES</Text>
+                <View style={styles.drawerCategoryList}>
+                  {financeState.categories.income.map((category) => (
+                    <Pressable key={`drawer-income-${category}`} style={styles.drawerCategoryItem} onPress={() => openCategoryEntry('income', category)}>
+                      <Text style={styles.drawerCategoryText} numberOfLines={1}>{t(`finance.categories.${category}`, { defaultValue: category })}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              </View>
+
+              <Text style={styles.drawerSectionLabel}>{t('finance.yourBudgets')}</Text>
+              <View style={styles.drawerBudgets}>
+                {budgets.map((budget) => (
+                  <Pressable
+                    key={budget.id}
+                    style={styles.drawerBudgetRow}
+                    onPress={() => { selectBudget(budget.id); setDrawerOpen(false); }}
+                  >
+                    <View style={[styles.drawerBudgetDot, { backgroundColor: budget.color }]} />
+                    <Text style={styles.drawerBudgetName} numberOfLines={1}>{budget.name}</Text>
+                    <Text style={styles.drawerBudgetValue}>{formatMoney(balanceFor(budget), language, budget.currency)}</Text>
+                  </Pressable>
+                ))}
+              </View>
             </ScrollView>
 
             <Text style={styles.drawerPrivacy}>{t('finance.privacyCopy')}</Text>
+          </SafeAreaView>
+        </View>
+      </Modal>
+
+      <Modal visible={statsOpen} animationType="slide" onRequestClose={() => setStatsOpen(false)}>
+        <View style={styles.statsRoot}>
+          <LinearGradient colors={['rgba(233,200,119,0.12)', 'transparent']} style={StyleSheet.absoluteFill} />
+          <SafeAreaView style={styles.statsSafe} edges={['top', 'bottom']}>
+            <View style={styles.managerHeader}>
+              <Pressable onPress={() => setStatsOpen(false)} style={styles.managerHeaderSide}><Text style={styles.managerHeaderAction}>{t('finance.done')}</Text></Pressable>
+              <Text style={styles.managerHeaderTitle}>{t('finance.statistics')}</Text>
+              <View style={styles.managerHeaderSide} />
+            </View>
+            <ScrollView contentContainerStyle={styles.statsContent} showsVerticalScrollIndicator={false}>
+              <Text style={styles.managerEyebrow}>{screenMode === 'allActivity' ? t('finance.allActivity') : activeBudget?.name}</Text>
+              <View style={styles.periodGrid}>
+                {statsPeriods.map((period) => <PeriodCard key={period.key} label={period.label} income={period.income} expenses={period.expenses} language={language} currency={statsCurrency} />)}
+              </View>
+              <Text style={styles.managerEyebrow}>{t('finance.categoryBreakdown')}</Text>
+              <View style={styles.managerAccounts}>
+                {statsCategories.map(({ category, total }) => {
+                  return <View key={category} style={styles.statsCategoryRow}><Text style={styles.managerAccountName}>{t(`finance.categories.${category}`)}</Text><Text style={styles.managerAccountBalance}>{formatMoney(total, language, statsCurrency)}</Text></View>;
+                })}
+              </View>
+            </ScrollView>
           </SafeAreaView>
         </View>
       </Modal>
@@ -693,7 +806,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
                         <Text style={styles.managerAccountMeta}>{budget.transactions.length} {t('finance.operations')}</Text>
                       </View>
                       <View style={styles.managerAccountRight}>
-                        <Text style={styles.managerAccountBalance}>{formatMoney(balanceFor(budget), language)}</Text>
+                        <Text style={styles.managerAccountBalance}>{formatMoney(balanceFor(budget), language, budget.currency)}</Text>
                         <Text style={[styles.managerSelected, selected && { color: budget.color }]}>
                           {selected ? t('finance.selected') : t('finance.select')}
                         </Text>
@@ -721,7 +834,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
                   <View style={styles.managerInputColumn}>
                     <Text style={styles.inputLabel}>{t('finance.openingBalance')}</Text>
                     <View style={styles.moneyInputShell}>
-                      <Text style={styles.moneyInputCurrency}>$</Text>
+                      <Text style={styles.moneyInputCurrency}>{newBudgetCurrency}</Text>
 
                       <TextInput
                         value={newBudgetBalance}
@@ -736,18 +849,44 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
                   <View style={styles.managerInputColumn}>
                     <Text style={styles.inputLabel}>{t('finance.spendingLimit')}</Text>
                     <View style={styles.moneyInputShell}>
-                      <Text style={styles.moneyInputCurrency}>$</Text>
+                      <Text style={styles.moneyInputCurrency}>{newBudgetCurrency}</Text>
                       <TextInput
                         value={newBudgetLimit}
                         onChangeText={(value) => setNewBudgetLimit(value.replace(/[^0-9.]/g, ''))}
                         keyboardType="decimal-pad"
-                        placeholder={`${DEFAULT_LIMIT}`}
+                        placeholder="—"
                         placeholderTextColor="rgba(255,244,208,0.28)"
                         style={styles.moneyInput}
                       />
                     </View>
                   </View>
                 </View>
+
+                <Text style={styles.inputLabel}>{t('finance.currency')}</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChips}>
+                  {['USD', 'CUP', 'EUR'].map((currency) => (
+                    <Pressable
+                      key={currency}
+                      onPress={() => {
+                        setNewBudgetCurrency(currency);
+                        if (currency === baseCurrency) setNewBudgetExchangeRate('1');
+                      }}
+                      style={[styles.categoryChip, newBudgetCurrency === currency && styles.categoryChipActive]}
+                    >
+                      <Text style={[styles.categoryChipText, newBudgetCurrency === currency && styles.categoryChipTextActive]}>{currency}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+                <Text style={styles.inputLabel}>1 {newBudgetCurrency} = ? {baseCurrency}</Text>
+                <TextInput
+                  value={newBudgetExchangeRate}
+                  onChangeText={(value) => setNewBudgetExchangeRate(value.replace(/[^0-9.]/g, ''))}
+                  keyboardType="decimal-pad"
+                  placeholder="1"
+                  placeholderTextColor="rgba(255,244,208,0.28)"
+                  style={styles.textInput}
+                  editable={newBudgetCurrency !== baseCurrency}
+                />
 
                 <Text style={styles.inputLabel}>{t('finance.accentColor')}</Text>
                 <View style={styles.colorRow}>
@@ -789,57 +928,78 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
             </View>
 
             <View style={styles.kindControl}>
-              {(['expense', 'income'] as TransactionKind[]).map((kind) => (
+              {(['expense', 'income', 'transfer'] as TransactionKind[]).map((kind) => (
                 <Pressable
                   key={kind}
                   onPress={() => setEntryKind(kind)}
                   style={[styles.kindOption, entryKind === kind && styles.kindOptionActive]}
                 >
                   <Text style={[styles.kindText, entryKind === kind && styles.kindTextActive]}>
-                    {kind === 'expense' ? t('finance.expense') : t('finance.income')}
+                    {kind === 'expense' ? t('finance.expense') : kind === 'income' ? t('finance.income') : t('finance.toolsList.transfer')}
                   </Text>
                 </Pressable>
               ))}
             </View>
 
-            <Text style={styles.inputLabel}>{t('finance.amount')}</Text>
-            <View style={styles.amountInputShell}>
-              <Text style={styles.amountCurrency}>$</Text>
-              <TextInput
-                value={entryAmount}
-                onChangeText={(value) => setEntryAmount(value.replace(/[^0-9.]/g, ''))}
-                keyboardType="decimal-pad"
-                autoFocus
-                placeholder="0"
-                placeholderTextColor="rgba(255,244,208,0.25)"
-                style={styles.amountInput}
-              />
-            </View>
-
-            <Text style={styles.inputLabel}>{t('finance.description')}</Text>
-            <TextInput
-              value={entryTitle}
-              onChangeText={setEntryTitle}
-              placeholder={t('finance.descriptionPlaceholder')}
-              placeholderTextColor="rgba(255,244,208,0.28)"
-              style={styles.textInput}
-
-            />
-
-            <Text style={styles.inputLabel}>{t('finance.category')}</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChips}>
-              {CATEGORIES.map((category) => (
-                <Pressable
-                  key={category}
-                  onPress={() => setEntryCategory(category)}
-                  style={[styles.categoryChip, entryCategory === category && styles.categoryChipActive]}
-                >
-                  <Text style={[styles.categoryChipText, entryCategory === category && styles.categoryChipTextActive]}>
-                    {t(`finance.categories.${category}`)}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+            {entryKind === 'transfer' ? (
+              <>
+                <Text style={styles.inputLabel}>{t('finance.transferFrom', { defaultValue: 'TRANSFER FROM' })}</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChips}>
+                  {budgets.map((budget) => (
+                    <Pressable
+                      key={budget.id}
+                      onPress={() => {
+                        setTransferSourceId(budget.id);
+                        if (transferTargetId === budget.id) setTransferTargetId(budgets.find((candidate) => candidate.id !== budget.id)?.id ?? '');
+                      }}
+                      style={[styles.categoryChip, transferSourceId === budget.id && styles.categoryChipActive]}
+                    >
+                      <Text style={[styles.categoryChipText, transferSourceId === budget.id && styles.categoryChipTextActive]}>{budget.name}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+                <Text style={styles.inputLabel}>{t('finance.transferTo')}</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChips}>
+                  {budgets.filter((budget) => budget.id !== transferSourceId).map((budget) => (
+                    <Pressable key={budget.id} onPress={() => setTransferTargetId(budget.id)} style={[styles.categoryChip, transferTargetId === budget.id && styles.categoryChipActive]}>
+                      <Text style={[styles.categoryChipText, transferTargetId === budget.id && styles.categoryChipTextActive]}>{budget.name}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+                <Text style={styles.inputLabel}>{t('finance.amount')}</Text>
+                <View style={styles.amountInputShell}>
+                  <Text style={styles.amountCurrency}>{budgets.find((budget) => budget.id === transferSourceId)?.currency ?? baseCurrency}</Text>
+                  <TextInput value={entryAmount} onChangeText={(value) => setEntryAmount(value.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" autoFocus placeholder="0" placeholderTextColor="rgba(255,244,208,0.25)" style={styles.amountInput} />
+                </View>
+                <Text style={styles.inputLabel}>{t('finance.receivedAmount')}</Text>
+                <View style={styles.amountInputShell}>
+                  <Text style={styles.amountCurrency}>{budgets.find((budget) => budget.id === transferTargetId)?.currency ?? baseCurrency}</Text>
+                  <TextInput value={transferReceivedAmount} onChangeText={(value) => setTransferReceivedAmount(value.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" placeholder="Auto by rate" placeholderTextColor="rgba(255,244,208,0.25)" style={styles.amountInput} />
+                </View>
+                <Text style={styles.inputLabel}>{t('finance.exchangeRate')}</Text>
+                <TextInput value={transferRate} onChangeText={(value) => setTransferRate(value.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" placeholder="1" placeholderTextColor="rgba(255,244,208,0.25)" style={styles.textInput} />
+                <Text style={styles.inputLabel}>{t('finance.description')}</Text>
+                <TextInput value={entryTitle} onChangeText={setEntryTitle} placeholder={t('finance.descriptionPlaceholder')} placeholderTextColor="rgba(255,244,208,0.28)" style={styles.textInput} />
+              </>
+            ) : (
+              <>
+                <Text style={styles.inputLabel}>{t('finance.amount')}</Text>
+                <View style={styles.amountInputShell}>
+                  <Text style={styles.amountCurrency}>$</Text>
+                  <TextInput value={entryAmount} onChangeText={(value) => setEntryAmount(value.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" autoFocus placeholder="0" placeholderTextColor="rgba(255,244,208,0.25)" style={styles.amountInput} />
+                </View>
+                <Text style={styles.inputLabel}>{t('finance.description')}</Text>
+                <TextInput value={entryTitle} onChangeText={setEntryTitle} placeholder={t('finance.descriptionPlaceholder')} placeholderTextColor="rgba(255,244,208,0.28)" style={styles.textInput} />
+                <Text style={styles.inputLabel}>{t('finance.category')}</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChips}>
+                  {operationCategories.map((category) => (
+                    <Pressable key={category} onPress={() => setEntryCategory(category)} style={[styles.categoryChip, entryCategory === category && styles.categoryChipActive]}>
+                      <Text style={[styles.categoryChipText, entryCategory === category && styles.categoryChipTextActive]}>{t(`finance.categories.${category}`)}</Text>
+                    </Pressable>
+                  ))}
+                </ScrollView>
+              </>
+            )}
 
             <Pressable
               style={[styles.saveButton, parseAmount(entryAmount) <= 0 && styles.disabledButton]}
@@ -858,7 +1018,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
 const styles = StyleSheet.create({
   safe: { flex: 1 },
   root: { flex: 1 },
-  header: { height: 62, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' },
+  header: { height: 78, paddingTop: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' },
   headerButton: { width: 42, height: 42, borderRadius: 21, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.055)', alignItems: 'center', justifyContent: 'center' },
   headerCenter: { flex: 1, alignItems: 'center', paddingHorizontal: 8 },
   headerTitle: { maxWidth: 220, color: C.goldLight, fontFamily: SANS, fontSize: 15, fontWeight: '600', letterSpacing: 0.2 },
@@ -871,14 +1031,13 @@ const styles = StyleSheet.create({
   accountGlyphDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: C.gold },
   accountGlyphLine: { width: 13, height: 1.5, borderRadius: 2, backgroundColor: C.goldLight },
   tabShell: { height: 50, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.11)', overflow: 'hidden' },
-  budgetTabs: { alignItems: 'center', gap: 7, paddingHorizontal: 14 },
-  budgetTab: { maxWidth: 170, height: 34, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.15)', paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255,255,255,0.025)' },
-  budgetTabActive: { borderColor: 'rgba(233,200,119,0.46)', backgroundColor: 'rgba(233,200,119,0.13)' },
-  budgetTabDot: { width: 6, height: 6, borderRadius: 3, marginRight: 7 },
+  budgetTabs: { alignItems: 'stretch', gap: 2, paddingHorizontal: 10 },
+  budgetTab: { maxWidth: 170, height: 50, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  budgetTabActive: { borderBottomColor: C.gold },
   budgetTabText: { flexShrink: 1, color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 10, letterSpacing: 0.5 },
   budgetTabTextActive: { color: C.goldLight, fontWeight: '600' },
   content: { paddingHorizontal: 16, paddingTop: 14, paddingBottom: 34 },
-  fixedContent: { flex: 1, paddingHorizontal: 12, paddingTop: 9, paddingBottom: 9 },
+  fixedContent: { flex: 1, paddingHorizontal: 18, paddingTop: 13, paddingBottom: 13 },
   fixedBudgetView: { flex: 1 },
   compactHero: { height: 146, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, flexDirection: 'row', overflow: 'hidden', backgroundColor: 'rgba(10,12,20,0.66)' },
   compactHeroInfo: { flex: 1, minWidth: 0, paddingLeft: 16, paddingTop: 14, paddingBottom: 14, justifyContent: 'space-between' },
@@ -897,6 +1056,12 @@ const styles = StyleSheet.create({
   periodValues: { flexDirection: 'row', alignItems: 'center', marginTop: 7 },
   periodValue: { flex: 1, minWidth: 0, fontFamily: SERIF, fontSize: 8.5 },
   periodDivider: { width: StyleSheet.hairlineWidth, height: 9, backgroundColor: C.line, marginHorizontal: 6 },
+  operationHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  statsIconButton: { width: 29, height: 29, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center' },
+  statsIcon: { width: 17, height: 17, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 2, paddingBottom: 3 },
+  statsBarShort: { width: 3, height: 8, borderRadius: 2, backgroundColor: C.gold },
+  statsBarTall: { width: 3, height: 15, borderRadius: 2, backgroundColor: C.goldLight },
+  statsBarMid: { width: 3, height: 11, borderRadius: 2, backgroundColor: C.goldMid },
   fixedSectionHeader: { height: 43, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', paddingBottom: 7 },
   fixedOperationsPanel: { flex: 1, minHeight: 96, paddingBottom: 49 },
   floatingAdd: { position: 'absolute', right: 13, bottom: 12, width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', shadowColor: '#000000', shadowOpacity: 0.38, shadowRadius: 12, shadowOffset: { width: 0, height: 7 }, elevation: 12 },
@@ -960,12 +1125,9 @@ const styles = StyleSheet.create({
   portfolioMetrics: { flexDirection: 'row', gap: 8 },
   drawerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.68)' },
   drawer: { width: '84%', height: '100%', backgroundColor: '#090B12', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.line, paddingHorizontal: 18 },
-  drawerBrand: { height: 77, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line },
-  drawerMonogram: { width: 39, height: 39, borderRadius: 13, borderWidth: 1, borderColor: C.line, alignItems: 'center', justifyContent: 'center', marginRight: 11, backgroundColor: 'rgba(233,200,119,0.07)' },
-  drawerMonogramText: { color: C.gold, fontFamily: SERIF, fontSize: 16 },
-  drawerBrandName: { color: C.goldLight, fontFamily: SANS, fontSize: 11, letterSpacing: 2.2 },
-  drawerBrandCopy: { color: 'rgba(255,244,208,0.32)', fontFamily: SANS, fontSize: 7, letterSpacing: 1.3, marginTop: 4 },
-  drawerBalanceCard: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, padding: 15, marginTop: 17, backgroundColor: 'rgba(233,200,119,0.045)' },
+  drawerMenuScroll: { flex: 1 },
+  drawerMenuContent: { paddingTop: 6, paddingBottom: 12 },
+  drawerBalanceCard: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, padding: 15, marginTop: 8, backgroundColor: 'rgba(233,200,119,0.045)' },
   drawerBalance: { color: C.goldLight, fontFamily: SERIF, fontSize: 28, marginTop: 3 },
   drawerBudgetCount: { color: 'rgba(255,244,208,0.32)', fontFamily: SANS, fontSize: 8, letterSpacing: 0.8, marginTop: 7 },
   drawerNav: { marginTop: 18, gap: 4 },
@@ -976,8 +1138,12 @@ const styles = StyleSheet.create({
   drawerHomeIcon: { width: 14, height: 14, borderWidth: 1, borderColor: C.gold, borderRadius: 3 },
   drawerActivityIcon: { width: 15, gap: 2.5 },
   drawerActivityIconRow: { width: 15, height: 1, backgroundColor: C.gold },
+  drawerCategorySection: { marginTop: 8, paddingBottom: 4 },
+  drawerCategoryList: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, paddingHorizontal: 6 },
+  drawerCategoryItem: { minHeight: 30, maxWidth: '48%', borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.16)', backgroundColor: 'rgba(233,200,119,0.04)', justifyContent: 'center', paddingHorizontal: 9 },
+  drawerCategoryText: { color: 'rgba(255,244,208,0.7)', fontFamily: SANS, fontSize: 9 },
   drawerSectionLabel: { color: 'rgba(233,200,119,0.43)', fontFamily: SANS, fontSize: 7.5, letterSpacing: 1.7, marginTop: 24, marginBottom: 7, marginLeft: 6 },
-  drawerBudgets: { maxHeight: 190 },
+  drawerBudgets: { paddingBottom: 5 },
   drawerBudgetRow: { height: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 7 },
   drawerBudgetDot: { width: 8, height: 8, borderRadius: 4, marginRight: 10 },
   drawerBudgetName: { flex: 1, minWidth: 0, color: C.goldLight, fontFamily: SANS, fontSize: 10 },
@@ -1003,6 +1169,10 @@ const styles = StyleSheet.create({
   managerAccountRight: { alignItems: 'flex-end', marginLeft: 8 },
   managerAccountBalance: { color: C.goldLight, fontFamily: SERIF, fontSize: 14 },
   managerSelected: { color: 'rgba(255,244,208,0.26)', fontFamily: SANS, fontSize: 7.5, marginTop: 5 },
+  statsRoot: { flex: 1, backgroundColor: C.void },
+  statsSafe: { flex: 1 },
+  statsContent: { padding: 18, paddingBottom: 38 },
+  statsCategoryRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.09)' },
   createCard: { borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.62)', padding: 17, marginTop: 22 },
   createEyebrow: { color: 'rgba(233,200,119,0.55)', fontFamily: SANS, fontSize: 8, letterSpacing: 1.7 },
   createTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 27, marginTop: 7, marginBottom: 8 },

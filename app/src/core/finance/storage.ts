@@ -1,5 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type {
+  FinanceCategories,
   FinanceState,
   PaymentMethod,
   Transaction,
@@ -14,6 +15,10 @@ const LEGACY_TRANSACTIONS_KEY = '@solid-gold/transactions';
 const LEGACY_BUDGET_KEY = '@solid-gold/monthly-budget';
 
 export const DEFAULT_COLORS = ['#E9C877', '#7DD9B2', '#80B9FF', '#D99BEF', '#F08B88'];
+export const DEFAULT_CATEGORIES: FinanceCategories = {
+  expense: ['food', 'housing', 'transport', 'shopping', 'health', 'other'],
+  income: ['salary', 'business', 'gift', 'refund', 'other'],
+};
 
 export const emptyFinanceState = (): FinanceState => ({
   schemaVersion: 2,
@@ -26,6 +31,7 @@ export const emptyFinanceState = (): FinanceState => ({
   savingsGoals: [],
   reminders: [],
   notes: [],
+  categories: { expense: [...DEFAULT_CATEGORIES.expense], income: [...DEFAULT_CATEGORIES.income] },
   settings: { preferredCurrency: 'USD', firstDayOfWeek: 1, dateFormat: 'system' },
 });
 
@@ -90,6 +96,10 @@ function normalizeState(value: Partial<FinanceState>): FinanceState {
   state.savingsGoals = Array.isArray(value.savingsGoals) ? value.savingsGoals : [];
   state.reminders = Array.isArray(value.reminders) ? value.reminders : [];
   state.notes = Array.isArray(value.notes) ? value.notes : [];
+  state.categories = {
+    expense: Array.isArray(value.categories?.expense) && value.categories.expense.length ? value.categories.expense : [...DEFAULT_CATEGORIES.expense],
+    income: Array.isArray(value.categories?.income) && value.categories.income.length ? value.categories.income : [...DEFAULT_CATEGORIES.income],
+  };
   state.settings = {
     ...state.settings,
     ...(value.settings ?? {}),
