@@ -56,9 +56,13 @@ function SatelliteDiamond({
 export default function Gem({
   netWorth,
   accessibilityLabel = 'Diamond',
+  animateOrbit = true,
+  interactive = true,
 }: {
   netWorth: number;
   accessibilityLabel?: string;
+  animateOrbit?: boolean;
+  interactive?: boolean;
 }) {
   const level = diamondLevel(netWorth);
   const isMassive = netWorth >= 100_000_000;
@@ -95,8 +99,8 @@ export default function Gem({
     opacity: interpolate(breathe.value, [0, 1], [0.52, 0.92]) * interpolate(evolve.value, [0, 1], [0.3, 1]),
     transform: [{ scale: level.scale * interpolate(breathe.value, [0, 1], [0.95, 1.14]) }],
   }));
-  const ringStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${interpolate(spin.value, [0, 1], [0, 360])}deg` }, { scale: interpolate(evolve.value, [0, 1], [0.82, 1]) }] }));
-  const ringReverseStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${interpolate(spin.value, [0, 1], [0, -360])}deg` }, { scale: 1.2 }] }));
+  const ringStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${animateOrbit ? interpolate(spin.value, [0, 1], [0, 360]) : 0}deg` }, { scale: interpolate(evolve.value, [0, 1], [0.82, 1]) }] }), [animateOrbit]);
+  const ringReverseStyle = useAnimatedStyle(() => ({ transform: [{ rotate: `${animateOrbit ? interpolate(spin.value, [0, 1], [0, -360]) : 0}deg` }, { scale: 1.2 }] }), [animateOrbit]);
   const burstStyle = useAnimatedStyle(() => ({
     opacity: interpolate(evolve.value, [0, 0.16, 1], [0.8, 0.6, 0]),
     transform: [{ scale: interpolate(evolve.value, [0, 1], [0.55, 1.9]) }],
@@ -122,7 +126,8 @@ export default function Gem({
   return (
     <Pressable
       style={styles.stage}
-      onPress={handlePress}
+      onPress={interactive ? handlePress : undefined}
+      disabled={!interactive}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
     >

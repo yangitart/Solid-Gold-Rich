@@ -10,7 +10,7 @@ export const C = {
   goldMid: '#C9A24D',
   goldDeep: '#8A6A22',
   goldDark: '#4A3712',
-  green: '#7DD9B2',
+  green: '#B7AD84', // positivo neutro, integrado con la paleta champagne
   red: '#F08B88',
   line: 'rgba(233,200,119,0.22)', // hairlines de las tarjetas
   glass: 'rgba(255,255,255,0.04)',

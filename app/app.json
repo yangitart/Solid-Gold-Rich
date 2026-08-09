@@ -12,6 +12,7 @@
       "supportsTablet": true
     },
     "android": {
+      "allowBackup": false,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/iconapp-playstore-rounded-final.png",
         "backgroundColor": "#04050A"
@@ -25,6 +26,15 @@
         "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.SYSTEM_ALERT_WINDOW"
       ]
+    },
+    "androidStatusBar": {
+      "backgroundColor": "#04050A",
+      "barStyle": "light-content",
+      "translucent": false
+    },
+    "androidNavigationBar": {
+      "backgroundColor": "#04050A",
+      "barStyle": "light-content"
     },
     "web": {
       "bundler": "metro",

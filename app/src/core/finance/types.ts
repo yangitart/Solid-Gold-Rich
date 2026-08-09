@@ -94,6 +94,8 @@ export type DebtPayment = {
   amount: number;
   date: string;
   note: string;
+  accountId?: string;
+  transactionId?: string;
 };
 
 export type Debt = {
@@ -115,6 +117,8 @@ export type SavingsContribution = {
   amount: number;
   date: string;
   note: string;
+  fromAccountId?: string;
+  transferId?: string;
 };
 
 export type SavingsGoal = {
@@ -160,6 +164,7 @@ export type NoteFolder = {
 };
 
 export type AppSettings = {
+  activeAccountId?: string;
   preferredCurrency: Currency;
   exchangeRates?: Record<string, number>;
   firstDayOfWeek: 0 | 1;
@@ -182,7 +187,7 @@ export type FinanceCategories = {
 };
 
 export type FinanceState = {
-  schemaVersion: 2;
+  schemaVersion: 3;
   accounts: Account[];
   transactions: Transaction[];
   transfers: Transfer[];

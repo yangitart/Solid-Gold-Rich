@@ -11,13 +11,14 @@ import type {
   TransactionStatus,
 } from './types';
 
-export const FINANCE_STATE_KEY = '@solid-gold/finance-state-v2';
+export const FINANCE_STATE_KEY = '@solid-gold/finance-state-v3';
+const FINANCE_STATE_V2_KEY = '@solid-gold/finance-state-v2';
 const LEGACY_BUDGETS_KEY = '@solid-gold/budget-accounts-v1';
 const LEGACY_ACTIVE_KEY = '@solid-gold/active-budget-v1';
 const LEGACY_TRANSACTIONS_KEY = '@solid-gold/transactions';
 const LEGACY_BUDGET_KEY = '@solid-gold/monthly-budget';
 
-export const DEFAULT_COLORS = ['#E9C877', '#7DD9B2', '#80B9FF', '#D99BEF', '#F08B88'];
+export const DEFAULT_COLORS = ['#E9C877', '#B7AD84', '#80B9FF', '#D99BEF', '#F08B88'];
 export const DEFAULT_CATEGORIES: FinanceCategories = {
   expense: [
     { id: 'food', icon: 'restaurant-outline' },
@@ -38,7 +39,7 @@ export const DEFAULT_CATEGORIES: FinanceCategories = {
 };
 
 export const emptyFinanceState = (): FinanceState => ({
-  schemaVersion: 2,
+  schemaVersion: 3,
   accounts: [],
   transactions: [],
   transfers: [],
@@ -122,7 +123,7 @@ function normalizeTransaction(value: Partial<Transaction>, accountId: string): T
   };
 }
 
-function normalizeState(value: Partial<FinanceState>): FinanceState {
+export function normalizeFinanceState(value: Partial<FinanceState>): FinanceState {
   const state = emptyFinanceState();
   state.accounts = Array.isArray(value.accounts) ? value.accounts.map((account, index) => ({
     id: text(account.id, `account-${index}`),
@@ -164,6 +165,9 @@ function normalizeState(value: Partial<FinanceState>): FinanceState {
     exchangeRates,
     language: SUPPORTED_LANGUAGES.includes(value.settings?.language as AppLanguage) ? value.settings?.language as AppLanguage : undefined,
     pinHash: text(value.settings?.pinHash) || undefined,
+    activeAccountId: state.accounts.some((account) => account.id === value.settings?.activeAccountId)
+      ? value.settings?.activeAccountId
+      : state.accounts.find((account) => !account.archived)?.id,
   };
   return state;
 }
@@ -175,6 +179,8 @@ function migrateLegacy(
   legacyLimit: string | null,
 ): FinanceState {
   const state = emptyFinanceState();
+  const hasLegacyData = Boolean(legacyBudgets || legacyActiveId || legacyTransactions || legacyLimit);
+  if (!hasLegacyData) return state;
   let parsedBudgets: Record<string, unknown>[] = [];
   try {
     const parsed = legacyBudgets ? JSON.parse(legacyBudgets) : [];
@@ -184,14 +190,15 @@ function migrateLegacy(
   }
 
   if (parsedBudgets.length === 0) {
-    parsedBudgets = [{ id: 'personal', name: 'Personal', openingBalance: 0, limit: number(legacyLimit, 2500), color: DEFAULT_COLORS[0], transactions: [] }];
+    parsedBudgets = [{ id: 'personal', name: 'Personal', openingBalance: 0, limit: number(legacyLimit), color: DEFAULT_COLORS[0], transactions: [] }];
   }
 
   state.accounts = parsedBudgets.map((budget, index) => ({
     id: text(budget.id, `account-${index}`),
     name: text(budget.name, index === 0 ? 'Personal' : `Personal ${index + 1}`),
-    type: 'cash',
-    currency: 'USD',
+    type: ['cash', 'bank', 'card', 'savings', 'debt', 'other'].includes(text(budget.type)) ? text(budget.type) as FinanceState['accounts'][number]['type'] : 'cash',
+    currency: text(budget.currency, 'USD'),
+    exchangeRate: number(budget.exchangeRate) > 0 ? number(budget.exchangeRate) : undefined,
     openingBalance: number(budget.openingBalance),
     color: text(budget.color, DEFAULT_COLORS[index % DEFAULT_COLORS.length]),
     archived: false,
@@ -199,8 +206,13 @@ function migrateLegacy(
 
   let legacyItems: Record<string, unknown>[] = [];
   try {
-    const parsed = legacyTransactions ? JSON.parse(legacyTransactions) : parsedBudgets[0]?.transactions;
-    if (Array.isArray(parsed)) legacyItems = parsed;
+    const parsed = legacyTransactions ? JSON.parse(legacyTransactions) : null;
+    const standaloneItems = Array.isArray(parsed) ? parsed as Record<string, unknown>[] : [];
+    const nestedItems: Record<string, unknown>[] = parsedBudgets.flatMap((budget) => Array.isArray(budget.transactions)
+      ? budget.transactions.map((item): Record<string, unknown> => ({ ...(item as Record<string, unknown>), accountId: text((item as Record<string, unknown>).accountId, text(budget.id)) }))
+      : []);
+    const standaloneIds = new Set(standaloneItems.map((item) => text(item.id)).filter(Boolean));
+    legacyItems = [...standaloneItems, ...nestedItems.filter((item) => !standaloneIds.has(text(item.id)))];
   } catch {
     legacyItems = [];
   }
@@ -210,7 +222,7 @@ function migrateLegacy(
     accountId: text(item.accountId, defaultAccountId),
     kind: item.kind === 'income' ? 'income' : 'expense',
     amount: number(item.amount),
-    currency: 'USD',
+    currency: text(item.currency, state.accounts.find((account) => account.id === text(item.accountId, defaultAccountId))?.currency ?? 'USD'),
     date: text(item.date, new Date().toISOString()),
     payee: text(item.title),
     description: text(item.title),
@@ -222,7 +234,7 @@ function migrateLegacy(
 
   for (const account of state.accounts) {
     const budget = parsedBudgets.find((item) => text(item.id) === account.id);
-    const limit = number(budget?.limit, number(legacyLimit, 2500));
+    const limit = number(budget?.limit, number(legacyLimit));
     state.budgets.push({
       id: `budget-${account.id}-total`,
       accountId: account.id,
@@ -230,36 +242,67 @@ function migrateLegacy(
       period: 'monthly',
       startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString(),
       endDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString(),
-      limit: limit || 2500,
+      limit,
       rollover: false,
       rolloverAmount: 0,
     });
   }
   state.settings.preferredCurrency = state.accounts[0]?.currency ?? 'USD';
+  state.settings.activeAccountId = state.accounts.some((account) => account.id === legacyActiveId)
+    ? legacyActiveId ?? undefined
+    : state.accounts[0]?.id;
   return state;
 }
 
-export async function loadFinanceState() {
-  const saved = await AsyncStorage.getItem(FINANCE_STATE_KEY);
-  if (saved) {
-    try {
-      return normalizeState(JSON.parse(saved) as Partial<FinanceState>);
-    } catch {
-      // Fall through to the legacy migration.
-    }
-  }
+function mergeById<T extends { id: string }>(preferred: T[], fallback: T[]) {
+  const ids = new Set(preferred.map((item) => item.id));
+  return [...preferred, ...fallback.filter((item) => !ids.has(item.id))];
+}
 
-  const [budgets, activeId, transactions, limit] = await Promise.all([
+export async function loadFinanceState() {
+  const [savedV3, savedV2, budgets, activeId, transactions, limit] = await Promise.all([
+    AsyncStorage.getItem(FINANCE_STATE_KEY),
+    AsyncStorage.getItem(FINANCE_STATE_V2_KEY),
     AsyncStorage.getItem(LEGACY_BUDGETS_KEY),
     AsyncStorage.getItem(LEGACY_ACTIVE_KEY),
     AsyncStorage.getItem(LEGACY_TRANSACTIONS_KEY),
     AsyncStorage.getItem(LEGACY_BUDGET_KEY),
   ]);
-  return migrateLegacy(budgets, activeId, transactions, limit);
+  const parseSaved = (saved: string | null) => {
+    if (!saved) return null;
+    try {
+      return normalizeFinanceState(JSON.parse(saved) as Partial<FinanceState>);
+    } catch {
+      return null;
+    }
+  };
+  const v3State = parseSaved(savedV3);
+  const v2State = parseSaved(savedV2);
+  const legacyState = migrateLegacy(budgets, activeId, transactions, limit);
+  const savedState = v3State ?? v2State;
+  if (!savedState) return legacyState;
+  const olderState = v3State && v2State ? v2State : legacyState;
+  const merged = {
+    ...savedState,
+    schemaVersion: 3 as const,
+    accounts: mergeById(savedState.accounts, mergeById(olderState.accounts, legacyState.accounts)),
+    transactions: mergeById(savedState.transactions, mergeById(olderState.transactions, legacyState.transactions)),
+    transfers: mergeById(savedState.transfers, olderState.transfers),
+    budgets: mergeById(savedState.budgets, mergeById(olderState.budgets, legacyState.budgets)),
+    recurring: mergeById(savedState.recurring, olderState.recurring),
+    debts: mergeById(savedState.debts, olderState.debts),
+    savingsGoals: mergeById(savedState.savingsGoals, olderState.savingsGoals),
+    reminders: mergeById(savedState.reminders, olderState.reminders),
+    notes: mergeById(savedState.notes, olderState.notes),
+    noteFolders: mergeById(savedState.noteFolders, olderState.noteFolders),
+  };
+  if (!merged.settings.activeAccountId && legacyState.settings.activeAccountId) merged.settings.activeAccountId = legacyState.settings.activeAccountId;
+  return normalizeFinanceState(merged);
 }
 
 export async function saveFinanceState(state: FinanceState) {
   await AsyncStorage.setItem(FINANCE_STATE_KEY, JSON.stringify(state));
+  await AsyncStorage.multiRemove([FINANCE_STATE_V2_KEY, LEGACY_BUDGETS_KEY, LEGACY_ACTIVE_KEY, LEGACY_TRANSACTIONS_KEY, LEGACY_BUDGET_KEY]);
 }
 
 export function exportJson(state: FinanceState) {

@@ -60,14 +60,14 @@ export default function AuroraBackground() {
 
       <Animated.View style={[styles.blob, styles.blobTop, blobA]}>
         <LinearGradient
-          colors={['rgba(233,200,119,0.30)', 'rgba(138,106,34,0.10)', 'transparent']}
+          colors={['rgba(233,200,119,0.30)', 'rgba(138,106,34,0.10)', 'rgba(4,5,10,0)']}
           style={styles.fill}
         />
       </Animated.View>
 
       <Animated.View style={[styles.blob, styles.blobBottom, blobB]}>
         <LinearGradient
-          colors={['rgba(201,162,77,0.22)', 'rgba(74,55,18,0.08)', 'transparent']}
+          colors={['rgba(201,162,77,0.22)', 'rgba(74,55,18,0.08)', 'rgba(4,5,10,0)']}
           start={{ x: 0.2, y: 0 }}
           end={{ x: 0.8, y: 1 }}
           style={styles.fill}
@@ -76,7 +76,7 @@ export default function AuroraBackground() {
 
       {/* Viñeta: oscurece los bordes para que la mirada caiga en el centro. */}
       <LinearGradient
-        colors={['rgba(4,5,10,0.95)', 'transparent', 'transparent', 'rgba(4,5,10,0.98)']}
+        colors={['rgba(4,5,10,0.95)', 'rgba(4,5,10,0)', 'rgba(4,5,10,0)', 'rgba(4,5,10,0.98)']}
         locations={[0, 0.28, 0.62, 1]}
         style={StyleSheet.absoluteFill}
       />

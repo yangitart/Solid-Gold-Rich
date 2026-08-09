@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import Animated, {
@@ -8,30 +8,30 @@ import Animated, {
   useAnimatedStyle,
   useSharedValue,
   withDelay,
-  withRepeat,
   withTiming,
   interpolate,
   Extrapolation,
 } from 'react-native-reanimated';
 import { C, SANS, SERIF } from '../theme/luxury';
+import Gem, { diamondLevel } from '../components/Gem';
 
-const BOOT_MS = 2600;
+const BOOT_MS = 900;
 const BAR_W = 256;
+const BOOT_LEVEL_VALUES = [0, 10_000, 1_000_000, 1_000_000_000, 1_000_000_000_000] as const;
 
 // Las líneas de estado. Son puro teatro — no hay nada que verificar — pero es
 // justo el teatro lo que vende la broma: la app se comporta como si validara una
 // fortuna antes de dejarte pasar.
-const STAGE_KEYS = ['line', 'funds', 'stone', 'access'] as const;
 
 // Pantalla de carga. Comparte fondo con la pantalla principal, así que la
 // transición no es un corte: la carga se desvanece y la joya aparece encima del
 // MISMO negro. Ese detalle es lo que hace que no parezca "otra pantalla".
-export default function BootScreen({ onDone }: { onDone: () => void }) {
+export default function BootScreen({ ready, onDone }: { ready: boolean; onDone: () => void }) {
   const { t } = useTranslation();
   const progress = useSharedValue(0);
-  const spin = useSharedValue(0);
-  const [stage, setStage] = React.useState(0);
   const [percentage, setPercentage] = React.useState(0);
+  const [levelIndex, setLevelIndex] = React.useState(0);
+  const [minimumElapsed, setMinimumElapsed] = React.useState(false);
   const { width, height } = useWindowDimensions();
   const isTablet = Math.min(width, height) >= 600;
   const fit = Math.min(
@@ -47,13 +47,15 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
       easing: Easing.bezier(0.16, 0.9, 0.3, 1),
     });
 
-    spin.value = withRepeat(withTiming(1, { duration: 5200, easing: Easing.linear }), -1, false);
+  }, [progress]);
 
-    const timers = STAGE_KEYS.map((_, i) =>
-      setTimeout(() => setStage(i), (BOOT_MS / STAGE_KEYS.length) * i),
-    );
+  React.useEffect(() => {
+    const timers = BOOT_LEVEL_VALUES.slice(1).map((_, index) => setTimeout(
+      () => setLevelIndex(index + 1),
+      150 + index * 165,
+    ));
     return () => timers.forEach(clearTimeout);
-  }, [progress, spin]);
+  }, []);
 
   React.useEffect(() => {
     const startedAt = Date.now();
@@ -63,16 +65,22 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
     return () => clearInterval(timer);
   }, []);
 
+  React.useEffect(() => {
+    const timer = setTimeout(() => setMinimumElapsed(true), BOOT_MS);
+    return () => clearTimeout(timer);
+  }, []);
+
   // Salida: cuando la barra termina, todo el bloque se va hacia arriba y avisa.
   const exit = useSharedValue(0);
   React.useEffect(() => {
+    if (!minimumElapsed || !ready) return;
     exit.value = withDelay(
-      BOOT_MS + 280,
-      withTiming(1, { duration: 550, easing: Easing.in(Easing.cubic) }, (finished) => {
+      40,
+      withTiming(1, { duration: 180, easing: Easing.in(Easing.cubic) }, (finished) => {
         if (finished) runOnJS(onDone)();
       }),
     );
-  }, [exit, onDone]);
+  }, [exit, minimumElapsed, onDone, ready]);
 
   const rootStyle = useAnimatedStyle(() => ({
     opacity: 1 - exit.value,
@@ -92,38 +100,19 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
     transform: [{ translateX: interpolate(progress.value, [0, 1], [0, BAR_W], Extrapolation.CLAMP) }],
   }));
 
-  const markImageStyle = useAnimatedStyle(() => ({
-    transform: [
-      { rotate: `${interpolate(spin.value, [0, 1], [45, 405])}deg` },
-      { scale: interpolate(progress.value, [0, 1], [0.86, 1]) },
-    ],
-  }));
-
-  const ringStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(spin.value, [0, 0.5, 1], [0.25, 0.6, 0.25]),
-    transform: [{ rotate: `${interpolate(spin.value, [0, 1], [0, -360])}deg` }],
-  }));
+  const currentLevelValue = BOOT_LEVEL_VALUES[levelIndex];
+  const currentLevel = diamondLevel(currentLevelValue);
 
   return (
     <Animated.View style={[styles.root, rootStyle]} pointerEvents="none">
       <Text style={styles.kicker} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{t('app.loading.kicker')}</Text>
-      {/* Marca: un rombo hueco girando dentro de un anillo partido */}
       <View style={styles.markStage}>
-        <Animated.View style={[styles.ring, ringStyle]} />
-        <Animated.View style={[styles.ringFine, ringStyle]} />
-        <View style={styles.orbitDot} />
-        <Animated.View style={markImageStyle}>
-          <Image
-            source={require('../../assets/images/iconapp.png')}
-            style={styles.markImage}
-            resizeMode="contain"
-          />
-        </Animated.View>
+        <View style={styles.gemScale}><Gem netWorth={currentLevelValue} animateOrbit={false} interactive={false} accessibilityLabel={t(`app.diamonds.${currentLevel.key}`)} /></View>
       </View>
+      <Text style={styles.levelLabel}>{t(`app.diamonds.${currentLevel.key}`)}</Text>
 
       <Text style={styles.brand}>SOLID GOLD RICH</Text>
       <Text style={styles.subtitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{t('app.loading.subtitle')}</Text>
-      <View style={styles.securityPill}><View style={styles.securityDot} /><Text style={styles.securityText}>{t('app.loading.security')}</Text></View>
 
       <View style={styles.statusCard}>
         <View style={styles.statusTop}><Text style={styles.statusLabel} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{t('app.loading.initialization')}</Text><Text style={styles.percentage}>{percentage}%</Text></View>
@@ -133,8 +122,6 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
           </Animated.View>
           <Animated.View style={[styles.head, headStyle]} />
         </View>
-        <View style={styles.stageRow}>{STAGE_KEYS.map((item, index) => <View key={item} style={[styles.stageDot, index <= stage && styles.stageDotActive]} />)}</View>
-        <Text style={styles.stageText} numberOfLines={2}>{t(`app.loading.stages.${STAGE_KEYS[stage]}`)}</Text>
       </View>
     </Animated.View>
   );
@@ -143,35 +130,22 @@ export default function BootScreen({ onDone }: { onDone: () => void }) {
 const styles = StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   kicker: { width: 300, color: 'rgba(233,200,119,0.48)', fontFamily: SANS, fontSize: 9, letterSpacing: 3.2, marginBottom: 18, textAlign: 'center' },
-  markStage: { width: 144, height: 144, alignItems: 'center', justifyContent: 'center' },
-  ring: {
-    position: 'absolute',
-    width: 126,
-    height: 126,
-    borderRadius: 63,
-    borderWidth: 1,
-    borderColor: 'rgba(233,200,119,0.14)',
-    borderTopColor: C.gold,
-  },
-  ringFine: { position: 'absolute', width: 98, height: 98, borderRadius: 49, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.22)', borderBottomColor: 'transparent' },
-  orbitDot: { position: 'absolute', top: 8, width: 5, height: 5, borderRadius: 3, backgroundColor: C.goldLight, shadowColor: C.gold, shadowOpacity: 0.9, shadowRadius: 8 },
-  markImage: { width: 86, height: 86, borderRadius: 18 },
+  markStage: { width: 220, height: 190, alignItems: 'center', justifyContent: 'center', marginTop: -8 },
+  gemScale: { width: 300, height: 288, transform: [{ scale: 0.62 }], alignItems: 'center', justifyContent: 'center' },
+  levelLabel: { minHeight: 18, color: C.goldLight, fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 1.8, textAlign: 'center', textTransform: 'uppercase', opacity: 0.72 },
   brand: {
     color: C.gold,
     fontFamily: SERIF,
     fontSize: 19,
     letterSpacing: 5.5,
-    marginTop: 18,
+    marginTop: 8,
     marginBottom: 25,
     // El tracking añade espacio a la DERECHA de la última letra: este margen
     // compensa para que el texto quede ópticamente centrado.
     marginLeft: 5.5,
   },
   subtitle: { width: 300, color: 'rgba(255,244,208,0.38)', fontFamily: SANS, fontSize: 9, letterSpacing: 2.1, marginTop: -15, marginBottom: 12, textAlign: 'center' },
-  securityPill: { flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 99, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.18)', backgroundColor: 'rgba(233,200,119,0.035)', marginBottom: 22 },
-  securityDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: C.gold },
-  securityText: { color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 7, letterSpacing: 1.5 },
-  statusCard: { width: 288, padding: 16, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.04)', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 8 },
+  statusCard: { width: 288, padding: 16, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.04)', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 8, marginTop: 12 },
   statusTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   statusLabel: { flex: 1, minWidth: 0, color: 'rgba(255,244,208,0.58)', fontFamily: SANS, fontSize: 8, letterSpacing: 1.7 },
   percentage: { color: C.gold, fontFamily: SERIF, fontSize: 16 },
@@ -194,17 +168,5 @@ const styles = StyleSheet.create({
     shadowOpacity: 1,
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 0 },
-  },
-  stageRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 7, marginTop: 12 },
-  stageDot: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(233,200,119,0.18)' },
-  stageDotActive: { backgroundColor: C.gold },
-  stageText: {
-    color: 'rgba(233,200,119,0.45)',
-    fontFamily: SANS,
-    fontSize: 9,
-    letterSpacing: 2.8,
-    marginTop: 10,
-    minHeight: 28,
-    textAlign: 'center',
   },
 });

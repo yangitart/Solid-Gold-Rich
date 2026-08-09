@@ -30,6 +30,18 @@
       "cosmic": "Un diamante c\u00f3smico con su propio campo gravitatorio.",
       "infinity": "Clase infinita. Tu patrimonio abandon\u00f3 el universo conocido."
     },
+    "onboarding": {
+      "skip": "Omitir",
+      "next": "SIGUIENTE",
+      "start": "EMPEZAR",
+      "pages": {
+        "accounts": { "eyebrow": "PRIMER PASO", "title": "Crea tus cuentas", "body": "Abre Cuentas desde el icono superior. Elige tipo, moneda y saldo inicial. Si usas otra moneda, indica cuánto vale una unidad respecto a tu moneda principal." },
+        "operations": { "eyebrow": "DÍA A DÍA", "title": "Registra cada movimiento", "body": "Usa el botón + para añadir gastos, ingresos o transferencias. Escribe el importe, una descripción y elige la categoría que mejor represente la operación." },
+        "statistics": { "eyebrow": "ENTIENDE TUS NÚMEROS", "title": "Consulta tus estadísticas", "body": "Toca el icono de estadísticas sobre Operaciones. Cambia entre hoy, semana, mes y año para comparar ingresos, gastos, flujo de caja y categorías." },
+        "organize": { "eyebrow": "PERSONALIZA LA APP", "title": "Organiza a tu manera", "body": "Usa el menú izquierdo para herramientas, categorías, notas y ajustes. Los tres puntos reúnen presupuestos, deudas, ahorros y recurrentes." },
+        "privacy": { "eyebrow": "TUS DATOS", "title": "Privado desde el inicio", "body": "La información se guarda en este dispositivo. En Ajustes puedes activar un PIN, cambiar idioma y moneda principal, o exportar una copia de seguridad." }
+      }
+    },
     "loading": {
       "kicker": "COLECCI\u00d3N PRIVADA",
       "subtitle": "EL OBJETO DE PATRIMONIO PERSONAL",
@@ -122,7 +134,7 @@
     "filters": { "all": "TODO", "expense": "GASTOS", "income": "INGRESOS" },
     "categories": { "food": "Alimentacion", "housing": "Vivienda", "transport": "Transporte", "shopping": "Compras", "other": "Otros" },
     "toolsList": { "recurring": "Recurrentes", "debt": "Deudas", "calendar": "Calendario", "transfer": "Transferencias" },
-    "toolCalculators": { "calculator": "Calculadora", "currency": "Conversor de moneda", "discountTax": "Descuento e impuesto", "interest": "Calculadora de intereses", "expression": "EXPRESIÓN", "amount": "IMPORTE", "fromCurrency": "MONEDA DE ORIGEN", "toCurrency": "MONEDA DE DESTINO", "rate": "TASA", "offlineRate": "La tasa es manual para que la app funcione sin conexión.", "discount": "DESCUENTO (%)", "tax": "IMPUESTO (%)", "discountedTotal": "Total final: {{amount}}", "principal": "CAPITAL", "annualRate": "TASA ANUAL (%)", "years": "AÑOS", "compounds": "CAPITALIZACIONES / AÑO", "interestEarned": "Intereses ganados: {{amount}}" },
+    "toolCalculators": { "calculator": "Calculadora", "cashCounter": "Contador de billetes", "cashCounterCopy": "Multiplica cada denominación por la cantidad de billetes y obtén el efectivo total.", "cashTotal": "EFECTIVO TOTAL", "denomination": "DENOMINACIÓN", "quantity": "CANTIDAD", "addDenomination": "AGREGAR DENOMINACIÓN", "currency": "Conversor de moneda", "discountTax": "Descuento e impuesto", "interest": "Calculadora de intereses", "expression": "EXPRESIÓN", "amount": "IMPORTE", "fromCurrency": "MONEDA DE ORIGEN", "toCurrency": "MONEDA DE DESTINO", "rate": "TASA", "offlineRate": "La tasa es manual para que la app funcione sin conexión.", "discount": "DESCUENTO (%)", "tax": "IMPUESTO (%)", "discountedTotal": "Total final: {{amount}}", "principal": "CAPITAL", "annualRate": "TASA ANUAL (%)", "years": "AÑOS", "compounds": "CAPITALIZACIONES / AÑO", "interestEarned": "Intereses ganados: {{amount}}" },
     "defaultBudget": "Personal",
     "availableBalance": "SALDO DISPONIBLE",
     "active": "ACTIVA",
@@ -169,12 +181,25 @@
     "quickOptions": "MAS OPCIONES",
     "weekdays": { "sun": "DOM", "mon": "LUN", "tue": "MAR", "wed": "MIE", "thu": "JUE", "fri": "VIE", "sat": "SAB" },
     "currency": "MONEDA",
+    "accountType": "TIPO DE CUENTA",
+    "accountTypes": { "cash": "Efectivo", "bank": "Banco", "card": "Tarjeta", "savings": "Ahorros", "debt": "Deuda", "other": "Otra" },
+    "selectCurrency": "Seleccionar moneda",
+    "searchCurrency": "Buscar por código de moneda",
     "transferTo": "TRANSFERIR A",
     "transferFrom": "TRANSFERIR DESDE",
     "receivedAmount": "IMPORTE RECIBIDO",
     "exchangeRate": "TIPO DE CAMBIO",
     "language": "IDIOMA",
     "languages": { "en": "Ingles", "es": "Espanol", "pt": "Portugues", "fr": "Frances", "de": "Aleman", "it": "Italiano" },
-    "pin": { "title": "PIN DE LA APP", "enabled": "La proteccion con PIN esta activa.", "disabled": "No hay ningun PIN configurado.", "newPin": "NUEVO PIN", "confirmPin": "CONFIRMAR PIN", "set": "ESTABLECER PIN", "change": "CAMBIAR PIN", "remove": "QUITAR PIN", "invalid": "Usa de 4 a 6 digitos.", "mismatch": "Los PIN no coinciden.", "enter": "INTRODUCE TU PIN", "subtitle": "Desbloquea tu caja fuerte privada", "incorrect": "PIN incorrecto." }
+    "pin": { "title": "PIN DE LA APP", "enabled": "La proteccion con PIN esta activa.", "disabled": "No hay ningun PIN configurado.", "newPin": "NUEVO PIN", "confirmPin": "CONFIRMAR PIN", "set": "ESTABLECER PIN", "change": "CAMBIAR PIN", "remove": "QUITAR PIN", "invalid": "Usa de 4 a 6 digitos.", "mismatch": "Los PIN no coinciden.", "enter": "INTRODUCE TU PIN", "subtitle": "Desbloquea tu caja fuerte privada", "incorrect": "PIN incorrecto." },
+    "modules": { "cannotUndo": "Esta accion no se puede deshacer.", "searchActivity": "Buscar movimientos", "noResults": "Sin resultados", "noResultsCopy": "Prueba otra busqueda o filtro.", "categoriesCount": "{{count}} categorias", "noChartData": "Sin datos para graficos", "noChartDataCopy": "Agrega gastos este mes para ver el desglose.", "deleteRecurring": "Eliminar operacion recurrente?", "noRecurring": "Sin operaciones recurrentes", "noRecurringCopy": "Crea ingresos o gastos periodicos.", "addRecurring": "+ RECURRENTE", "payments": "pagos", "registerPayment": "REGISTRAR PAGO", "deleteDebt": "Eliminar deuda?", "noDebts": "Sin deudas", "noDebtsCopy": "Controla saldos y pagos.", "addDebt": "+ DEUDA", "goalOf": "Meta: {{target}}", "addContribution": "AGREGAR APORTE", "deleteGoal": "Eliminar meta de ahorro?", "noGoals": "Sin metas de ahorro", "noGoalsCopy": "Crea una meta y sigue tu progreso.", "addGoal": "+ META DE AHORRO", "deleteReminder": "Eliminar recordatorio?", "noReminders": "Sin recordatorios", "noRemindersCopy": "Manten aqui tus fechas importantes.", "addReminder": "+ RECORDATORIO", "pinned": "FIJADA", "tapToPin": "TOCA PARA FIJAR", "deleteNote": "Eliminar nota?", "noNotesCopy": "Guarda planes y contexto financiero.", "balanceDue": "Saldo: {{amount}}", "unknownAccount": "Cuenta desconocida", "deleteBudget": "Eliminar presupuesto?", "budgetRemaining": "Restante: {{amount}}", "noBudgets": "Sin presupuestos por categoria", "noBudgetsCopy": "Define un limite para controlar cada categoria.", "addBudget": "+ PRESUPUESTO", "newCategoryBudget": "NUEVO PRESUPUESTO", "account": "CUENTA", "period": "PERIODO", "weekly": "SEMANAL", "monthly": "MENSUAL", "rollover": "Acumular lo no usado al siguiente periodo" },
+    "navigation": { "overview": "RESUMEN", "planning": "PLANIFICACION", "organize": "ORGANIZAR", "app": "APP", "quickCopy": "Acceso rapido a las vistas que mas utilizas.", "items": { "accounts": { "title": "Cuentas", "subtitle": "Saldos y monedas" }, "activity": { "title": "Actividad", "subtitle": "Busca todos los movimientos" }, "charts": { "title": "Graficos", "subtitle": "Desglose mensual por categoria" }, "calendar": { "title": "Calendario", "subtitle": "Ingresos y gastos por dia" }, "budget": { "title": "Presupuestos", "subtitle": "Limites de gasto por categoria" }, "recurring": { "title": "Recurrentes", "subtitle": "Operaciones programadas" }, "debt": { "title": "Deudas", "subtitle": "Saldos y pagos" }, "savings": { "title": "Ahorros", "subtitle": "Metas y aportes" }, "reminders": { "title": "Recordatorios", "subtitle": "Fechas financieras importantes" }, "categories": { "title": "Categorias", "subtitle": "Personaliza tu organizacion" }, "notes": { "title": "Notas", "subtitle": "Planes y contexto financiero" }, "tools": { "title": "Herramientas", "subtitle": "Calculadoras y conversiones" }, "settings": { "title": "Ajustes", "subtitle": "Idioma, moneda, PIN y datos" }, "about": { "title": "Acerca de", "subtitle": "Privacidad e informacion" } } }
+    ,"notesSearch": "Buscar notas"
+    ,"release": { "noAccounts": "No hay cuentas", "noAccountsCopy": "Crea tu primera cuenta para comenzar.", "addAccount": "AGREGAR CUENTA", "archivedAccounts": "CUENTAS ARCHIVADAS", "restore": "RESTAURAR", "editAccount": "EDITAR CUENTA", "newAccount": "NUEVA CUENTA", "saveChanges": "GUARDAR CAMBIOS", "save": "GUARDAR", "archiveAccount": "ARCHIVAR CUENTA", "newSavingsGoal": "NUEVA META DE AHORRO", "name": "NOMBRE", "target": "META", "deadline": "FECHA LIMITE", "sourceAccount": "CUENTA DE ORIGEN", "destinationAccount": "CUENTA DE DESTINO", "previousMonth": "Mes anterior", "nextMonth": "Mes siguiente", "newDebt": "NUEVA DEUDA", "creditor": "ACREEDOR", "dueDate": "FECHA DE PAGO", "newReminder": "NUEVA FECHA", "title": "TITULO", "note": "NOTA", "charts": "Graficos", "calendar": "Calendario", "recurringTab": "Recurrentes", "datesTab": "Fechas", "pause": "Pausar", "resume": "Reanudar" }
+    ,"releaseExtra": { "dataBackups": "DATOS Y COPIAS", "dataBackupsCopy": "JSON, CSV y datos locales", "aboutCopy": "Un espacio tranquilo y local para tus cuentas, planes y dinero diario.", "localOnlyCopy": "Tus datos permanecen en este dispositivo salvo que los exportes. El PIN es un bloqueo local; no cifra los datos.", "exportJson": "EXPORTAR COPIA JSON", "exportCsv": "EXPORTAR CSV", "importData": "IMPORTAR JSON / CSV", "resetData": "BORRAR DATOS LOCALES", "automaticByRate": "Automático según la tasa", "toolsSubtitle": "Calculadora y herramientas de efectivo" }
+    ,"releaseErrors": { "loadError": "No se pudieron cargar tus datos locales", "loadErrorCopy": "Reintenta antes de hacer cambios para mantener protegida tu información existente.", "saveError": "Los cambios aún no se guardaron", "saveErrorCopy": "Tu información sigue abierta. Reintenta o exporta una copia desde Ajustes.", "missingRate": "Configura una tasa de cambio válida para estas monedas.", "retry": "REINTENTAR" }
+    ,"releaseImport": { "importCopy": "Pega una copia JSON o una lista de operaciones CSV.", "importFailed": "No se pudo importar", "invalidBackup": "La copia JSON no es valida.", "csvWarnings": "Avisos del CSV" }
+    ,"releaseFrequency": { "daily": "Diario", "weekly": "Semanal", "monthly": "Mensual", "yearly": "Anual", "custom": "Personalizado" }
+    ,"releaseArchive": { "archiveCopy": "Esto oculta la cuenta de las vistas diarias. Puedes restaurarla despues sin perder sus operaciones." }
   }
 }

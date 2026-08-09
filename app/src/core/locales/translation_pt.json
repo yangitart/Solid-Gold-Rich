@@ -30,6 +30,18 @@
       "cosmic": "Um diamante cósmico com seu próprio campo gravitacional.",
       "infinity": "Classe infinita. Seu patrimônio deixou o universo conhecido."
     },
+    "onboarding": {
+      "skip": "Pular",
+      "next": "PRÓXIMO",
+      "start": "COMEÇAR",
+      "pages": {
+        "accounts": { "eyebrow": "PRIMEIRO PASSO", "title": "Crie suas contas", "body": "Abra Contas pelo ícone superior. Escolha tipo, moeda e saldo inicial. Para outra moeda, informe quanto vale uma unidade na moeda principal." },
+        "operations": { "eyebrow": "DIA A DIA", "title": "Registre cada movimento", "body": "Use o botão + para adicionar despesas, receitas ou transferências. Informe valor, descrição e a categoria que melhor representa a operação." },
+        "statistics": { "eyebrow": "ENTENDA SEUS NÚMEROS", "title": "Consulte as estatísticas", "body": "Toque no ícone de estatísticas acima de Operações. Alterne entre hoje, semana, mês e ano para comparar receitas, despesas e categorias." },
+        "organize": { "eyebrow": "PERSONALIZE O APP", "title": "Organize do seu jeito", "body": "O menu esquerdo reúne ferramentas, categorias, notas e ajustes. Os três pontos reúnem orçamentos, dívidas, economias e recorrentes." },
+        "privacy": { "eyebrow": "SEUS DADOS", "title": "Privado desde o início", "body": "As informações ficam neste dispositivo. Em Configurações, ative um PIN, altere idioma e moeda principal ou exporte um backup." }
+      }
+    },
     "loading": {
       "kicker": "COLEÇÃO PRIVADA",
       "subtitle": "O OBJETO PESSOAL DE RIQUEZA",
@@ -122,7 +134,7 @@
     "filters": { "all": "TODOS", "expense": "DESPESAS", "income": "RECEITAS" },
     "categories": { "food": "Alimentacao", "housing": "Moradia", "transport": "Transporte", "shopping": "Compras", "other": "Outros" },
     "toolsList": { "recurring": "Recorrentes", "debt": "Dividas", "calendar": "Calendario", "transfer": "Transferencia" },
-    "toolCalculators": { "calculator": "Calculadora", "currency": "Conversor de moeda", "discountTax": "Desconto e imposto", "interest": "Calculadora de juros", "expression": "EXPRESSAO", "amount": "VALOR", "fromCurrency": "MOEDA DE ORIGEM", "toCurrency": "MOEDA DE DESTINO", "rate": "TAXA", "offlineRate": "A taxa e manual para que o app funcione offline.", "discount": "DESCONTO (%)", "tax": "IMPOSTO (%)", "discountedTotal": "Total final: {{amount}}", "principal": "CAPITAL", "annualRate": "TAXA ANUAL (%)", "years": "ANOS", "compounds": "CAPITALIZACOES / ANO", "interestEarned": "Juros ganhos: {{amount}}" },
+    "toolCalculators": { "calculator": "Calculadora", "cashCounter": "Contador de cédulas", "cashCounterCopy": "Multiplique cada denominação pela quantidade de cédulas para obter o total em dinheiro.", "cashTotal": "DINHEIRO TOTAL", "denomination": "DENOMINAÇÃO", "quantity": "QUANTIDADE", "addDenomination": "ADICIONAR DENOMINAÇÃO", "currency": "Conversor de moeda", "discountTax": "Desconto e imposto", "interest": "Calculadora de juros", "expression": "EXPRESSAO", "amount": "VALOR", "fromCurrency": "MOEDA DE ORIGEM", "toCurrency": "MOEDA DE DESTINO", "rate": "TAXA", "offlineRate": "A taxa e manual para que o app funcione offline.", "discount": "DESCONTO (%)", "tax": "IMPOSTO (%)", "discountedTotal": "Total final: {{amount}}", "principal": "CAPITAL", "annualRate": "TAXA ANUAL (%)", "years": "ANOS", "compounds": "CAPITALIZACOES / ANO", "interestEarned": "Juros ganhos: {{amount}}" },
     "defaultBudget": "Pessoal",
     "availableBalance": "SALDO DISPONIVEL",
     "active": "ATIVA",
@@ -169,12 +181,25 @@
     "quickOptions": "MAIS OPCOES",
     "weekdays": { "sun": "DOM", "mon": "SEG", "tue": "TER", "wed": "QUA", "thu": "QUI", "fri": "SEX", "sat": "SAB" },
     "currency": "MOEDA",
+    "accountType": "TIPO DE CONTA",
+    "accountTypes": { "cash": "Dinheiro", "bank": "Banco", "card": "Cartão", "savings": "Poupança", "debt": "Dívida", "other": "Outra" },
+    "selectCurrency": "Selecionar moeda",
+    "searchCurrency": "Buscar por código da moeda",
     "transferTo": "TRANSFERIR PARA",
     "transferFrom": "TRANSFERIR DE",
     "receivedAmount": "VALOR RECEBIDO",
     "exchangeRate": "TAXA DE CAMBIO",
     "language": "IDIOMA",
     "languages": { "en": "Ingles", "es": "Espanhol", "pt": "Portugues", "fr": "Frances", "de": "Alemao", "it": "Italiano" },
-    "pin": { "title": "PIN DO APP", "enabled": "A protecao por PIN esta ativa.", "disabled": "Nenhum PIN configurado.", "newPin": "NOVO PIN", "confirmPin": "CONFIRMAR PIN", "set": "DEFINIR PIN", "change": "ALTERAR PIN", "remove": "REMOVER PIN", "invalid": "Use de 4 a 6 digitos.", "mismatch": "Os PINs nao coincidem.", "enter": "DIGITE SEU PIN", "subtitle": "Desbloqueie seu cofre privado", "incorrect": "PIN incorreto." }
+    "pin": { "title": "PIN DO APP", "enabled": "A protecao por PIN esta ativa.", "disabled": "Nenhum PIN configurado.", "newPin": "NOVO PIN", "confirmPin": "CONFIRMAR PIN", "set": "DEFINIR PIN", "change": "ALTERAR PIN", "remove": "REMOVER PIN", "invalid": "Use de 4 a 6 digitos.", "mismatch": "Os PINs nao coincidem.", "enter": "DIGITE SEU PIN", "subtitle": "Desbloqueie seu cofre privado", "incorrect": "PIN incorreto." },
+    "modules": { "cannotUndo": "Esta acao nao pode ser desfeita.", "searchActivity": "Buscar movimentacoes", "noResults": "Sem resultados", "noResultsCopy": "Tente outra busca ou filtro.", "categoriesCount": "{{count}} categorias", "noChartData": "Sem dados para graficos", "noChartDataCopy": "Adicione despesas neste mes.", "deleteRecurring": "Excluir operacao recorrente?", "noRecurring": "Sem operacoes recorrentes", "noRecurringCopy": "Crie receitas ou despesas regulares.", "addRecurring": "+ RECORRENTE", "payments": "pagamentos", "registerPayment": "REGISTRAR PAGAMENTO", "deleteDebt": "Excluir divida?", "noDebts": "Sem dividas", "noDebtsCopy": "Acompanhe saldos e pagamentos.", "addDebt": "+ DIVIDA", "goalOf": "Meta: {{target}}", "addContribution": "ADICIONAR APORTE", "deleteGoal": "Excluir meta de economia?", "noGoals": "Sem metas de economia", "noGoalsCopy": "Crie uma meta e acompanhe o progresso.", "addGoal": "+ META", "deleteReminder": "Excluir lembrete?", "noReminders": "Sem lembretes", "noRemindersCopy": "Mantenha datas importantes visiveis.", "addReminder": "+ LEMBRETE", "pinned": "FIXADA", "tapToPin": "TOQUE PARA FIXAR", "deleteNote": "Excluir nota?", "noNotesCopy": "Guarde planos e contexto financeiro.", "balanceDue": "Saldo: {{amount}}", "unknownAccount": "Conta desconhecida", "deleteBudget": "Excluir orcamento?", "budgetRemaining": "Restante: {{amount}}", "noBudgets": "Sem orcamentos por categoria", "noBudgetsCopy": "Defina um limite por categoria.", "addBudget": "+ ORCAMENTO", "newCategoryBudget": "NOVO ORCAMENTO", "account": "CONTA", "period": "PERIODO", "weekly": "SEMANAL", "monthly": "MENSAL", "rollover": "Levar o valor nao usado ao proximo periodo" }
+    ,"navigation": {"overview":"VISAO GERAL","planning":"PLANEJAMENTO","organize":"ORGANIZAR","app":"APP","quickCopy":"Acesso rapido as telas mais usadas.","items":{"accounts":{"title":"Contas","subtitle":"Saldos e moedas"},"activity":{"title":"Atividade","subtitle":"Busque todas as movimentacoes"},"charts":{"title":"Graficos","subtitle":"Despesas mensais por categoria"},"calendar":{"title":"Calendario","subtitle":"Receitas e despesas por dia"},"budget":{"title":"Orcamentos","subtitle":"Limites por categoria"},"recurring":{"title":"Recorrentes","subtitle":"Operacoes programadas"},"debt":{"title":"Dividas","subtitle":"Saldos e pagamentos"},"savings":{"title":"Economias","subtitle":"Metas e aportes"},"reminders":{"title":"Lembretes","subtitle":"Datas financeiras importantes"},"categories":{"title":"Categorias","subtitle":"Personalize sua organizacao"},"notes":{"title":"Notas","subtitle":"Planos e contexto financeiro"},"tools":{"title":"Ferramentas","subtitle":"Calculadoras e conversoes"},"settings":{"title":"Configuracoes","subtitle":"Idioma, moeda, PIN e dados"},"about":{"title":"Sobre","subtitle":"Privacidade e informacoes"}}}
+    ,"notesSearch": "Buscar notas"
+    ,"release": { "noAccounts": "Sem contas", "noAccountsCopy": "Crie sua primeira conta para comecar.", "addAccount": "ADICIONAR CONTA", "archivedAccounts": "CONTAS ARQUIVADAS", "restore": "RESTAURAR", "editAccount": "EDITAR CONTA", "newAccount": "NOVA CONTA", "saveChanges": "SALVAR ALTERACOES", "save": "SALVAR", "archiveAccount": "ARQUIVAR CONTA", "newSavingsGoal": "NOVA META DE ECONOMIA", "name": "NOME", "target": "META", "deadline": "PRAZO", "sourceAccount": "CONTA DE ORIGEM", "destinationAccount": "CONTA DE DESTINO", "previousMonth": "Mes anterior", "nextMonth": "Proximo mes", "newDebt": "NOVA DIVIDA", "creditor": "CREDOR", "dueDate": "VENCIMENTO", "newReminder": "NOVA DATA", "title": "TITULO", "note": "NOTA", "charts": "Graficos", "calendar": "Calendario", "recurringTab": "Recorrentes", "datesTab": "Datas", "pause": "Pausar", "resume": "Retomar" }
+    ,"releaseExtra": { "dataBackups": "DADOS E COPIAS", "dataBackupsCopy": "JSON, CSV e dados locais", "aboutCopy": "Um espaco local e tranquilo para contas, planos e dinheiro diario.", "localOnlyCopy": "Seus dados ficam neste dispositivo salvo quando voce exporta. O PIN e um bloqueio local; nao criptografa os dados.", "exportJson": "EXPORTAR COPIA JSON", "exportCsv": "EXPORTAR CSV", "importData": "IMPORTAR JSON / CSV", "resetData": "APAGAR DADOS LOCAIS", "automaticByRate": "Automático pela taxa", "toolsSubtitle": "Calculadora e ferramentas de dinheiro" }
+    ,"releaseErrors": { "loadError": "Não foi possível carregar os dados locais", "loadErrorCopy": "Tente novamente antes de fazer alterações para proteger suas informações.", "saveError": "As alterações ainda não foram salvas", "saveErrorCopy": "Os dados continuam abertos. Tente novamente ou exporte uma cópia.", "missingRate": "Configure uma taxa de câmbio válida para estas moedas.", "retry": "TENTAR NOVAMENTE" }
+    ,"releaseImport": { "importCopy": "Cole um backup JSON ou uma lista de operacoes CSV.", "importFailed": "Falha ao importar", "invalidBackup": "O backup JSON e invalido.", "csvWarnings": "Avisos do CSV" }
+    ,"releaseFrequency": { "daily": "Diario", "weekly": "Semanal", "monthly": "Mensal", "yearly": "Anual", "custom": "Personalizado" }
+    ,"releaseArchive": { "archiveCopy": "Isso oculta a conta das telas diarias. Voce pode restaura-la depois sem perder operacoes." }
   }
 }

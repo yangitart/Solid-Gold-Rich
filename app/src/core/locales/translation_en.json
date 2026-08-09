@@ -30,6 +30,18 @@
       "cosmic": "A cosmic diamond with its own gravitational field.",
       "infinity": "Infinity class. Your net worth has left the known universe."
     },
+    "onboarding": {
+      "skip": "Skip",
+      "next": "NEXT",
+      "start": "START BUILDING",
+      "pages": {
+        "accounts": { "eyebrow": "FIRST STEP", "title": "Create your accounts", "body": "Open Accounts from the top icon. Choose a type, currency and opening balance. For another currency, enter how much one unit is worth in your primary currency." },
+        "operations": { "eyebrow": "EVERY DAY", "title": "Record every movement", "body": "Use the + button to add expenses, income or transfers. Enter the amount, a description and the category that best represents the operation." },
+        "statistics": { "eyebrow": "UNDERSTAND YOUR NUMBERS", "title": "Explore your statistics", "body": "Tap the statistics icon above Operations. Switch between today, week, month and year to compare income, expenses, cash flow and categories." },
+        "organize": { "eyebrow": "MAKE IT YOURS", "title": "Organize your way", "body": "Use the left menu for tools, categories, notes and settings. The three-dot menu keeps budgets, debt, savings and recurring items together." },
+        "privacy": { "eyebrow": "YOUR DATA", "title": "Private from the start", "body": "Information stays on this device. In Settings you can enable a PIN, change language and primary currency, or export a backup." }
+      }
+    },
     "loading": {
       "kicker": "PRIVATE COLLECTION",
       "subtitle": "THE PERSONAL WEALTH OBJECT",
@@ -122,7 +134,7 @@
     "filters": { "all": "ALL", "expense": "EXPENSES", "income": "INCOME" },
     "categories": { "food": "Food", "housing": "Housing", "transport": "Transport", "shopping": "Shopping", "other": "Other" },
     "toolsList": { "recurring": "Recurring", "debt": "Debt", "calendar": "Calendar", "transfer": "Transfer" },
-    "toolCalculators": { "calculator": "Calculator", "currency": "Currency converter", "discountTax": "Discount & tax", "interest": "Interest calculator", "expression": "EXPRESSION", "amount": "AMOUNT", "fromCurrency": "FROM CURRENCY", "toCurrency": "TO CURRENCY", "rate": "RATE", "offlineRate": "The rate is manual so the app works offline.", "discount": "DISCOUNT (%)", "tax": "TAX (%)", "discountedTotal": "Final total: {{amount}}", "principal": "PRINCIPAL", "annualRate": "ANNUAL RATE (%)", "years": "YEARS", "compounds": "COMPOUNDS / YEAR", "interestEarned": "Interest earned: {{amount}}" },
+    "toolCalculators": { "calculator": "Calculator", "cashCounter": "Cash counter", "cashCounterCopy": "Multiply each denomination by its number of bills to get the total cash.", "cashTotal": "TOTAL CASH", "denomination": "DENOMINATION", "quantity": "QUANTITY", "addDenomination": "ADD DENOMINATION", "currency": "Currency converter", "discountTax": "Discount & tax", "interest": "Interest calculator", "expression": "EXPRESSION", "amount": "AMOUNT", "fromCurrency": "FROM CURRENCY", "toCurrency": "TO CURRENCY", "rate": "RATE", "offlineRate": "The rate is manual so the app works offline.", "discount": "DISCOUNT (%)", "tax": "TAX (%)", "discountedTotal": "Final total: {{amount}}", "principal": "PRINCIPAL", "annualRate": "ANNUAL RATE (%)", "years": "YEARS", "compounds": "COMPOUNDS / YEAR", "interestEarned": "Interest earned: {{amount}}" },
     "defaultBudget": "Personal",
     "availableBalance": "AVAILABLE BALANCE",
     "active": "ACTIVE",
@@ -169,12 +181,25 @@
     "quickOptions": "MORE OPTIONS",
     "weekdays": { "sun": "SUN", "mon": "MON", "tue": "TUE", "wed": "WED", "thu": "THU", "fri": "FRI", "sat": "SAT" },
     "currency": "CURRENCY",
+    "accountType": "ACCOUNT TYPE",
+    "accountTypes": { "cash": "Cash", "bank": "Bank", "card": "Card", "savings": "Savings", "debt": "Debt", "other": "Other" },
+    "selectCurrency": "Select currency",
+    "searchCurrency": "Search by currency code",
     "transferTo": "TRANSFER TO",
     "transferFrom": "TRANSFER FROM",
     "receivedAmount": "RECEIVED AMOUNT",
     "exchangeRate": "EXCHANGE RATE",
     "language": "LANGUAGE",
     "languages": { "en": "English", "es": "Spanish", "pt": "Portuguese", "fr": "French", "de": "German", "it": "Italian" },
-    "pin": { "title": "APP PIN", "enabled": "PIN protection is enabled.", "disabled": "No PIN is configured.", "newPin": "NEW PIN", "confirmPin": "CONFIRM PIN", "set": "SET PIN", "change": "CHANGE PIN", "remove": "REMOVE PIN", "invalid": "Use 4 to 6 digits.", "mismatch": "PINs do not match.", "enter": "ENTER YOUR PIN", "subtitle": "Unlock your private vault", "incorrect": "Incorrect PIN." }
+    "pin": { "title": "APP PIN", "enabled": "PIN protection is enabled.", "disabled": "No PIN is configured.", "newPin": "NEW PIN", "confirmPin": "CONFIRM PIN", "set": "SET PIN", "change": "CHANGE PIN", "remove": "REMOVE PIN", "invalid": "Use 4 to 6 digits.", "mismatch": "PINs do not match.", "enter": "ENTER YOUR PIN", "subtitle": "Unlock your private vault", "incorrect": "Incorrect PIN." },
+    "modules": { "cannotUndo": "This action cannot be undone.", "searchActivity": "Search activity", "noResults": "No results", "noResultsCopy": "Try another search or filter.", "categoriesCount": "{{count}} categories", "noChartData": "No chart data", "noChartDataCopy": "Add expenses this month to see the breakdown.", "deleteRecurring": "Delete recurring operation?", "noRecurring": "No recurring operations", "noRecurringCopy": "Create regular income or expenses.", "addRecurring": "+ RECURRING", "payments": "payments", "registerPayment": "REGISTER PAYMENT", "deleteDebt": "Delete debt?", "noDebts": "No debts", "noDebtsCopy": "Track balances and payments.", "addDebt": "+ DEBT", "goalOf": "Goal: {{target}}", "addContribution": "ADD CONTRIBUTION", "deleteGoal": "Delete savings goal?", "noGoals": "No savings goals", "noGoalsCopy": "Create a goal and track your progress.", "addGoal": "+ SAVINGS GOAL", "deleteReminder": "Delete reminder?", "noReminders": "No reminders", "noRemindersCopy": "Keep important dates visible here.", "addReminder": "+ REMINDER", "pinned": "PINNED", "tapToPin": "TAP TO PIN", "deleteNote": "Delete note?", "noNotesCopy": "Keep plans and money context here.", "balanceDue": "Balance: {{amount}}", "unknownAccount": "Unknown account", "deleteBudget": "Delete budget?", "budgetRemaining": "Remaining: {{amount}}", "noBudgets": "No category budgets", "noBudgetsCopy": "Set a limit to control spending by category.", "addBudget": "+ CATEGORY BUDGET", "newCategoryBudget": "NEW CATEGORY BUDGET", "account": "ACCOUNT", "period": "PERIOD", "weekly": "WEEKLY", "monthly": "MONTHLY", "rollover": "Carry unused amount to next period" },
+    "navigation": { "overview": "OVERVIEW", "planning": "PLANNING", "organize": "ORGANIZE", "app": "APP", "quickCopy": "Fast access to the views you use most.", "items": { "accounts": { "title": "Accounts", "subtitle": "Balances and currencies" }, "activity": { "title": "Activity", "subtitle": "Search all movements" }, "charts": { "title": "Charts", "subtitle": "Monthly category breakdown" }, "calendar": { "title": "Calendar", "subtitle": "Income and expenses by day" }, "budget": { "title": "Budgets", "subtitle": "Category spending limits" }, "recurring": { "title": "Recurring", "subtitle": "Scheduled operations" }, "debt": { "title": "Debt", "subtitle": "Balances and payments" }, "savings": { "title": "Savings", "subtitle": "Goals and contributions" }, "reminders": { "title": "Reminders", "subtitle": "Important financial dates" }, "categories": { "title": "Categories", "subtitle": "Customize your organization" }, "notes": { "title": "Notes", "subtitle": "Plans and financial context" }, "tools": { "title": "Money tools", "subtitle": "Calculators and conversions" }, "settings": { "title": "Settings", "subtitle": "Language, currency, PIN and data" }, "about": { "title": "About", "subtitle": "Privacy and app information" } } }
+    ,"notesSearch": "Search notes"
+    ,"release": { "noAccounts": "No accounts", "noAccountsCopy": "Create your first account to begin.", "addAccount": "ADD ACCOUNT", "archivedAccounts": "ARCHIVED ACCOUNTS", "restore": "RESTORE", "editAccount": "EDIT ACCOUNT", "newAccount": "NEW ACCOUNT", "saveChanges": "SAVE CHANGES", "save": "SAVE", "archiveAccount": "ARCHIVE ACCOUNT", "newSavingsGoal": "NEW SAVINGS GOAL", "name": "NAME", "target": "TARGET", "deadline": "DEADLINE", "sourceAccount": "SOURCE ACCOUNT", "destinationAccount": "DESTINATION ACCOUNT", "previousMonth": "Previous month", "nextMonth": "Next month", "newDebt": "NEW DEBT", "creditor": "CREDITOR", "dueDate": "DUE DATE", "newReminder": "NEW DATE", "title": "TITLE", "note": "NOTE", "charts": "Charts", "calendar": "Calendar", "recurringTab": "Recurring", "datesTab": "Dates", "pause": "Pause", "resume": "Resume" }
+    ,"releaseExtra": { "dataBackups": "DATA & BACKUPS", "dataBackupsCopy": "JSON, CSV and local data", "aboutCopy": "A calm, local-first space for accounts, plans and everyday money.", "localOnlyCopy": "Your data remains on this device unless you export it. The PIN is a local lock; it does not encrypt your data.", "exportJson": "EXPORT JSON BACKUP", "exportCsv": "EXPORT CSV", "importData": "IMPORT JSON / CSV", "resetData": "RESET LOCAL DATA", "automaticByRate": "Automatic by rate", "toolsSubtitle": "Calculator and cash tools" }
+    ,"releaseErrors": { "loadError": "Your local data could not be loaded", "loadErrorCopy": "Try again before making changes so your existing information stays protected.", "saveError": "Changes are not saved yet", "saveErrorCopy": "Your information remains open. Retry or export a backup from Settings.", "missingRate": "Configure a valid exchange rate for these currencies.", "retry": "TRY AGAIN" }
+    ,"releaseImport": { "importCopy": "Paste a JSON backup or a CSV operation list.", "importFailed": "Import failed", "invalidBackup": "The JSON backup is invalid.", "csvWarnings": "CSV warnings" }
+    ,"releaseFrequency": { "daily": "Daily", "weekly": "Weekly", "monthly": "Monthly", "yearly": "Yearly", "custom": "Custom" }
+    ,"releaseArchive": { "archiveCopy": "This hides the account from daily views. You can restore it later without losing its operations." }
   }
 }

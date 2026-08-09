@@ -30,6 +30,18 @@
       "cosmic": "Ein kosmischer Diamant mit eigenem Gravitationsfeld.",
       "infinity": "Unendliche Klasse. Dein Vermögen hat das bekannte Universum verlassen."
     },
+    "onboarding": {
+      "skip": "Überspringen",
+      "next": "WEITER",
+      "start": "LOSLEGEN",
+      "pages": {
+        "accounts": { "eyebrow": "ERSTER SCHRITT", "title": "Erstelle deine Konten", "body": "Öffne Konten über das obere Symbol. Wähle Typ, Währung und Anfangssaldo. Für eine andere Währung gib den Wert in deiner Hauptwährung ein." },
+        "operations": { "eyebrow": "JEDEN TAG", "title": "Erfasse jede Bewegung", "body": "Mit + fügst du Ausgaben, Einnahmen oder Überweisungen hinzu. Trage Betrag, Beschreibung und die passende Kategorie ein." },
+        "statistics": { "eyebrow": "VERSTEHE DEINE ZAHLEN", "title": "Nutze die Statistiken", "body": "Tippe über den Buchungen auf das Statistik-Symbol. Vergleiche heute, Woche, Monat und Jahr sowie Einnahmen, Ausgaben und Kategorien." },
+        "organize": { "eyebrow": "DEINE ORGANISATION", "title": "Ordne alles nach Wunsch", "body": "Im linken Menü findest du Werkzeuge, Kategorien, Notizen und Einstellungen. Die drei Punkte bündeln Budgets, Schulden, Sparziele und wiederkehrende Vorgänge." },
+        "privacy": { "eyebrow": "DEINE DATEN", "title": "Privat von Beginn an", "body": "Die Daten bleiben auf diesem Gerät. In Einstellungen kannst du eine PIN aktivieren, Sprache und Hauptwährung ändern oder ein Backup exportieren." }
+      }
+    },
     "loading": {
       "kicker": "PRIVATE SAMMLUNG",
       "subtitle": "DAS PERSÖNLICHE VERMÖGENSOBJEKT",
@@ -122,7 +134,7 @@
     "filters": { "all": "ALLE", "expense": "AUSGABEN", "income": "EINNAHMEN" },
     "categories": { "food": "Lebensmittel", "housing": "Wohnen", "transport": "Transport", "shopping": "Einkaeufe", "other": "Sonstiges" },
     "toolsList": { "recurring": "Wiederkehrend", "debt": "Schulden", "calendar": "Kalender", "transfer": "Ueberweisung" },
-    "toolCalculators": { "calculator": "Rechner", "currency": "Waehrungsrechner", "discountTax": "Rabatt und Steuer", "interest": "Zinsrechner", "expression": "AUSDRUCK", "amount": "BETRAG", "fromCurrency": "AUSGANGSWAEHRUNG", "toCurrency": "ZIELWAEHRUNG", "rate": "KURS", "offlineRate": "Der Kurs wird manuell eingegeben, damit die App offline funktioniert.", "discount": "RABATT (%)", "tax": "STEUER (%)", "discountedTotal": "Endbetrag: {{amount}}", "principal": "KAPITAL", "annualRate": "JAHRESZINS (%)", "years": "JAHRE", "compounds": "VERZINSUNGEN / JAHR", "interestEarned": "Zinsertrag: {{amount}}" },
+    "toolCalculators": { "calculator": "Rechner", "cashCounter": "Geldscheinzähler", "cashCounterCopy": "Multipliziere jeden Nennwert mit der Anzahl der Scheine, um den Gesamtbetrag zu erhalten.", "cashTotal": "BARGELD GESAMT", "denomination": "NENNWERT", "quantity": "ANZAHL", "addDenomination": "NENNWERT HINZUFÜGEN", "currency": "Waehrungsrechner", "discountTax": "Rabatt und Steuer", "interest": "Zinsrechner", "expression": "AUSDRUCK", "amount": "BETRAG", "fromCurrency": "AUSGANGSWAEHRUNG", "toCurrency": "ZIELWAEHRUNG", "rate": "KURS", "offlineRate": "Der Kurs wird manuell eingegeben, damit die App offline funktioniert.", "discount": "RABATT (%)", "tax": "STEUER (%)", "discountedTotal": "Endbetrag: {{amount}}", "principal": "KAPITAL", "annualRate": "JAHRESZINS (%)", "years": "JAHRE", "compounds": "VERZINSUNGEN / JAHR", "interestEarned": "Zinsertrag: {{amount}}" },
     "defaultBudget": "Persoenlich",
     "availableBalance": "VERFUEGBARER SALDO",
     "active": "AKTIV",
@@ -169,12 +181,25 @@
     "quickOptions": "WEITERE OPTIONEN",
     "weekdays": { "sun": "SO", "mon": "MO", "tue": "DI", "wed": "MI", "thu": "DO", "fri": "FR", "sat": "SA" },
     "currency": "WÄHRUNG",
+    "accountType": "KONTOTYP",
+    "accountTypes": { "cash": "Bargeld", "bank": "Bank", "card": "Karte", "savings": "Sparen", "debt": "Schulden", "other": "Andere" },
+    "selectCurrency": "Währung auswählen",
+    "searchCurrency": "Nach Währungscode suchen",
     "transferTo": "UBERTRAGEN AN",
     "transferFrom": "UBERTRAGEN VON",
     "receivedAmount": "ERHALTENER BETRAG",
     "exchangeRate": "WECHSELKURS",
     "language": "SPRACHE",
     "languages": { "en": "Englisch", "es": "Spanisch", "pt": "Portugiesisch", "fr": "Franzoesisch", "de": "Deutsch", "it": "Italienisch" },
-    "pin": { "title": "APP-PIN", "enabled": "PIN-Schutz ist aktiviert.", "disabled": "Keine PIN eingerichtet.", "newPin": "NEUE PIN", "confirmPin": "PIN BESTAETIGEN", "set": "PIN EINRICHTEN", "change": "PIN AENDERN", "remove": "PIN ENTFERNEN", "invalid": "Verwende 4 bis 6 Ziffern.", "mismatch": "Die PINs stimmen nicht ueberein.", "enter": "PIN EINGEBEN", "subtitle": "Tresor entsperren", "incorrect": "Falsche PIN." }
+    "pin": { "title": "APP-PIN", "enabled": "PIN-Schutz ist aktiviert.", "disabled": "Keine PIN eingerichtet.", "newPin": "NEUE PIN", "confirmPin": "PIN BESTAETIGEN", "set": "PIN EINRICHTEN", "change": "PIN AENDERN", "remove": "PIN ENTFERNEN", "invalid": "Verwende 4 bis 6 Ziffern.", "mismatch": "Die PINs stimmen nicht ueberein.", "enter": "PIN EINGEBEN", "subtitle": "Tresor entsperren", "incorrect": "Falsche PIN." },
+    "modules": { "cannotUndo": "Diese Aktion kann nicht rueckgaengig gemacht werden.", "searchActivity": "Aktivitaeten suchen", "noResults": "Keine Ergebnisse", "noResultsCopy": "Versuche eine andere Suche.", "categoriesCount": "{{count}} Kategorien", "noChartData": "Keine Diagrammdaten", "noChartDataCopy": "Fuege diesen Monat Ausgaben hinzu.", "deleteRecurring": "Wiederkehrenden Vorgang loeschen?", "noRecurring": "Keine wiederkehrenden Vorgaenge", "noRecurringCopy": "Erstelle regelmaessige Einnahmen oder Ausgaben.", "addRecurring": "+ WIEDERKEHREND", "payments": "Zahlungen", "registerPayment": "ZAHLUNG EINTRAGEN", "deleteDebt": "Schuld loeschen?", "noDebts": "Keine Schulden", "noDebtsCopy": "Verfolge Salden und Zahlungen.", "addDebt": "+ SCHULD", "goalOf": "Ziel: {{target}}", "addContribution": "BEITRAG HINZUFUEGEN", "deleteGoal": "Sparziel loeschen?", "noGoals": "Keine Sparziele", "noGoalsCopy": "Erstelle ein Ziel und verfolge den Fortschritt.", "addGoal": "+ SPARZIEL", "deleteReminder": "Erinnerung loeschen?", "noReminders": "Keine Erinnerungen", "noRemindersCopy": "Behalte wichtige Termine im Blick.", "addReminder": "+ ERINNERUNG", "pinned": "ANGEHEFTET", "tapToPin": "ZUM ANHEFTEN TIPPEN", "deleteNote": "Notiz loeschen?", "noNotesCopy": "Bewahre Plaene und Finanznotizen auf.", "balanceDue": "Saldo: {{amount}}", "unknownAccount": "Unbekanntes Konto", "deleteBudget": "Budget loeschen?", "budgetRemaining": "Verbleibend: {{amount}}", "noBudgets": "Keine Kategorie-Budgets", "noBudgetsCopy": "Lege ein Limit pro Kategorie fest.", "addBudget": "+ BUDGET", "newCategoryBudget": "NEUES BUDGET", "account": "KONTO", "period": "ZEITRAUM", "weekly": "WOECHENTLICH", "monthly": "MONATLICH", "rollover": "Ungenutzten Betrag uebertragen" }
+    ,"navigation": {"overview":"UEBERSICHT","planning":"PLANUNG","organize":"ORGANISIEREN","app":"APP","quickCopy":"Schnellzugriff auf deine wichtigsten Ansichten.","items":{"accounts":{"title":"Konten","subtitle":"Salden und Waehrungen"},"activity":{"title":"Aktivitaet","subtitle":"Alle Vorgaenge durchsuchen"},"charts":{"title":"Diagramme","subtitle":"Monatliche Kategorien"},"calendar":{"title":"Kalender","subtitle":"Einnahmen und Ausgaben pro Tag"},"budget":{"title":"Budgets","subtitle":"Limits nach Kategorie"},"recurring":{"title":"Wiederkehrend","subtitle":"Geplante Vorgaenge"},"debt":{"title":"Schulden","subtitle":"Salden und Zahlungen"},"savings":{"title":"Sparziele","subtitle":"Ziele und Beitraege"},"reminders":{"title":"Erinnerungen","subtitle":"Wichtige Finanztermine"},"categories":{"title":"Kategorien","subtitle":"Organisation anpassen"},"notes":{"title":"Notizen","subtitle":"Plaene und Finanzkontext"},"tools":{"title":"Werkzeuge","subtitle":"Rechner und Umrechnungen"},"settings":{"title":"Einstellungen","subtitle":"Sprache, Waehrung, PIN und Daten"},"about":{"title":"Info","subtitle":"Datenschutz und App-Informationen"}}}
+    ,"notesSearch": "Notizen suchen"
+    ,"release": { "noAccounts": "Keine Konten", "noAccountsCopy": "Erstelle dein erstes Konto.", "addAccount": "KONTO HINZUFUEGEN", "archivedAccounts": "ARCHIVIERTE KONTEN", "restore": "WIEDERHERSTELLEN", "editAccount": "KONTO BEARBEITEN", "newAccount": "NEUES KONTO", "saveChanges": "AENDERUNGEN SPEICHERN", "save": "SPEICHERN", "archiveAccount": "KONTO ARCHIVIEREN", "newSavingsGoal": "NEUES SPARZIEL", "name": "NAME", "target": "ZIEL", "deadline": "FRIST", "sourceAccount": "QUELLKONTO", "destinationAccount": "ZIELKONTO", "previousMonth": "Vorheriger Monat", "nextMonth": "Naechster Monat", "newDebt": "NEUE SCHULD", "creditor": "GLAEUBIGER", "dueDate": "FAELLIGKEIT", "newReminder": "NEUER TERMIN", "title": "TITEL", "note": "NOTIZ", "charts": "Diagramme", "calendar": "Kalender", "recurringTab": "Wiederkehrend", "datesTab": "Termine", "pause": "Pausieren", "resume": "Fortsetzen" }
+    ,"releaseExtra": { "dataBackups": "DATEN UND SICHERUNGEN", "dataBackupsCopy": "JSON, CSV und lokale Daten", "aboutCopy": "Ein ruhiger lokaler Ort fuer Konten, Plaene und Alltagsfinanzen.", "localOnlyCopy": "Deine Daten bleiben auf diesem Geraet, ausser du exportierst sie. Die PIN ist eine lokale Sperre und verschluesselt keine Daten.", "exportJson": "JSON-SICHERUNG EXPORTIEREN", "exportCsv": "CSV EXPORTIEREN", "importData": "JSON / CSV IMPORTIEREN", "resetData": "LOKALE DATEN LOESCHEN", "automaticByRate": "Automatisch nach Kurs", "toolsSubtitle": "Rechner und Bargeldwerkzeuge" }
+    ,"releaseErrors": { "loadError": "Lokale Daten konnten nicht geladen werden", "loadErrorCopy": "Versuche es erneut, bevor du Änderungen vornimmst.", "saveError": "Änderungen sind noch nicht gespeichert", "saveErrorCopy": "Deine Daten bleiben geöffnet. Wiederhole den Vorgang oder exportiere eine Sicherung.", "missingRate": "Lege einen gültigen Wechselkurs für diese Währungen fest.", "retry": "ERNEUT VERSUCHEN" }
+    ,"releaseImport": { "importCopy": "Fuege eine JSON-Sicherung oder eine CSV-Vorgangsliste ein.", "importFailed": "Import fehlgeschlagen", "invalidBackup": "Die JSON-Sicherung ist ungueltig.", "csvWarnings": "CSV-Warnungen" }
+    ,"releaseFrequency": { "daily": "Taeglich", "weekly": "Woechentlich", "monthly": "Monatlich", "yearly": "Jaehrlich", "custom": "Benutzerdefiniert" }
+    ,"releaseArchive": { "archiveCopy": "Das Konto wird in Alltagsansichten ausgeblendet. Du kannst es spaeter ohne Datenverlust wiederherstellen." }
   }
 }

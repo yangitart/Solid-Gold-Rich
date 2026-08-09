@@ -1,5 +1,4 @@
 import React from 'react';
-import { Alert } from 'react-native';
 import type {
   Account,
   Budget,
@@ -13,15 +12,24 @@ import type {
   Transaction,
   Transfer,
 } from './types';
-import { emptyFinanceState, importCsv, loadFinanceState, saveFinanceState } from './storage';
+import { emptyFinanceState, importCsv, loadFinanceState, normalizeFinanceState, saveFinanceState } from './storage';
+
+export type PersistenceStatus = 'loading' | 'ready' | 'saving' | 'error';
+export type PersistenceErrorPhase = 'load' | 'save' | null;
 
 type FinanceContextValue = {
   state: FinanceState;
   loaded: boolean;
+  persistenceStatus: PersistenceStatus;
+  persistenceError: string | null;
+  persistenceErrorPhase: PersistenceErrorPhase;
+  retryLoad: () => void;
+  retryPersistence: () => void;
   updateState: (updater: (state: FinanceState) => FinanceState) => void;
   addAccount: (account: Account) => void;
   updateAccount: (account: Account) => void;
   archiveAccount: (id: string) => void;
+  restoreAccount: (id: string) => void;
   addTransaction: (transaction: Transaction) => void;
   updateTransaction: (transaction: Transaction) => void;
   deleteTransaction: (id: string) => void;
@@ -61,8 +69,23 @@ function nextRecurringDate(date: string, frequency: RecurringTransaction['freque
   const next = new Date(date);
   if (frequency === 'daily') next.setDate(next.getDate() + 1);
   if (frequency === 'weekly') next.setDate(next.getDate() + 7);
-  if (frequency === 'monthly') next.setMonth(next.getMonth() + 1);
-  if (frequency === 'yearly') next.setFullYear(next.getFullYear() + 1);
+  if (frequency === 'monthly') {
+    const intendedDay = next.getDate();
+    const wasLastDay = intendedDay === new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+    next.setDate(1);
+    next.setMonth(next.getMonth() + 1);
+    const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
+    next.setDate(wasLastDay ? lastDay : Math.min(intendedDay, lastDay));
+  }
+  if (frequency === 'yearly') {
+    const intendedMonth = next.getMonth();
+    const intendedDay = next.getDate();
+    next.setDate(1);
+    next.setFullYear(next.getFullYear() + 1);
+    next.setMonth(intendedMonth);
+    const lastDay = new Date(next.getFullYear(), intendedMonth + 1, 0).getDate();
+    next.setDate(Math.min(intendedDay, lastDay));
+  }
   return next.toISOString();
 }
 
@@ -73,14 +96,33 @@ function newId(prefix: string) {
 export function FinanceProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = React.useState<FinanceState>(emptyFinanceState);
   const [loaded, setLoaded] = React.useState(false);
+  const [persistenceStatus, setPersistenceStatus] = React.useState<PersistenceStatus>('loading');
+  const [persistenceError, setPersistenceError] = React.useState<string | null>(null);
+  const [persistenceErrorPhase, setPersistenceErrorPhase] = React.useState<PersistenceErrorPhase>(null);
+  const loadedSuccessfully = React.useRef(false);
+  const saveSequence = React.useRef(Promise.resolve());
 
-  React.useEffect(() => {
+  const retryLoad = React.useCallback(() => {
     let active = true;
+    setLoaded(false);
+    setPersistenceStatus('loading');
+    setPersistenceError(null);
+    setPersistenceErrorPhase(null);
     void loadFinanceState()
       .then((loadedState) => {
-        if (active) setState(loadedState);
+        if (!active) return;
+        loadedSuccessfully.current = true;
+        setState(loadedState);
+        setPersistenceStatus('ready');
+        setPersistenceErrorPhase(null);
       })
-      .catch(() => undefined)
+      .catch((error: unknown) => {
+        if (!active) return;
+        loadedSuccessfully.current = false;
+        setPersistenceError(error instanceof Error ? error.message : 'Unable to load local data.');
+        setPersistenceErrorPhase('load');
+        setPersistenceStatus('error');
+      })
       .finally(() => {
         if (active) setLoaded(true);
       });
@@ -88,24 +130,56 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   React.useEffect(() => {
-    if (loaded) void saveFinanceState(state);
+    const cleanup = retryLoad();
+    return cleanup;
+  }, [retryLoad]);
+
+  React.useEffect(() => {
+    if (!loaded || !loadedSuccessfully.current) return;
+    setPersistenceStatus('saving');
+    saveSequence.current = saveSequence.current
+      .catch(() => undefined)
+      .then(() => saveFinanceState(state))
+      .then(() => {
+        setPersistenceError(null);
+        setPersistenceErrorPhase(null);
+        setPersistenceStatus('ready');
+      })
+      .catch((error: unknown) => {
+        setPersistenceError(error instanceof Error ? error.message : 'Unable to save local data.');
+        setPersistenceErrorPhase('save');
+        setPersistenceStatus('error');
+      });
   }, [loaded, state]);
 
   React.useEffect(() => {
     if (!loaded) return;
-    const due = state.recurring.filter((item) => item.active && new Date(item.nextDate).getTime() <= Date.now() && item.lastGeneratedDate !== item.nextDate);
+    const due = state.recurring.filter((item) => item.active && new Date(item.nextDate).getTime() <= Date.now());
     if (!due.length) return;
     setState((current) => {
       const generated: Transaction[] = [];
+      const existingOccurrences = new Set(current.transactions.filter((item) => item.recurringId).map((item) => `${item.recurringId}|${item.date}`));
       const recurring = current.recurring.map((item) => {
         const rule = due.find((candidate) => candidate.id === item.id);
         if (!rule) return item;
-        generated.push({
-          id: newId('recurring'), accountId: item.accountId, kind: item.kind, amount: item.amount, currency: item.currency,
-          date: item.nextDate, payee: item.payee, category: item.category, paymentMethod: item.paymentMethod, status: 'cleared',
-          reference: item.id, description: item.description, recurringId: item.id,
-        });
-        return { ...item, lastGeneratedDate: item.nextDate, nextDate: nextRecurringDate(item.nextDate, item.frequency) };
+        let occurrence = item.nextDate;
+        let lastGeneratedDate = item.lastGeneratedDate;
+        let safety = 0;
+        while (new Date(occurrence).getTime() <= Date.now() && safety < 3660) {
+          const occurrenceKey = `${item.id}|${occurrence}`;
+          if (!existingOccurrences.has(occurrenceKey)) {
+            generated.push({
+              id: newId('recurring'), accountId: item.accountId, kind: item.kind, amount: item.amount, currency: item.currency,
+              date: occurrence, payee: item.payee, category: item.category, paymentMethod: item.paymentMethod, status: 'cleared',
+              reference: item.id, description: item.description, recurringId: item.id,
+            });
+            existingOccurrences.add(occurrenceKey);
+          }
+          lastGeneratedDate = occurrence;
+          occurrence = nextRecurringDate(occurrence, item.frequency);
+          safety += 1;
+        }
+        return { ...item, lastGeneratedDate, nextDate: occurrence };
       });
       return { ...current, recurring, transactions: [...generated, ...current.transactions] };
     });
@@ -117,7 +191,12 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
 
   const addAccount = React.useCallback((account: Account) => updateState((current) => ({ ...current, accounts: [...current.accounts, account] })), [updateState]);
   const updateAccount = React.useCallback((account: Account) => updateState((current) => ({ ...current, accounts: replaceById(current.accounts, account) })), [updateState]);
-  const archiveAccount = React.useCallback((id: string) => updateState((current) => ({ ...current, accounts: current.accounts.map((item) => item.id === id ? { ...item, archived: true } : item) })), [updateState]);
+  const archiveAccount = React.useCallback((id: string) => updateState((current) => {
+    const accounts = current.accounts.map((item) => item.id === id ? { ...item, archived: true } : item);
+    const nextActive = current.settings.activeAccountId === id ? accounts.find((item) => !item.archived)?.id : current.settings.activeAccountId;
+    return { ...current, accounts, settings: { ...current.settings, activeAccountId: nextActive } };
+  }), [updateState]);
+  const restoreAccount = React.useCallback((id: string) => updateState((current) => ({ ...current, accounts: current.accounts.map((item) => item.id === id ? { ...item, archived: false } : item) })), [updateState]);
   const addTransaction = React.useCallback((transaction: Transaction) => updateState((current) => ({ ...current, transactions: [transaction, ...current.transactions] })), [updateState]);
   const updateTransaction = React.useCallback((transaction: Transaction) => updateState((current) => ({ ...current, transactions: replaceById(current.transactions, transaction) })), [updateState]);
   const deleteTransaction = React.useCallback((id: string) => updateState((current) => ({ ...current, transactions: current.transactions.filter((item) => item.id !== id) })), [updateState]);
@@ -155,11 +234,30 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   const deleteNoteFolder = React.useCallback((id: string) => updateState((current) => ({ ...current, noteFolders: current.noteFolders.filter((folder) => folder.id !== id), notes: current.notes.map((note) => note.folderId === id ? { ...note, folderId: undefined } : note) })), [updateState]);
   const updateCategories = React.useCallback((categories: FinanceState['categories']) => updateState((current) => ({ ...current, categories })), [updateState]);
 
+  const retryPersistence = React.useCallback(() => {
+    if (!loadedSuccessfully.current) {
+      retryLoad();
+      return;
+    }
+    setPersistenceStatus('saving');
+    setPersistenceError(null);
+    setPersistenceErrorPhase(null);
+    saveSequence.current = saveSequence.current
+      .catch(() => undefined)
+      .then(() => saveFinanceState(state))
+      .then(() => { setPersistenceStatus('ready'); setPersistenceErrorPhase(null); })
+      .catch((error: unknown) => {
+        setPersistenceError(error instanceof Error ? error.message : 'Unable to save local data.');
+        setPersistenceErrorPhase('save');
+        setPersistenceStatus('error');
+      });
+  }, [retryLoad, state]);
+
   const importJson = React.useCallback((json: string) => {
     try {
       const parsed = JSON.parse(json) as FinanceState;
-      if (!parsed || parsed.schemaVersion !== 2 || !Array.isArray(parsed.accounts) || !Array.isArray(parsed.transactions)) return false;
-      setState({ ...emptyFinanceState(), ...parsed, schemaVersion: 2 });
+      if (!parsed || ![2, 3].includes(Number(parsed.schemaVersion)) || !Array.isArray(parsed.accounts) || !Array.isArray(parsed.transactions)) return false;
+      setState(normalizeFinanceState(parsed));
       return true;
     } catch {
       return false;
@@ -173,19 +271,14 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     return result.errors;
   }, [state.accounts, state.settings.preferredCurrency, updateState]);
 
-  const resetData = React.useCallback(() => {
-    Alert.alert('Reset data', 'This removes all local financial data.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Reset', style: 'destructive', onPress: () => setState(emptyFinanceState()) },
-    ]);
-  }, []);
+  const resetData = React.useCallback(() => setState(emptyFinanceState()), []);
 
   const value = React.useMemo(() => ({
-    state, loaded, updateState, addAccount, updateAccount, archiveAccount, addTransaction, updateTransaction,
+    state, loaded, persistenceStatus, persistenceError, persistenceErrorPhase, retryLoad, retryPersistence, updateState, addAccount, updateAccount, archiveAccount, restoreAccount, addTransaction, updateTransaction,
     deleteTransaction, addTransfer, deleteTransfer, addBudget, updateBudget, deleteBudget, addRecurring,
     updateRecurring, addDebt, updateDebt, addSavingsGoal, updateSavingsGoal, addReminder, updateReminder,
     addNote, updateNote, addNoteFolder, updateNoteFolder, deleteNoteFolder, updateCategories, importJson, importCsvText, resetData,
-  }), [state, loaded, updateState, addAccount, updateAccount, archiveAccount, addTransaction, updateTransaction, deleteTransaction, addTransfer, deleteTransfer, addBudget, updateBudget, deleteBudget, addRecurring, updateRecurring, addDebt, updateDebt, addSavingsGoal, updateSavingsGoal, addReminder, updateReminder, addNote, updateNote, addNoteFolder, updateNoteFolder, deleteNoteFolder, updateCategories, importJson, importCsvText, resetData]);
+  }), [state, loaded, persistenceStatus, persistenceError, persistenceErrorPhase, retryLoad, retryPersistence, updateState, addAccount, updateAccount, archiveAccount, restoreAccount, addTransaction, updateTransaction, deleteTransaction, addTransfer, deleteTransfer, addBudget, updateBudget, deleteBudget, addRecurring, updateRecurring, addDebt, updateDebt, addSavingsGoal, updateSavingsGoal, addReminder, updateReminder, addNote, updateNote, addNoteFolder, updateNoteFolder, deleteNoteFolder, updateCategories, importJson, importCsvText, resetData]);
 
   return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;
 }

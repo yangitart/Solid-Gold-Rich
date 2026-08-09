@@ -1,5 +1,4 @@
 import React from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import {
   KeyboardAvoidingView,
   Alert,
@@ -14,7 +13,6 @@ import {
   useWindowDimensions,
   View,
 } from 'react-native';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -23,9 +21,13 @@ import Gem from '../components/Gem';
 import { C, SANS, SERIF } from '../theme/luxury';
 import type { FinanceModuleName } from './FinanceModulesScreen';
 import { useFinance } from '../core/finance/FinanceContext';
+import type { Account as FinanceAccount } from '../core/finance/types';
+import { currencyRate } from '../core/finance/currency';
 
 type TransactionKind = 'expense' | 'income' | 'transfer';
 type ScreenMode = 'budget' | 'allActivity';
+type StatsRange = 'today' | 'week' | 'month' | 'year';
+type StatsView = 'charts' | 'calendar';
 
 type Category = string;
 
@@ -43,6 +45,7 @@ type Transaction = {
 type BudgetAccount = {
   id: string;
   name: string;
+  type: FinanceAccount['type'];
   openingBalance: number;
   limit: number;
   limitSet: boolean;
@@ -55,20 +58,17 @@ type BudgetAccount = {
 type PortfolioTransaction = Transaction & { budgetId: string; budgetName: string; budgetColor: string };
 
 function HeaderBackButton({ onPress }: { onPress: () => void }) {
-  return <Pressable onPress={onPress} style={styles.screenBackButton} hitSlop={8} accessibilityRole="button" accessibilityLabel="Go back"><Ionicons name="arrow-back-outline" size={19} color={C.goldLight} /></Pressable>;
+  const { t } = useTranslation();
+  return <Pressable onPress={onPress} style={styles.screenBackButton} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('finance.cancel')}><Ionicons name="arrow-back-outline" size={19} color={C.goldLight} /></Pressable>;
 }
 
-const BUDGETS_KEY = '@solid-gold/budget-accounts-v1';
-const ACTIVE_BUDGET_KEY = '@solid-gold/active-budget-v1';
-const LEGACY_TRANSACTIONS_KEY = '@solid-gold/transactions';
-const LEGACY_BUDGET_KEY = '@solid-gold/monthly-budget';
-const DEFAULT_LIMIT = 2500;
-const ACCOUNT_COLORS = ['#E9C877', '#7DD9B2', '#80B9FF', '#D99BEF', '#F08B88'];
+const ACCOUNT_COLORS = ['#E9C877', '#B7AD84', '#80B9FF', '#D99BEF', '#F08B88'];
 
 function createDefaultBudget(name: string): BudgetAccount {
   return {
     id: 'personal',
     name,
+    type: 'cash',
     openingBalance: 0,
     limit: 0,
     limitSet: false,
@@ -103,11 +103,7 @@ function balanceFor(budget: BudgetAccount) {
 }
 
 function formatMoney(value: number, language: string, currency = 'USD') {
-  return value.toLocaleString(language, {
-    style: 'currency',
-    currency,
-    maximumFractionDigits: 0,
-  });
+  return `${value.toLocaleString(language, { maximumFractionDigits: 2 })} ${currency}`;
 }
 
 function MenuGlyph() {
@@ -132,13 +128,13 @@ function AccountsGlyph() {
 }
 
 function DrawerModuleGlyph({ module }: { module: string }) {
-  const iconName: React.ComponentProps<typeof Ionicons>['name'] = module === 'tools'
-    ? 'construct-outline'
-    : module === 'categories'
-      ? 'grid-outline'
-      : module === 'notes'
-        ? 'document-text-outline'
-        : 'settings-outline';
+  const icons: Record<string, React.ComponentProps<typeof Ionicons>['name']> = {
+    accounts: 'wallet-outline', activity: 'receipt-outline', budget: 'speedometer-outline', recurring: 'repeat-outline',
+    debt: 'card-outline', savings: 'trending-up-outline', reminders: 'notifications-outline', calendar: 'calendar-outline',
+    charts: 'bar-chart-outline', categories: 'grid-outline', notes: 'document-text-outline', tools: 'calculator-outline',
+    settings: 'settings-outline', about: 'information-circle-outline',
+  };
+  const iconName = icons[module] ?? 'apps-outline';
 
   return <Ionicons name={iconName} size={20} color={C.gold} />;
 }
@@ -155,37 +151,6 @@ function ProgressBar({ progress, color }: { progress: number; color: string }) {
           },
         ]}
       />
-    </View>
-  );
-}
-
-function PeriodCard({
-  label,
-  income,
-  expenses,
-  language,
-  currency = 'USD',
-}: {
-  label: string;
-  income: number;
-  expenses: number;
-  language: string;
-  currency?: string;
-}) {
-  const net = income - expenses;
-  return (
-    <View style={styles.periodCard}>
-      <View style={styles.periodTop}>
-        <Text style={styles.periodLabel} numberOfLines={1}>{label}</Text>
-        <Text style={[styles.periodNet, net < 0 ? styles.expenseText : styles.incomeText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
-          {formatMoney(net, language, currency)}
-        </Text>
-      </View>
-      <View style={styles.periodValues}>
-        <Text style={[styles.periodValue, styles.incomeText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>+{formatMoney(income, language, currency)}</Text>
-        <View style={styles.periodDivider} />
-        <Text style={[styles.periodValue, styles.expenseText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>-{formatMoney(expenses, language, currency)}</Text>
-      </View>
     </View>
   );
 }
@@ -259,19 +224,51 @@ function ActivityHeatmap({
   );
 }
 
-export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: FinanceModuleName) => void }) {
+export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { onOpenModule?: (module: FinanceModuleName, returnToDrawer?: boolean) => void; drawerReopenSignal?: number }) {
   const { t, i18n } = useTranslation();
-  const { state: financeState } = useFinance();
+  const finance = useFinance();
+  const { state: financeState, loaded: financeLoaded, updateState: updateFinanceState } = finance;
   const language = i18n.resolvedLanguage ?? i18n.language ?? 'en';
-  const { height } = useWindowDimensions();
-  const initialBudgetName = React.useRef(t('finance.defaultBudget'));
-  const [budgets, setBudgets] = React.useState<BudgetAccount[]>(() => [createDefaultBudget(initialBudgetName.current)]);
-  const [activeBudgetId, setActiveBudgetId] = React.useState('personal');
-  const [loaded, setLoaded] = React.useState(false);
+  const { width } = useWindowDimensions();
+  const budgets = React.useMemo<BudgetAccount[]>(() => financeState.accounts
+    .filter((account) => !account.archived)
+    .map((account, index) => {
+      const accountBudget = financeState.budgets.find((item) => item.accountId === account.id && item.category === 'all');
+      const transactions = financeState.transactions
+        .filter((transaction) => transaction.accountId === account.id && transaction.status !== 'void')
+        .map((transaction): Transaction => ({
+          id: transaction.id,
+          title: transaction.payee || transaction.description || t('finance.untitled'),
+          category: transaction.category,
+          amount: Math.abs(transaction.amount),
+          kind: transaction.kind === 'adjustment' ? (transaction.amount >= 0 ? 'income' : 'expense') : transaction.kind,
+          date: transaction.date,
+          transferId: transaction.transferId,
+          currency: transaction.currency,
+        }))
+        .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
+      return {
+        id: account.id,
+        name: account.name,
+        type: account.type,
+        openingBalance: account.openingBalance,
+        limit: accountBudget?.limit ?? 0,
+        limitSet: Boolean(accountBudget && accountBudget.limit > 0),
+        currency: account.currency,
+        exchangeRate: account.exchangeRate,
+        color: account.color || ACCOUNT_COLORS[index % ACCOUNT_COLORS.length],
+        transactions,
+      };
+    }), [financeState.accounts, financeState.budgets, financeState.transactions, t]);
+  const activeBudgetId = financeState.settings.activeAccountId ?? budgets[0]?.id ?? '';
   const [screenMode, setScreenMode] = React.useState<ScreenMode>('budget');
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [managerOpen, setManagerOpen] = React.useState(false);
   const [statsOpen, setStatsOpen] = React.useState(false);
+  const [statsRange, setStatsRange] = React.useState<StatsRange>('month');
+  const [statsView, setStatsView] = React.useState<StatsView>('charts');
+  const [statsCalendarMonth, setStatsCalendarMonth] = React.useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
+  const [selectedStatsDate, setSelectedStatsDate] = React.useState(() => new Date().toDateString());
   const [quickMenuOpen, setQuickMenuOpen] = React.useState(false);
   const [entryOpen, setEntryOpen] = React.useState(false);
   const [entryKind, setEntryKind] = React.useState<TransactionKind>('expense');
@@ -281,7 +278,8 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
   const [transferTargetId, setTransferTargetId] = React.useState('');
   const [transferSourceId, setTransferSourceId] = React.useState('');
   const [transferReceivedAmount, setTransferReceivedAmount] = React.useState('');
-  const [transferRate, setTransferRate] = React.useState('1');
+  const [transferRate, setTransferRate] = React.useState('');
+  const [transferError, setTransferError] = React.useState('');
   const [newBudgetName, setNewBudgetName] = React.useState('');
   const [newBudgetBalance, setNewBudgetBalance] = React.useState('');
   const [newBudgetLimit, setNewBudgetLimit] = React.useState('');
@@ -291,69 +289,27 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
   const [editingBudget, setEditingBudget] = React.useState<BudgetAccount | null>(null);
   const [editingTransaction, setEditingTransaction] = React.useState<{ budgetId: string; transaction: Transaction } | null>(null);
   const [selectedTransaction, setSelectedTransaction] = React.useState<{ budgetId: string; transaction: Transaction } | null>(null);
+  const promptedForFirstAccount = React.useRef(false);
 
 
   React.useEffect(() => {
-    Promise.all([
-      AsyncStorage.getItem(BUDGETS_KEY),
-      AsyncStorage.getItem(ACTIVE_BUDGET_KEY),
-      AsyncStorage.getItem(LEGACY_TRANSACTIONS_KEY),
-      AsyncStorage.getItem(LEGACY_BUDGET_KEY),
-    ])
-      .then(([savedBudgets, savedActiveId, legacyTransactions, legacyLimit]) => {
-        if (savedBudgets) {
-          try {
-            const parsed = JSON.parse(savedBudgets) as BudgetAccount[];
-            if (Array.isArray(parsed) && parsed.length > 0) {
-              const normalized = parsed.map((budget, index) => ({
-                ...budget,
-                name: !budget.name || budget.name.startsWith('finance.')
-                  ? (index === 0 ? initialBudgetName.current : `${initialBudgetName.current} ${index + 1}`)
-                  : budget.name,
-                openingBalance: Number.isFinite(Number(budget.openingBalance)) ? Number(budget.openingBalance) : 0,
-                limitSet: budget.limitSet === true || (budget.limitSet !== false && Number(budget.limit) > 0 && Number(budget.limit) !== DEFAULT_LIMIT),
-                limit: budget.limitSet === true || (budget.limitSet !== false && Number(budget.limit) !== DEFAULT_LIMIT) ? (Number.isFinite(Number(budget.limit)) && Number(budget.limit) > 0 ? Number(budget.limit) : 0) : 0,
-                currency: typeof budget.currency === 'string' && budget.currency ? budget.currency : 'USD',
-                exchangeRate: Number.isFinite(Number(budget.exchangeRate)) && Number(budget.exchangeRate) > 0 ? Number(budget.exchangeRate) : undefined,
-                color: budget.color || ACCOUNT_COLORS[index % ACCOUNT_COLORS.length],
-                transactions: Array.isArray(budget.transactions) ? budget.transactions : [],
-              }));
-              setBudgets(normalized);
-              const validActiveId = normalized.some((budget) => budget.id === savedActiveId)
-                ? savedActiveId
-                : normalized[0].id;
-              setActiveBudgetId(validActiveId ?? normalized[0].id);
-              return;
-            }
-          } catch {
-            // A malformed saved value falls through to the safe default below.
-          }
-        }
-
-        const fallback = createDefaultBudget(initialBudgetName.current);
-        if (legacyTransactions) {
-          try {
-            const parsedTransactions = JSON.parse(legacyTransactions) as Transaction[];
-            if (Array.isArray(parsedTransactions)) fallback.transactions = parsedTransactions;
-          } catch {
-            fallback.transactions = [];
-          }
-        }
-        const legacyLimitAmount = parseAmount(legacyLimit ?? '');
-        fallback.limit = legacyLimitAmount && legacyLimitAmount !== DEFAULT_LIMIT ? legacyLimitAmount : 0;
-        fallback.limitSet = fallback.limit > 0;
-        setBudgets([fallback]);
-        setActiveBudgetId(fallback.id);
-      })
-      .catch(() => undefined)
-      .finally(() => setLoaded(true));
-  }, []);
+    if (!financeLoaded || !budgets[0] || financeState.settings.activeAccountId) return;
+    updateFinanceState((current) => ({ ...current, settings: { ...current.settings, activeAccountId: budgets[0].id } }));
+  }, [budgets, financeLoaded, financeState.settings.activeAccountId, updateFinanceState]);
 
   React.useEffect(() => {
-    if (!loaded) return;
-    void AsyncStorage.setItem(BUDGETS_KEY, JSON.stringify(budgets));
-    void AsyncStorage.setItem(ACTIVE_BUDGET_KEY, activeBudgetId);
-  }, [activeBudgetId, budgets, loaded]);
+    if (drawerReopenSignal > 0) setDrawerOpen(true);
+  }, [drawerReopenSignal]);
+
+  React.useEffect(() => {
+    if (budgets.length) {
+      promptedForFirstAccount.current = false;
+      return;
+    }
+    if (!financeLoaded || promptedForFirstAccount.current) return;
+    promptedForFirstAccount.current = true;
+    onOpenModule?.('accounts');
+  }, [budgets.length, financeLoaded, onOpenModule]);
 
   const activeBudget = budgets.find((budget) => budget.id === activeBudgetId) ?? budgets[0];
   const entryBudget = editingTransaction ? budgets.find((budget) => budget.id === editingTransaction.budgetId) : activeBudget;
@@ -364,13 +320,11 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
   const budgetProgress = activeBudget?.limit ? expenses / activeBudget.limit : 0;
   const baseCurrency = financeState.settings.preferredCurrency || 'USD';
   const currencyRates = React.useMemo(() => financeState.settings.exchangeRates ?? { USD: 1 }, [financeState.settings.exchangeRates]);
-  const rateBetweenCurrencies = React.useCallback((fromCurrency: string, toCurrency: string) => {
-    if (fromCurrency === toCurrency) return 1;
-    const fromRate = currencyRates[fromCurrency] ?? (fromCurrency === 'USD' ? 1 : undefined);
-    const toRate = currencyRates[toCurrency] ?? (toCurrency === 'USD' ? 1 : undefined);
-    return fromRate && toRate ? fromRate / toRate : undefined;
-  }, [currencyRates]);
-  const toBaseCurrency = (budget: BudgetAccount, value: number) => value * (rateBetweenCurrencies(budget.currency, baseCurrency) ?? budget.exchangeRate ?? 1);
+  const rateBetweenCurrencies = React.useCallback((fromCurrency: string, toCurrency: string) => currencyRate(fromCurrency, toCurrency, currencyRates), [currencyRates]);
+  const toBaseCurrency = (budget: BudgetAccount, value: number) => {
+    const rate = rateBetweenCurrencies(budget.currency, baseCurrency) ?? budget.exchangeRate;
+    return rate && rate > 0 ? value * rate : 0;
+  };
   const portfolioBalance = budgets.reduce((sum, budget) => sum + toBaseCurrency(budget, balanceFor(budget)), 0);
   const portfolioPositiveBalance = Math.max(0, portfolioBalance);
   const allTransactions: PortfolioTransaction[] = budgets
@@ -384,7 +338,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const weekStart = new Date(todayStart);
-  weekStart.setDate(todayStart.getDate() - todayStart.getDay());
+  weekStart.setDate(todayStart.getDate() - ((todayStart.getDay() + 6) % 7));
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const yearStart = new Date(now.getFullYear(), 0, 1);
   const periodTotals = (start: Date) => {
@@ -421,6 +375,17 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
   ];
   const statsPeriods = screenMode === 'allActivity' ? portfolioPeriods : periods;
   const statsCurrency = screenMode === 'allActivity' ? baseCurrency : activeBudget?.currency ?? baseCurrency;
+  const statsRangeOptions: { key: StatsRange; label: string }[] = [
+    { key: 'today', label: t('finance.today') },
+    { key: 'week', label: t('finance.thisWeek') },
+    { key: 'month', label: t('finance.thisMonth') },
+    { key: 'year', label: t('finance.yearToDate') },
+  ];
+  const statsStart = { today: todayStart, week: weekStart, month: monthStart, year: yearStart }[statsRange];
+  const statsTransactions = (screenMode === 'allActivity' ? allTransactions : activeBudget?.transactions ?? [])
+    .filter((item) => new Date(item.date).getTime() >= statsStart.getTime());
+  const selectedStatsPeriod = statsPeriods.find((period) => period.key === statsRange) ?? statsPeriods[2];
+  const statsNet = selectedStatsPeriod.income - selectedStatsPeriod.expenses;
   const selectedBudget = selectedTransaction ? budgets.find((budget) => budget.id === selectedTransaction.budgetId) : undefined;
   const selectedDisplayAmount = selectedTransaction && selectedBudget
     ? screenMode === 'allActivity' ? toBaseCurrency(selectedBudget, selectedTransaction.transaction.amount) : selectedTransaction.transaction.amount
@@ -430,23 +395,40 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
     : selectedTransaction?.transaction.currency ?? selectedBudget?.currency ?? baseCurrency;
   const statsCategories = financeState.categories.expense.map((category) => {
     const total = screenMode === 'allActivity'
-      ? allTransactions.filter((item) => item.category === category.id && item.kind === 'expense').reduce((sum, item) => {
-        const budget = budgets.find((candidate) => candidate.id === item.budgetId);
+      ? statsTransactions.filter((item) => item.category === category.id && item.kind === 'expense').reduce((sum, item) => {
+        const portfolioItem = item as PortfolioTransaction;
+        const budget = budgets.find((candidate) => candidate.id === portfolioItem.budgetId);
         return sum + toBaseCurrency(budget ?? createDefaultBudget(''), item.amount);
       }, 0)
-      : activeBudget?.transactions.filter((item) => item.category === category.id && item.kind === 'expense').reduce((sum, item) => sum + item.amount, 0) ?? 0;
+      : statsTransactions.filter((item) => item.category === category.id && item.kind === 'expense').reduce((sum, item) => sum + item.amount, 0);
     return { category: category.id, icon: category.icon, total };
-  });
-  const recentOperationLimit = height < 700 ? 1 : height < 760 ? 2 : height < 850 ? 3 : 4;
-
+  }).filter((category) => category.total > 0).sort((a, b) => b.total - a.total);
+  const statsMaxCategory = Math.max(1, ...statsCategories.map((category) => category.total));
+  const statsCalendarFirstDay = financeState.settings.firstDayOfWeek ?? 1;
+  const statsCalendarOffset = (new Date(statsCalendarMonth.getFullYear(), statsCalendarMonth.getMonth(), 1).getDay() - statsCalendarFirstDay + 7) % 7;
+  const statsCalendarDays = new Date(statsCalendarMonth.getFullYear(), statsCalendarMonth.getMonth() + 1, 0).getDate();
+  const statsCalendarCells = Array.from({ length: 42 }, (_, index) => index - statsCalendarOffset + 1);
+  const statsCalendarLabels = statsCalendarFirstDay === 1
+    ? ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+    : ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  const selectedStatsItems = statsTransactions.filter((item) => new Date(item.date).toDateString() === selectedStatsDate);
+  const transferSource = budgets.find((budget) => budget.id === transferSourceId);
+  const transferTarget = budgets.find((budget) => budget.id === transferTargetId);
+  const transferHasRate = parseAmount(transferReceivedAmount) > 0 || parseAmount(transferRate) > 0;
+  const entryCanSave = parseAmount(entryAmount) > 0 && (entryKind !== 'transfer' || Boolean(transferSource && transferTarget && transferSource.id !== transferTarget.id && transferHasRate));
+  const transferValidationError = transferError || (entryKind === 'transfer' && transferSource && transferTarget && transferSource.currency !== transferTarget.currency && !transferHasRate ? t('finance.releaseErrors.missingRate') : '');
   const selectBudget = React.useCallback((budgetId: string) => {
-    setActiveBudgetId(budgetId);
+    updateFinanceState((current) => ({ ...current, settings: { ...current.settings, activeAccountId: budgetId } }));
     setScreenMode('budget');
-  }, []);
+  }, [updateFinanceState]);
 
   const openQuickModule = React.useCallback((module: FinanceModuleName) => {
     setQuickMenuOpen(false);
     onOpenModule?.(module);
+  }, [onOpenModule]);
+  const openDrawerModule = React.useCallback((module: FinanceModuleName) => {
+    setDrawerOpen(false);
+    onOpenModule?.(module, true);
   }, [onOpenModule]);
 
   const budgetSwipeResponder = React.useMemo(() => PanResponder.create({
@@ -485,7 +467,8 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
     setTransferTargetId('');
     setTransferSourceId('');
     setTransferReceivedAmount('');
-    setTransferRate('1');
+    setTransferRate('');
+    setTransferError('');
   }, []);
 
   const openEntry = React.useCallback((kind: TransactionKind) => {
@@ -493,13 +476,27 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
     setEntryKind(kind);
     if (kind === 'transfer') {
       const sourceId = activeBudget?.id ?? budgets[0]?.id ?? '';
+      const target = budgets.find((budget) => budget.id !== sourceId);
+      const source = budgets.find((budget) => budget.id === sourceId);
       setTransferSourceId(sourceId);
-      setTransferTargetId(budgets.find((budget) => budget.id !== sourceId)?.id ?? '');
+      setTransferTargetId(target?.id ?? '');
       setTransferReceivedAmount('');
-      setTransferRate('1');
+      const configuredRate = source && target ? rateBetweenCurrencies(source.currency, target.currency) : undefined;
+      setTransferRate(configuredRate ? String(configuredRate) : '');
+      setTransferError('');
     }
     setEntryOpen(true);
-  }, [activeBudget?.id, budgets]);
+  }, [activeBudget?.id, budgets, rateBetweenCurrencies]);
+
+  React.useEffect(() => {
+    if (entryKind !== 'transfer' || !entryOpen) return;
+    const source = budgets.find((budget) => budget.id === transferSourceId);
+    const target = budgets.find((budget) => budget.id === transferTargetId);
+    const configuredRate = source && target ? rateBetweenCurrencies(source.currency, target.currency) : undefined;
+    setTransferRate(configuredRate ? String(configuredRate) : '');
+    setTransferReceivedAmount('');
+    setTransferError('');
+  }, [budgets, entryKind, entryOpen, rateBetweenCurrencies, transferSourceId, transferTargetId]);
 
   const openTransactionEditor = React.useCallback((budgetId: string, transaction: Transaction) => {
     if (transaction.transferId) return;
@@ -520,17 +517,13 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
         {
           text: t('finance.deleteAction', { defaultValue: 'Delete' }),
           style: 'destructive',
-          onPress: () => setBudgets((current) => current.map((budget) => ({
-            ...budget,
-            transactions: budget.transactions.filter((item) => {
-              if (transaction.transferId) return item.transferId !== transaction.transferId;
-              return !(budget.id === budgetId && item.id === transaction.id);
-            }),
-          }))),
+          onPress: () => transaction.transferId
+            ? finance.deleteTransfer(transaction.transferId)
+            : finance.deleteTransaction(transaction.id),
         },
       ],
     );
-  }, [t]);
+  }, [finance, t]);
 
   const openTransactionDetails = React.useCallback((budgetId: string, transaction: Transaction) => {
     setSelectedTransaction({ budgetId, transaction: { ...transaction } });
@@ -541,14 +534,18 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
     if (amount <= 0) return;
 
     if (editingTransaction) {
-      setBudgets((current) => current.map((budget) => budget.id === editingTransaction.budgetId
-        ? {
-          ...budget,
-          transactions: budget.transactions.map((item) => item.id === editingTransaction.transaction.id
-            ? { ...item, title: entryTitle.trim() || t('finance.untitled'), category: entryCategory, amount, kind: entryKind, currency: budget.currency }
-            : item),
-        }
-        : budget));
+      const original = financeState.transactions.find((item) => item.id === editingTransaction.transaction.id);
+      const budget = budgets.find((item) => item.id === editingTransaction.budgetId);
+      if (!original || !budget) return;
+      finance.updateTransaction({
+        ...original,
+        payee: entryTitle.trim() || t('finance.untitled'),
+        description: entryTitle.trim() || t('finance.untitled'),
+        category: entryCategory,
+        amount,
+        kind: entryKind,
+        currency: budget.currency,
+      });
       closeEntry();
       return;
     }
@@ -556,42 +553,49 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
     if (entryKind === 'transfer') {
       const source = budgets.find((budget) => budget.id === transferSourceId);
       const target = budgets.find((budget) => budget.id === transferTargetId);
-      const rate = parseAmount(transferRate) || 1;
-      const received = parseAmount(transferReceivedAmount) || amount * rate;
-      if (!source || !target || source.id === target.id || received <= 0) return;
-      const transferId = `${Date.now()}`;
-      const outgoing: Transaction = {
-        id: `${transferId}-out`, title: t('finance.toolsList.transfer'), category: 'other', amount, kind: 'transfer', date: new Date().toISOString(), transferId, currency: source.currency,
-      };
-      const incoming: Transaction = {
-        id: `${transferId}-in`, title: t('finance.toolsList.transfer'), category: 'other', amount: received, kind: 'income', date: new Date().toISOString(), transferId, currency: target.currency,
-      };
-      setBudgets((current) => current.map((budget) => {
-        if (budget.id === source.id) return { ...budget, transactions: [outgoing, ...budget.transactions] };
-        if (budget.id === target.id) return { ...budget, transactions: [incoming, ...budget.transactions] };
-        return budget;
-      }));
+      const explicitReceived = parseAmount(transferReceivedAmount);
+      const enteredRate = parseAmount(transferRate);
+      const rate = explicitReceived > 0 ? explicitReceived / amount : enteredRate;
+      const received = explicitReceived > 0 ? explicitReceived : amount * rate;
+      if (!source || !target || source.id === target.id || rate <= 0 || received <= 0) {
+        setTransferError(t('finance.releaseErrors.missingRate'));
+        return;
+      }
+      finance.addTransfer({
+        id: `transfer-${Date.now()}`,
+        fromAccountId: source.id,
+        toAccountId: target.id,
+        fromAmount: amount,
+        toAmount: received,
+        fromCurrency: source.currency,
+        toCurrency: target.currency,
+        rate,
+        fee: 0,
+        date: new Date().toISOString(),
+        note: '',
+        status: 'cleared',
+      });
       closeEntry();
       return;
     }
 
-    const transaction: Transaction = {
-      id: `${Date.now()}`,
-      title: entryTitle.trim() || t('finance.untitled'),
+    if (!activeBudget) return;
+    finance.addTransaction({
+      id: `transaction-${Date.now()}`,
+      accountId: activeBudget.id,
+      payee: entryTitle.trim() || t('finance.untitled'),
+      description: entryTitle.trim() || t('finance.untitled'),
       category: entryCategory,
       amount,
       kind: entryKind,
       date: new Date().toISOString(),
-      currency: activeBudget?.currency,
-    };
-
-    setBudgets((current) => current.map((budget) => (
-      activeBudget && budget.id === activeBudget.id
-        ? { ...budget, transactions: [transaction, ...budget.transactions] }
-        : budget
-    )));
+      currency: activeBudget.currency,
+      paymentMethod: 'cash',
+      status: 'cleared',
+      reference: '',
+    });
     closeEntry();
-  }, [activeBudget, budgets, closeEntry, editingTransaction, entryAmount, entryCategory, entryKind, entryTitle, t, transferRate, transferReceivedAmount, transferSourceId, transferTargetId]);
+  }, [activeBudget, budgets, closeEntry, editingTransaction, entryAmount, entryCategory, entryKind, entryTitle, finance, financeState.transactions, t, transferRate, transferReceivedAmount, transferSourceId, transferTargetId]);
 
   const createBudget = React.useCallback(() => {
     const name = newBudgetName.trim();
@@ -602,20 +606,20 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
       return;
     }
 
-    const budget: BudgetAccount = {
-      id: `budget-${Date.now()}`,
+    const accountId = `account-${Date.now()}`;
+    finance.addAccount({
+      id: accountId,
       name,
+      type: 'cash',
       openingBalance: parseAmount(newBudgetBalance),
-      limit: parseAmount(newBudgetLimit) || 0,
-      limitSet: parseAmount(newBudgetLimit) > 0,
       currency: newBudgetCurrency,
       exchangeRate,
       color: newBudgetColor,
-      transactions: [],
-    };
-
-    setBudgets((current) => [...current, budget]);
-    setActiveBudgetId(budget.id);
+      archived: false,
+    });
+    const limit = parseAmount(newBudgetLimit);
+    if (limit > 0) finance.addBudget({ id: `account-budget-${accountId}`, accountId, category: 'all', limit, period: 'monthly', rollover: false, rolloverAmount: 0, startDate: new Date().toISOString(), endDate: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString() });
+    updateFinanceState((current) => ({ ...current, settings: { ...current.settings, activeAccountId: accountId } }));
     setScreenMode('budget');
     setNewBudgetName('');
     setNewBudgetBalance('');
@@ -623,7 +627,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
     setNewBudgetCurrency('USD');
     setNewBudgetExchangeRate('1');
     setManagerOpen(false);
-  }, [baseCurrency, newBudgetBalance, newBudgetColor, newBudgetCurrency, newBudgetExchangeRate, newBudgetLimit, newBudgetName, rateBetweenCurrencies, t]);
+  }, [baseCurrency, finance, newBudgetBalance, newBudgetColor, newBudgetCurrency, newBudgetExchangeRate, newBudgetLimit, newBudgetName, rateBetweenCurrencies, t, updateFinanceState]);
 
   const openBudgetEditor = React.useCallback((budget: BudgetAccount) => {
     setEditingBudget({ ...budget, transactions: [...budget.transactions] });
@@ -642,15 +646,22 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
       Alert.alert(t('finance.exchangeRate'), t('finance.exchangeRateRequired', { defaultValue: `Enter the exchange rate from ${editingBudget.currency} to ${baseCurrency}.` }));
       return;
     }
-    setBudgets((current) => current.map((budget) => budget.id === editingBudget.id ? {
-      ...editingBudget,
+    const account = financeState.accounts.find((item) => item.id === editingBudget.id);
+    if (!account) return;
+    finance.updateAccount({
+      ...account,
       name: editingBudget.name.trim(),
       openingBalance: Number.isFinite(editingBudget.openingBalance) ? editingBudget.openingBalance : 0,
-      limit: editingBudget.limitSet ? Math.max(0, editingBudget.limit) : 0,
+      currency: editingBudget.currency,
+      color: editingBudget.color,
       exchangeRate,
-    } : budget));
+    });
+    const existingBudget = financeState.budgets.find((item) => item.accountId === editingBudget.id && item.category === 'all');
+    const limit = editingBudget.limitSet ? Math.max(0, editingBudget.limit) : 0;
+    if (existingBudget) finance.updateBudget({ ...existingBudget, limit });
+    else if (limit > 0) finance.addBudget({ id: `account-budget-${editingBudget.id}`, accountId: editingBudget.id, category: 'all', limit, period: 'monthly', rollover: false, rolloverAmount: 0, startDate: new Date().toISOString(), endDate: new Date(new Date().setMonth(new Date().getMonth() + 1)).toISOString() });
     setEditingBudget(null);
-  }, [baseCurrency, editingBudget, rateBetweenCurrencies, t]);
+  }, [baseCurrency, editingBudget, finance, financeState.accounts, financeState.budgets, rateBetweenCurrencies, t]);
 
   const renderTransactions = (items: PortfolioTransaction[] | Transaction[], showBudgetName = false) => {
     if (items.length === 0) {
@@ -670,6 +681,10 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
       const displayAmount = showBudgetName && transactionBudget ? toBaseCurrency(transactionBudget, item.amount) : item.amount;
       const displayCurrency = showBudgetName ? baseCurrency : item.currency ?? activeBudget?.currency ?? baseCurrency;
       const categoryLabel = t(`finance.categories.${item.category}`, { defaultValue: item.category });
+      const category = (item.kind === 'income' ? financeState.categories.income : financeState.categories.expense).find((candidate) => candidate.id === item.category);
+      const categoryIcon: React.ComponentProps<typeof Ionicons>['name'] = item.kind === 'transfer'
+        ? 'swap-horizontal-outline'
+        : category?.icon as React.ComponentProps<typeof Ionicons>['name'] ?? (item.kind === 'income' ? 'cash-outline' : 'pricetag-outline');
       const detail = showBudgetName
         ? `${portfolioItem.budgetName} / ${categoryLabel}`
         : `${categoryLabel} / ${new Date(item.date).toLocaleDateString(language, { month: 'short', day: 'numeric' })}`;
@@ -685,11 +700,10 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
           <View
             style={[
               styles.categoryIcon,
-              { borderColor: showBudgetName ? portfolioItem.budgetColor : activeBudget?.color ?? C.gold },
               item.kind === 'income' && styles.incomeIcon,
             ]}
           >
-            <Text style={styles.categoryLetter}>{categoryLabel.slice(0, 1).toLocaleUpperCase(language)}</Text>
+            <Ionicons name={categoryIcon} size={19} color={item.kind === 'income' ? C.green : item.kind === 'transfer' ? C.gold : C.goldLight} />
           </View>
           <View style={styles.transactionMain}>
             <Text style={styles.transactionTitle} numberOfLines={1}>{item.title}</Text>
@@ -718,7 +732,6 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
     return (
       <View style={styles.fixedBudgetView}>
         <View style={styles.compactHero}>
-          <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
           <LinearGradient
             colors={[`${activeBudget.color}22`, 'rgba(10,12,20,0.25)', 'rgba(10,12,20,0.72)']}
             style={StyleSheet.absoluteFill}
@@ -753,26 +766,28 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
         </View>
 
         <View style={styles.fixedSectionHeader}>
-          <View>
+          <Pressable onPress={() => onOpenModule?.('activity')} accessibilityRole="button" accessibilityLabel={t('finance.allActivity')}>
             <Text style={styles.sectionEyebrow}>{t('finance.thisBudget')}</Text>
             <Text style={styles.sectionTitle}>{t('finance.operations')}</Text>
-           </View>
+           </Pressable>
            <View style={styles.operationHeaderActions}>
-             <Text style={styles.operationCount}>{activeBudget.transactions.length}</Text>
+             {activeBudget.transactions.length > 0 && <Pressable style={styles.operationCountBadge} onPress={() => onOpenModule?.('activity')} accessibilityLabel={t('finance.allActivity')}><Ionicons name="receipt-outline" size={13} color={C.gold} /><Text style={styles.operationCount}>{activeBudget.transactions.length}</Text></Pressable>}
              <Pressable style={styles.statsIconButton} onPress={() => setStatsOpen(true)} accessibilityLabel={t('finance.statistics')}>
-               <View style={styles.statsIcon}><View style={styles.statsBarShort} /><View style={styles.statsBarTall} /><View style={styles.statsBarMid} /></View>
+               <Ionicons name="analytics-outline" size={18} color={C.gold} />
              </Pressable>
              <Pressable style={styles.statsIconButton} onPress={() => setQuickMenuOpen(true)} accessibilityLabel={t('finance.quickOptions')}>
-               <Ionicons name="ellipsis-vertical" size={19} color={C.gold} />
+               <Ionicons name="ellipsis-horizontal" size={19} color={C.gold} />
              </Pressable>
            </View>
         </View>
         <View style={[styles.panel, styles.fixedOperationsPanel]}>
-          {renderTransactions(activeBudget.transactions.slice(0, recentOperationLimit))}
+          <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={styles.operationsScrollContent}>
+            {renderTransactions(activeBudget.transactions)}
+          </ScrollView>
         </View>
 
-        <Pressable style={[styles.floatingAdd, { backgroundColor: activeBudget.color }]} onPress={() => openEntry('expense')}>
-          <Text style={styles.floatingAddText}>+</Text>
+        <Pressable style={styles.floatingAdd} onPress={() => openEntry('expense')} accessibilityRole="button" accessibilityLabel={t('finance.newEntry')}>
+          <Ionicons name="add" size={24} color={C.void} />
         </Pressable>
       </View>
     );
@@ -781,7 +796,6 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
   const renderPortfolioActivity = () => (
     <>
       <View style={styles.compactHero}>
-        <BlurView intensity={20} tint="dark" style={StyleSheet.absoluteFill} />
         <LinearGradient
           colors={[`${C.gold}22`, 'rgba(10,12,20,0.25)', 'rgba(10,12,20,0.72)']}
           style={StyleSheet.absoluteFill}
@@ -801,17 +815,17 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
         </View>
       </View>
       <View style={styles.fixedSectionHeader}>
-        <View>
+        <Pressable onPress={() => onOpenModule?.('activity')} accessibilityRole="button" accessibilityLabel={t('finance.allActivity')}>
           <Text style={styles.sectionEyebrow}>{t('finance.portfolio')}</Text>
           <Text style={styles.sectionTitle}>{t('finance.allActivity')}</Text>
-        </View>
+        </Pressable>
         <View style={styles.operationHeaderActions}>
-          <Text style={styles.operationCount}>{allTransactions.length}</Text>
+          {allTransactions.length > 0 && <Pressable style={styles.operationCountBadge} onPress={() => onOpenModule?.('activity')} accessibilityLabel={t('finance.allActivity')}><Ionicons name="receipt-outline" size={13} color={C.gold} /><Text style={styles.operationCount}>{allTransactions.length}</Text></Pressable>}
           <Pressable style={styles.statsIconButton} onPress={() => setStatsOpen(true)} accessibilityLabel={t('finance.statistics')}>
-            <View style={styles.statsIcon}><View style={styles.statsBarShort} /><View style={styles.statsBarTall} /><View style={styles.statsBarMid} /></View>
+            <Ionicons name="analytics-outline" size={18} color={C.gold} />
           </Pressable>
           <Pressable style={styles.statsIconButton} onPress={() => setQuickMenuOpen(true)} accessibilityLabel={t('finance.quickOptions')}>
-            <Ionicons name="ellipsis-vertical" size={19} color={C.gold} />
+            <Ionicons name="ellipsis-horizontal" size={19} color={C.gold} />
           </Pressable>
         </View>
       </View>
@@ -860,7 +874,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
               );
             })}
             <Pressable onPress={() => setScreenMode('allActivity')} style={[styles.budgetTab, screenMode === 'allActivity' && styles.budgetTabActive]}>
-              <Text style={[styles.budgetTabText, screenMode === 'allActivity' && styles.budgetTabTextActive]}>ALL</Text>
+              <Text style={[styles.budgetTabText, screenMode === 'allActivity' && styles.budgetTabTextActive]}>{t('finance.filters.all')}</Text>
             </Pressable>
           </ScrollView>
         </View>
@@ -892,17 +906,13 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
               </View>
 
               <View style={styles.drawerNav}>
-              {[
-                ['tools', 'Tools'],
-                ['categories', 'Categories'],
-                ['notes', 'Notes'],
-                ['settings', 'Settings'],
-              ].map(([module, title]) => (
-                <Pressable key={module} style={styles.drawerItem} onPress={() => onOpenModule?.(module as FinanceModuleName)}>
-                  <View style={styles.drawerItemIcon}><DrawerModuleGlyph module={module} /></View>
-                  <Text style={styles.drawerItemText}>{title}</Text>
-                </Pressable>
-              ))}
+                {(['tools', 'categories', 'notes', 'settings'] as FinanceModuleName[]).map((module) => (
+                  <Pressable key={module} style={styles.drawerItem} onPress={() => openDrawerModule(module)}>
+                    <View style={styles.drawerItemIcon}><DrawerModuleGlyph module={module} /></View>
+                    <View style={styles.drawerItemCopy}><Text style={styles.drawerItemText}>{t(`finance.navigation.items.${module}.title`)}</Text><Text style={styles.drawerItemSubtitle} numberOfLines={1}>{module === 'tools' ? t('finance.releaseExtra.toolsSubtitle') : t(`finance.navigation.items.${module}.subtitle`)}</Text></View>
+                    <Ionicons name="chevron-forward-outline" size={15} color="rgba(255,244,208,0.25)" />
+                  </Pressable>
+                ))}
               </View>
 
             </ScrollView>
@@ -922,6 +932,21 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
               <View style={styles.managerHeaderSide} />
             </View>
             <ScrollView contentContainerStyle={[styles.statsContent, styles.screenTopSpacing]} showsVerticalScrollIndicator={false}>
+              <Text style={styles.managerEyebrow}>{screenMode === 'allActivity' ? t('finance.allActivity') : activeBudget?.name}</Text>
+              <View style={styles.rangeSelector}>{(['charts', 'calendar'] as StatsView[]).map((view) => { const selected = statsView === view; return <Pressable key={view} style={[styles.rangeOption, selected && styles.rangeOptionActive]} onPress={() => setStatsView(view)}><Ionicons name={view === 'charts' ? 'stats-chart-outline' : 'calendar-outline'} size={15} color={selected ? C.void : C.gold} /><Text style={[styles.rangeOptionText, selected && styles.rangeOptionTextActive]}>{t(`finance.release.${view}`)}</Text></Pressable>; })}</View>
+              <View style={styles.rangeSelector}>{statsRangeOptions.map((option) => { const selected = option.key === statsRange; return <Pressable key={option.key} style={[styles.rangeOption, selected && styles.rangeOptionActive]} onPress={() => setStatsRange(option.key)}><Text style={[styles.rangeOptionText, selected && styles.rangeOptionTextActive]} numberOfLines={1}>{option.label}</Text>{selected && <View style={styles.rangeActiveDot} />}</Pressable>; })}</View>
+              {statsView === 'charts' ? <>
+              <View style={styles.statsSummary}>
+                <View style={styles.statsSummaryTop}><View style={styles.statsSummaryCopy}><Text style={styles.statsSummaryLabel}>{t('finance.cashFlow')}</Text><Text style={[styles.statsSummaryNet, statsNet < 0 ? styles.expenseText : styles.incomeText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.58}>{formatMoney(statsNet, language, statsCurrency)}</Text></View><View style={styles.statsOperationBadge}><Ionicons name="receipt-outline" size={14} color={C.gold} /><Text style={styles.statsOperationCount}>{statsTransactions.length}</Text></View></View>
+                <View style={styles.statsSummaryValues}><View style={styles.statsMetric}><Text style={styles.statsMetricLabel}>{t('finance.income')}</Text><Text style={[styles.statsMetricValue, styles.incomeText]} numberOfLines={1} adjustsFontSizeToFit>+{formatMoney(selectedStatsPeriod.income, language, statsCurrency)}</Text></View><View style={styles.statsMetricDivider} /><View style={styles.statsMetric}><Text style={styles.statsMetricLabel}>{t('finance.expenses')}</Text><Text style={[styles.statsMetricValue, styles.expenseText]} numberOfLines={1} adjustsFontSizeToFit>-{formatMoney(selectedStatsPeriod.expenses, language, statsCurrency)}</Text></View></View>
+              </View>
+              <Text style={styles.managerEyebrow}>{t('finance.categoryBreakdown')}</Text>
+              <View style={styles.managerAccounts}>
+                {statsCategories.map(({ category, icon, total }) => {
+                  return <View key={category} style={styles.statsCategoryRow}><View style={styles.statsCategoryTop}><View style={styles.statsCategoryName}><Ionicons name={icon as React.ComponentProps<typeof Ionicons>['name']} size={16} color={C.gold} /><Text style={styles.managerAccountName}>{t(`finance.categories.${category}`, { defaultValue: category })}</Text></View><Text style={styles.managerAccountBalance}>{formatMoney(total, language, statsCurrency)}</Text></View><View style={styles.statsCategoryTrack}><View style={[styles.statsCategoryFill, { width: `${total / statsMaxCategory * 100}%` }]} /></View></View>;
+                })}
+                {!statsCategories.length && <View style={styles.statsEmpty}><Ionicons name="analytics-outline" size={22} color="rgba(233,200,119,0.35)" /><Text style={styles.emptyCopy}>{t('finance.noActivityCopy')}</Text></View>}
+              </View>
               <ActivityHeatmap
                 transactions={screenMode === 'allActivity' ? allTransactions : activeBudget?.transactions ?? []}
                 language={language}
@@ -931,16 +956,27 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
                 moreLabel={t('finance.activityMapMore')}
                 weekdayLabels={[t('finance.weekdays.sun'), t('finance.weekdays.mon'), t('finance.weekdays.tue'), t('finance.weekdays.wed'), t('finance.weekdays.thu'), t('finance.weekdays.fri'), t('finance.weekdays.sat')]}
               />
-              <Text style={styles.managerEyebrow}>{screenMode === 'allActivity' ? t('finance.allActivity') : activeBudget?.name}</Text>
-              <View style={styles.periodGrid}>
-                {statsPeriods.map((period) => <PeriodCard key={period.key} label={period.label} income={period.income} expenses={period.expenses} language={language} currency={statsCurrency} />)}
-              </View>
-              <Text style={styles.managerEyebrow}>{t('finance.categoryBreakdown')}</Text>
-              <View style={styles.managerAccounts}>
-                {statsCategories.map(({ category, icon, total }) => {
-                  return <View key={category} style={styles.statsCategoryRow}><View style={styles.statsCategoryName}><Ionicons name={icon as React.ComponentProps<typeof Ionicons>['name']} size={16} color={C.gold} /><Text style={styles.managerAccountName}>{t(`finance.categories.${category}`, { defaultValue: category })}</Text></View><Text style={styles.managerAccountBalance}>{formatMoney(total, language, statsCurrency)}</Text></View>;
-                })}
-              </View>
+              </> : <View style={styles.statsCalendarCard}>
+                <View style={styles.statsCalendarHeader}>
+                  <Pressable style={styles.statsCalendarArrow} onPress={() => setStatsCalendarMonth((current) => { const next = new Date(current.getFullYear(), current.getMonth() - 1, 1); setSelectedStatsDate(next.toDateString()); return next; })} accessibilityLabel={t('finance.release.previousMonth')}><Ionicons name="chevron-back" size={19} color={C.gold} /></Pressable>
+                  <Text style={styles.statsCalendarTitle}>{statsCalendarMonth.toLocaleDateString(language, { month: 'long', year: 'numeric' })}</Text>
+                  <Pressable style={styles.statsCalendarArrow} onPress={() => setStatsCalendarMonth((current) => { const next = new Date(current.getFullYear(), current.getMonth() + 1, 1); setSelectedStatsDate(next.toDateString()); return next; })} accessibilityLabel={t('finance.release.nextMonth')}><Ionicons name="chevron-forward" size={19} color={C.gold} /></Pressable>
+                </View>
+                <View style={styles.statsCalendarWeek}>{statsCalendarLabels.map((day) => <Text key={day} style={styles.statsCalendarWeekday}>{t(`finance.weekdays.${day}`)}</Text>)}</View>
+                <View style={styles.statsCalendarGrid}>{statsCalendarCells.map((day, index) => {
+                  const active = day > 0 && day <= statsCalendarDays;
+                  const date = active ? new Date(statsCalendarMonth.getFullYear(), statsCalendarMonth.getMonth(), day) : null;
+                  const key = date?.toDateString() ?? `empty-${index}`;
+                  const dayItems = date ? statsTransactions.filter((item) => new Date(item.date).toDateString() === key) : [];
+                  const selected = active && key === selectedStatsDate;
+                  return <Pressable key={key} disabled={!active} style={[styles.statsCalendarCell, selected && styles.statsCalendarCellSelected]} onPress={() => date && setSelectedStatsDate(date.toDateString())}><Text style={[styles.statsCalendarDay, selected && styles.statsCalendarDaySelected]}>{active ? day : ''}</Text>{Boolean(dayItems.length) && <View style={styles.statsCalendarDots}>{dayItems.some((item) => item.kind === 'income') && <View style={[styles.statsCalendarDot, styles.statsCalendarIncomeDot]} />}{dayItems.some((item) => item.kind === 'expense') && <View style={[styles.statsCalendarDot, styles.statsCalendarExpenseDot]} />}</View>}</Pressable>;
+                })}</View>
+                <View style={styles.statsCalendarDetails}>
+                  <Text style={styles.managerEyebrow}>{new Date(selectedStatsDate).toLocaleDateString(language, { weekday: 'long', month: 'long', day: 'numeric' })}</Text>
+                  {selectedStatsItems.map((item) => <View key={item.id} style={styles.statsCategoryTop}><Text style={styles.managerAccountName} numberOfLines={1}>{item.title}</Text><Text style={item.kind === 'income' ? styles.incomeText : styles.expenseText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{item.kind === 'income' ? '+' : '-'}{formatMoney(item.amount, language, item.currency ?? statsCurrency)}</Text></View>)}
+                  {!selectedStatsItems.length && <Text style={styles.emptyCopy}>{t('finance.noActivityCopy')}</Text>}
+                </View>
+              </View>}
             </ScrollView>
           </SafeAreaView>
         </View>
@@ -951,14 +987,16 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setQuickMenuOpen(false)} />
           <View style={styles.quickMenuPanel}>
             <Text style={styles.quickMenuTitle}>{t('finance.quickOptions')}</Text>
+            <Text style={styles.quickMenuSubtitle}>{t('finance.navigation.quickCopy')}</Text>
             {[
-              { module: 'calendar' as FinanceModuleName, label: t('finance.toolsList.calendar'), icon: 'calendar-outline' as const },
-              { module: 'recurring' as FinanceModuleName, label: t('finance.toolsList.recurring'), icon: 'repeat-outline' as const },
-              { module: 'debt' as FinanceModuleName, label: t('finance.toolsList.debt'), icon: 'card-outline' as const },
+              { module: 'budget' as FinanceModuleName, icon: 'speedometer-outline' as const },
+              { module: 'debt' as FinanceModuleName, icon: 'card-outline' as const },
+              { module: 'savings' as FinanceModuleName, icon: 'trending-up-outline' as const },
+              { module: 'recurring' as FinanceModuleName, icon: 'repeat-outline' as const },
             ].map((item) => (
               <Pressable key={item.module} style={styles.quickMenuItem} onPress={() => openQuickModule(item.module)}>
                 <View style={styles.quickMenuIcon}><Ionicons name={item.icon} size={19} color={C.gold} /></View>
-                <Text style={styles.quickMenuItemText}>{item.label}</Text>
+                <View style={styles.quickMenuItemCopy}><Text style={styles.quickMenuItemText}>{t(`finance.navigation.items.${item.module}.title`)}</Text><Text style={styles.quickMenuItemSubtitle}>{t(`finance.navigation.items.${item.module}.subtitle`)}</Text></View>
                 <Ionicons name="chevron-forward-outline" size={17} color="rgba(255,244,208,0.35)" />
               </Pressable>
             ))}
@@ -1145,10 +1183,10 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
       </Modal>
 
       <Modal visible={Boolean(selectedTransaction)} transparent animationType="slide" onRequestClose={() => setSelectedTransaction(null)}>
-        <KeyboardAvoidingView style={styles.entryBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.entryBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setSelectedTransaction(null)} />
           {selectedTransaction && (
-            <View style={styles.detailSheet}>
+            <ScrollView style={styles.detailSheet} contentContainerStyle={styles.detailSheetContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
               <View style={styles.sheetHandle} />
               <View style={styles.entryHeader}>
                 <View style={styles.detailHeaderCopy}>
@@ -1186,15 +1224,15 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
                   <Text style={styles.detailDeleteText}>{t('finance.deleteAction')}</Text>
                 </Pressable>
               </View>
-            </View>
+            </ScrollView>
           )}
         </KeyboardAvoidingView>
       </Modal>
 
       <Modal visible={entryOpen} transparent animationType="slide" onRequestClose={closeEntry}>
-        <KeyboardAvoidingView style={styles.entryBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.entryBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <Pressable style={StyleSheet.absoluteFill} onPress={closeEntry} />
-          <View style={styles.entrySheet}>
+          <ScrollView style={styles.entrySheet} contentContainerStyle={styles.entrySheetContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             <View style={styles.sheetHandle} />
             <View style={styles.entryHeader}>
               <View>
@@ -1245,16 +1283,17 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
                 </ScrollView>
                 <Text style={styles.inputLabel}>{t('finance.amount')}</Text>
                 <View style={styles.amountInputShell}>
-                  <Text style={styles.amountCurrency}>{budgets.find((budget) => budget.id === transferSourceId)?.currency ?? baseCurrency}</Text>
                   <TextInput value={entryAmount} onChangeText={(value) => setEntryAmount(value.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" autoFocus placeholder="0" placeholderTextColor="rgba(255,244,208,0.25)" style={styles.amountInput} />
+                  <Text style={styles.amountCurrency}>{transferSource?.currency ?? baseCurrency}</Text>
                 </View>
                 <Text style={styles.inputLabel}>{t('finance.receivedAmount')}</Text>
                 <View style={styles.amountInputShell}>
-                  <Text style={styles.amountCurrency}>{budgets.find((budget) => budget.id === transferTargetId)?.currency ?? baseCurrency}</Text>
-                  <TextInput value={transferReceivedAmount} onChangeText={(value) => setTransferReceivedAmount(value.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" placeholder="Auto by rate" placeholderTextColor="rgba(255,244,208,0.25)" style={styles.amountInput} />
+                  <TextInput value={transferReceivedAmount} onChangeText={(value) => { setTransferReceivedAmount(value.replace(/[^0-9.]/g, '')); setTransferError(''); }} keyboardType="decimal-pad" placeholder={t('finance.releaseExtra.automaticByRate')} placeholderTextColor="rgba(255,244,208,0.25)" style={styles.amountInput} />
+                  <Text style={styles.amountCurrency}>{transferTarget?.currency ?? baseCurrency}</Text>
                 </View>
                 <Text style={styles.inputLabel}>{t('finance.exchangeRate')}</Text>
-                <TextInput value={transferRate} onChangeText={(value) => setTransferRate(value.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" placeholder="1" placeholderTextColor="rgba(255,244,208,0.25)" style={styles.textInput} />
+                <TextInput value={transferRate} onChangeText={(value) => { setTransferRate(value.replace(/[^0-9.]/g, '')); setTransferError(''); }} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor="rgba(255,244,208,0.25)" style={[styles.textInput, Boolean(transferValidationError) && styles.inputError]} />
+                {Boolean(transferValidationError) && <Text style={styles.inlineError}>{transferValidationError}</Text>}
                 <Text style={styles.inputLabel}>{t('finance.description')}</Text>
                 <TextInput value={entryTitle} onChangeText={setEntryTitle} placeholder={t('finance.descriptionPlaceholder')} placeholderTextColor="rgba(255,244,208,0.28)" style={styles.textInput} />
               </>
@@ -1262,30 +1301,31 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
               <>
                 <Text style={styles.inputLabel}>{t('finance.amount')}</Text>
                 <View style={styles.amountInputShell}>
-                  <Text style={styles.amountCurrency}>{entryBudget?.currency ?? baseCurrency}</Text>
                   <TextInput value={entryAmount} onChangeText={(value) => setEntryAmount(value.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" autoFocus placeholder="0" placeholderTextColor="rgba(255,244,208,0.25)" style={styles.amountInput} />
+                  <Text style={styles.amountCurrency}>{entryBudget?.currency ?? baseCurrency}</Text>
                 </View>
                 <Text style={styles.inputLabel}>{t('finance.description')}</Text>
                 <TextInput value={entryTitle} onChangeText={setEntryTitle} placeholder={t('finance.descriptionPlaceholder')} placeholderTextColor="rgba(255,244,208,0.28)" style={styles.textInput} />
                 <Text style={styles.inputLabel}>{t('finance.category')}</Text>
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.categoryChips}>
+                <View style={styles.operationCategoryGrid}>
                   {operationCategories.map((category) => (
-                    <Pressable key={category.id} onPress={() => setEntryCategory(category.id)} style={[styles.categoryChip, entryCategory === category.id && styles.categoryChipActive]}>
-                      <Text style={[styles.categoryChipText, entryCategory === category.id && styles.categoryChipTextActive]}>{t(`finance.categories.${category.id}`, { defaultValue: category.id })}</Text>
+                    <Pressable key={category.id} onPress={() => setEntryCategory(category.id)} style={[styles.operationCategoryChip, width < 360 && styles.operationCategoryChipNarrow, entryCategory === category.id && styles.categoryChipActive]}>
+                      <Ionicons name={category.icon as React.ComponentProps<typeof Ionicons>['name']} size={15} color={entryCategory === category.id ? C.goldLight : 'rgba(255,244,208,0.46)'} />
+                      <Text numberOfLines={1} style={[styles.categoryChipText, styles.operationCategoryText, entryCategory === category.id && styles.categoryChipTextActive]}>{t(`finance.categories.${category.id}`, { defaultValue: category.id })}</Text>
                     </Pressable>
                   ))}
-                </ScrollView>
+                </View>
               </>
             )}
 
             <Pressable
-              style={[styles.saveButton, parseAmount(entryAmount) <= 0 && styles.disabledButton]}
+              style={[styles.saveButton, !entryCanSave && styles.disabledButton]}
               onPress={addTransaction}
-              disabled={parseAmount(entryAmount) <= 0}
+              disabled={!entryCanSave}
             >
               <Text style={styles.saveButtonText}>{editingTransaction ? t('finance.updateEntry', { defaultValue: 'UPDATE OPERATION' }) : t('finance.saveEntry')}</Text>
             </Pressable>
-          </View>
+          </ScrollView>
         </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
@@ -1295,7 +1335,7 @@ export default function RichScreen({ onOpenModule }: { onOpenModule?: (module: F
 const styles = StyleSheet.create({
   screenBackButton: { width: 42, height: 42, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center' },
   screenTopSpacing: { paddingTop: 24 },
-  activityPanel: { borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.56)', padding: 14, marginBottom: 18 },
+  activityPanel: { borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.56)', padding: 14, marginTop: 22, marginBottom: 18 },
   activityCopy: { color: 'rgba(255,244,208,0.38)', fontFamily: SANS, fontSize: 9, marginTop: -3, marginBottom: 12 },
   activityScrollContent: { flexDirection: 'row', paddingBottom: 3 },
   activityLabelsColumn: { width: 28, paddingTop: 17, gap: 3 },
@@ -1320,17 +1360,20 @@ const styles = StyleSheet.create({
   editCancelText: { color: C.gold, fontFamily: SANS, fontSize: 10, fontWeight: '700' },
   quickMenuBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.68)', justifyContent: 'center', paddingHorizontal: 24 },
   quickMenuPanel: { borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#090B12', padding: 16 },
-  quickMenuTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 22, marginBottom: 12 },
-  quickMenuItem: { minHeight: 54, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(233,200,119,0.12)', gap: 11 },
-  quickMenuIcon: { width: 30, alignItems: 'center' },
-  quickMenuItemText: { flex: 1, color: C.goldLight, fontFamily: SANS, fontSize: 11, letterSpacing: 0.5 },
+  quickMenuTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 22 },
+  quickMenuSubtitle: { color: 'rgba(255,244,208,0.5)', fontFamily: SANS, fontSize: 11, lineHeight: 17, marginTop: 5, marginBottom: 12 },
+  quickMenuItem: { minHeight: 68, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(233,200,119,0.12)', gap: 12 },
+  quickMenuIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: 'rgba(233,200,119,0.055)', alignItems: 'center', justifyContent: 'center' },
+  quickMenuItemCopy: { flex: 1, minWidth: 0 },
+  quickMenuItemText: { color: C.goldLight, fontFamily: SANS, fontSize: 13, letterSpacing: 0.25 },
+  quickMenuItemSubtitle: { color: 'rgba(255,244,208,0.48)', fontFamily: SANS, fontSize: 11, marginTop: 4 },
   safe: { flex: 1 },
   root: { flex: 1 },
   header: { height: 78, paddingTop: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' },
-  headerButton: { width: 42, height: 42, borderRadius: 21, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.055)', alignItems: 'center', justifyContent: 'center' },
+  headerButton: { width: 44, height: 44, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.055)', alignItems: 'center', justifyContent: 'center' },
   headerCenter: { flex: 1, alignItems: 'center', paddingHorizontal: 8 },
   headerTitle: { maxWidth: 220, color: C.goldLight, fontFamily: SANS, fontSize: 15, fontWeight: '600', letterSpacing: 0.2 },
-  headerSubtitle: { color: 'rgba(255,244,208,0.34)', fontFamily: SANS, fontSize: 8, letterSpacing: 1.7, marginTop: 4 },
+  headerSubtitle: { color: 'rgba(255,244,208,0.48)', fontFamily: SANS, fontSize: 9.5, letterSpacing: 1.35, marginTop: 3 },
   menuGlyph: { width: 18, gap: 3.5 },
   menuLineWide: { width: 18, height: 1.5, borderRadius: 2, backgroundColor: C.goldLight },
   menuLine: { width: 12, height: 1.5, borderRadius: 2, backgroundColor: C.goldLight },
@@ -1350,30 +1393,40 @@ const styles = StyleSheet.create({
   compactHero: { height: 146, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, flexDirection: 'row', overflow: 'hidden', backgroundColor: 'rgba(10,12,20,0.66)' },
   compactHeroInfo: { flex: 1, minWidth: 0, paddingLeft: 16, paddingTop: 14, paddingBottom: 14, justifyContent: 'space-between' },
   compactBalance: { maxWidth: 205, color: C.goldLight, fontFamily: SERIF, fontSize: 30, letterSpacing: 0.3, marginTop: 5 },
-  compactEquivalent: { color: 'rgba(255,244,208,0.46)', fontFamily: SANS, fontSize: 9, marginTop: 2 },
+  compactEquivalent: { color: 'rgba(255,244,208,0.54)', fontFamily: SANS, fontSize: 10.5, marginTop: 2 },
   compactLimitTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 7, paddingRight: 3 },
-  compactLimitLabel: { flex: 1, color: 'rgba(255,244,208,0.34)', fontFamily: SANS, fontSize: 7, letterSpacing: 0.8 },
-  compactLimitValue: { maxWidth: 116, color: 'rgba(255,244,208,0.6)', fontFamily: SERIF, fontSize: 9.5, textAlign: 'right' },
+  compactLimitLabel: { flex: 1, color: 'rgba(255,244,208,0.48)', fontFamily: SANS, fontSize: 9, letterSpacing: 0.7 },
+  compactLimitValue: { maxWidth: 128, color: 'rgba(255,244,208,0.66)', fontFamily: SERIF, fontSize: 10.5, textAlign: 'right' },
   compactGemWindow: { width: 130, height: 145, overflow: 'hidden' },
   compactGemCanvas: { position: 'absolute', width: 300, height: 288, left: -85, top: -71, transform: [{ scale: 0.45 }] },
-  periodGrid: { height: 116, flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginTop: 8 },
-  periodCard: { width: '48.7%', height: 54.5, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.52)', paddingHorizontal: 10, paddingVertical: 8 },
-  periodTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  periodLabel: { flex: 1, minWidth: 0, color: 'rgba(255,244,208,0.5)', fontFamily: SANS, fontSize: 7.5, letterSpacing: 0.6 },
-  periodNet: { width: 66, fontFamily: SERIF, fontSize: 10.5, textAlign: 'right' },
-  periodValues: { flexDirection: 'row', alignItems: 'center', marginTop: 7 },
-  periodValue: { flex: 1, minWidth: 0, fontFamily: SERIF, fontSize: 8.5 },
-  periodDivider: { width: StyleSheet.hairlineWidth, height: 9, backgroundColor: C.line, marginHorizontal: 6 },
-  operationHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 9 },
-  statsIconButton: { width: 29, height: 29, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center' },
+  rangeSelector: { height: 46, flexDirection: 'row', borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.035)', padding: 4, marginBottom: 12 },
+  rangeOption: { flex: 1, minWidth: 0, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
+  rangeOptionActive: { backgroundColor: 'rgba(233,200,119,0.14)' },
+  rangeOptionText: { maxWidth: '94%', color: 'rgba(255,244,208,0.5)', fontFamily: SANS, fontSize: 9, letterSpacing: 0.15, textAlign: 'center' },
+  rangeOptionTextActive: { color: C.goldLight, fontWeight: '700' },
+  rangeActiveDot: { position: 'absolute', bottom: 4, width: 3, height: 3, borderRadius: 2, backgroundColor: C.gold },
+  statsSummary: { borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.62)', padding: 16, marginBottom: 22 },
+  statsSummaryTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
+  statsSummaryCopy: { flex: 1, minWidth: 0 },
+  statsSummaryLabel: { color: 'rgba(233,200,119,0.5)', fontFamily: SANS, fontSize: 8, letterSpacing: 1.4 },
+  statsSummaryNet: { width: '100%', fontFamily: SERIF, fontSize: 29, marginTop: 6 },
+  statsOperationBadge: { minWidth: 44, height: 44, borderRadius: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.07)', paddingHorizontal: 8 },
+  statsOperationCount: { color: C.goldLight, fontFamily: SANS, fontSize: 10.5 },
+  statsSummaryValues: { flexDirection: 'row', alignItems: 'center', marginTop: 17, paddingTop: 13, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line },
+  statsMetric: { flex: 1, minWidth: 0 },
+  statsMetricLabel: { color: 'rgba(255,244,208,0.48)', fontFamily: SANS, fontSize: 10, letterSpacing: 0.6, marginBottom: 5 },
+  statsMetricValue: { fontFamily: SERIF, fontSize: 15 },
+  statsMetricDivider: { width: StyleSheet.hairlineWidth, height: 28, backgroundColor: C.line, marginHorizontal: 14 },
+  operationHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 7 },
+  statsIconButton: { width: 44, height: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.19)', backgroundColor: 'rgba(233,200,119,0.055)', alignItems: 'center', justifyContent: 'center' },
   statsIcon: { width: 17, height: 17, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 2, paddingBottom: 3 },
   statsBarShort: { width: 3, height: 8, borderRadius: 2, backgroundColor: C.gold },
   statsBarTall: { width: 3, height: 15, borderRadius: 2, backgroundColor: C.goldLight },
   statsBarMid: { width: 3, height: 11, borderRadius: 2, backgroundColor: C.goldMid },
-  fixedSectionHeader: { height: 43, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', paddingBottom: 7 },
+  fixedSectionHeader: { minHeight: 54, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 },
   fixedOperationsPanel: { flex: 1, minHeight: 96, paddingBottom: 49 },
-  floatingAdd: { position: 'absolute', right: 13, bottom: 12, width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center', shadowColor: '#000000', shadowOpacity: 0.38, shadowRadius: 12, shadowOffset: { width: 0, height: 7 }, elevation: 12 },
-  floatingAddText: { color: C.void, fontFamily: SANS, fontSize: 29, fontWeight: '300', lineHeight: 31 },
+  operationsScrollContent: { flexGrow: 1 },
+  floatingAdd: { position: 'absolute', right: 13, bottom: 12, width: 46, height: 46, borderRadius: 23, borderWidth: StyleSheet.hairlineWidth, borderColor: C.goldLight, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center', shadowColor: C.gold, shadowOpacity: 0.2, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 9 },
   hero: { borderRadius: 26, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, padding: 18, overflow: 'hidden', backgroundColor: 'rgba(10,12,20,0.66)' },
   heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   eyebrow: { color: 'rgba(233,200,119,0.58)', fontFamily: SANS, fontSize: 8, letterSpacing: 2.1 },
@@ -1385,38 +1438,38 @@ const styles = StyleSheet.create({
   heroFooter: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, flexDirection: 'row', paddingTop: 13 },
   heroFooterBlock: { flex: 1, minWidth: 0 },
   heroFooterRight: { alignItems: 'flex-end' },
-  microLabel: { color: 'rgba(255,244,208,0.34)', fontFamily: SANS, fontSize: 7.5, letterSpacing: 1.4, marginBottom: 5 },
+  microLabel: { color: 'rgba(255,244,208,0.48)', fontFamily: SANS, fontSize: 9.5, letterSpacing: 1.1, marginBottom: 5 },
   actions: { flexDirection: 'row', gap: 9, marginTop: 11 },
   actionButton: { flex: 1, height: 54, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   expenseButton: { borderColor: 'rgba(240,139,136,0.32)', backgroundColor: 'rgba(240,139,136,0.075)' },
-  incomeButton: { borderColor: 'rgba(125,217,178,0.32)', backgroundColor: 'rgba(125,217,178,0.075)' },
+  incomeButton: { borderColor: 'rgba(183,173,132,0.32)', backgroundColor: 'rgba(183,173,132,0.075)' },
   actionCircle: { width: 25, height: 25, borderRadius: 13, alignItems: 'center', justifyContent: 'center', marginRight: 7 },
   expenseCircle: { backgroundColor: 'rgba(240,139,136,0.15)' },
-  incomeCircle: { backgroundColor: 'rgba(125,217,178,0.15)' },
+  incomeCircle: { backgroundColor: 'rgba(183,173,132,0.15)' },
   expenseSymbol: { color: '#F08B88', fontFamily: SANS, fontSize: 18, lineHeight: 20 },
-  incomeSymbol: { color: '#7DD9B2', fontFamily: SANS, fontSize: 17, lineHeight: 19 },
+  incomeSymbol: { color: C.green, fontFamily: SANS, fontSize: 17, lineHeight: 19 },
   actionText: { color: C.goldLight, fontFamily: SANS, fontSize: 9, letterSpacing: 0.8 },
 
-  incomeText: { color: '#7DD9B2' },
+  incomeText: { color: C.green },
   expenseText: { color: '#F08B88' },
-  sectionEyebrow: { color: 'rgba(233,200,119,0.45)', fontFamily: SANS, fontSize: 7.5, letterSpacing: 1.7, marginBottom: 5 },
-  sectionTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 12, fontWeight: '600', letterSpacing: 0.7 },
-  operationCount: { minWidth: 27, height: 27, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, color: C.gold, fontFamily: SANS, fontSize: 9, textAlign: 'center', textAlignVertical: 'center', paddingHorizontal: 7 },
+  sectionEyebrow: { color: 'rgba(233,200,119,0.58)', fontFamily: SANS, fontSize: 9, letterSpacing: 1.35, marginBottom: 4 },
+  sectionTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13, fontWeight: '600', letterSpacing: 0.45 },
+  operationCountBadge: { height: 44, minWidth: 48, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.16)', backgroundColor: 'rgba(255,255,255,0.025)', paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  operationCount: { color: C.goldLight, fontFamily: SANS, fontSize: 10.5, fontWeight: '600' },
   panel: { borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.53)', paddingHorizontal: 13, overflow: 'hidden' },
   transactionRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.09)' },
-  categoryIcon: { width: 38, height: 38, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, backgroundColor: 'rgba(233,200,119,0.06)', alignItems: 'center', justifyContent: 'center', marginRight: 11 },
-  incomeIcon: { backgroundColor: 'rgba(125,217,178,0.08)' },
-  categoryLetter: { color: C.goldLight, fontFamily: SERIF, fontSize: 15 },
+  categoryIcon: { width: 42, height: 42, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.2)', backgroundColor: 'rgba(233,200,119,0.055)', alignItems: 'center', justifyContent: 'center', marginRight: 11 },
+  incomeIcon: { borderColor: 'rgba(183,173,132,0.28)', backgroundColor: 'rgba(183,173,132,0.08)' },
   transactionMain: { flex: 1, minWidth: 0 },
-  transactionTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 11.5, letterSpacing: 0.2 },
-  transactionMeta: { color: 'rgba(255,244,208,0.33)', fontFamily: SANS, fontSize: 8.5, letterSpacing: 0.3, marginTop: 5 },
+  transactionTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13, letterSpacing: 0.1 },
+  transactionMeta: { color: 'rgba(255,244,208,0.5)', fontFamily: SANS, fontSize: 10.5, letterSpacing: 0.1, marginTop: 5 },
   transactionAmount: { width: 91, fontFamily: SERIF, fontSize: 14, textAlign: 'right' },
   transactionActions: { flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: 7 },
-  transactionAction: { width: 27, height: 32, alignItems: 'center', justifyContent: 'center' },
+  transactionAction: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   emptyState: { alignItems: 'center', paddingHorizontal: 20, paddingVertical: 31 },
   emptyDiamond: { width: 19, height: 19, borderWidth: 1, borderColor: C.gold, transform: [{ rotate: '45deg' }], marginBottom: 13, opacity: 0.75 },
   emptyTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 11, letterSpacing: 0.8 },
-  emptyCopy: { color: 'rgba(255,244,208,0.36)', fontFamily: SANS, fontSize: 9.5, lineHeight: 15, textAlign: 'center', marginTop: 7 },
+  emptyCopy: { color: 'rgba(255,244,208,0.5)', fontFamily: SANS, fontSize: 11, lineHeight: 17, textAlign: 'center', marginTop: 7 },
   limitCard: { borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.53)', padding: 16 },
   limitAmounts: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 },
   limitSpent: { color: C.goldLight, fontFamily: SERIF, fontSize: 21 },
@@ -1431,11 +1484,14 @@ const styles = StyleSheet.create({
   drawerBalanceCard: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, padding: 15, marginTop: 8, backgroundColor: 'rgba(233,200,119,0.045)' },
   drawerBalance: { color: C.goldLight, fontFamily: SERIF, fontSize: 28, marginTop: 3 },
   drawerBudgetCount: { color: 'rgba(255,244,208,0.32)', fontFamily: SANS, fontSize: 8, letterSpacing: 0.8, marginTop: 7 },
-  drawerNav: { marginTop: 18, gap: 4 },
-  drawerItem: { height: 48, borderRadius: 14, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 },
+  drawerNav: { marginTop: 18, gap: 3 },
+  drawerSectionTitle: { color: 'rgba(233,200,119,0.48)', fontFamily: SANS, fontSize: 8, fontWeight: '700', letterSpacing: 1.2, marginBottom: 5, paddingHorizontal: 12 },
+  drawerItem: { minHeight: 54, borderRadius: 14, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 },
   drawerItemActive: { backgroundColor: 'rgba(233,200,119,0.09)' },
   drawerItemIcon: { width: 31, alignItems: 'flex-start' },
-  drawerItemText: { color: C.goldLight, fontFamily: SANS, fontSize: 10, letterSpacing: 0.6 },
+  drawerItemCopy: { flex: 1, minWidth: 0 },
+  drawerItemText: { color: C.goldLight, fontFamily: SANS, fontSize: 10, letterSpacing: 0.5 },
+  drawerItemSubtitle: { color: 'rgba(255,244,208,0.3)', fontFamily: SANS, fontSize: 7.5, marginTop: 3 },
   drawerPrivacy: { color: 'rgba(255,244,208,0.24)', fontFamily: SANS, fontSize: 8.5, lineHeight: 13, marginTop: 'auto', marginBottom: 14 },
   managerRoot: { flex: 1, backgroundColor: C.void },
   managerSafe: { flex: 1 },
@@ -1460,13 +1516,35 @@ const styles = StyleSheet.create({
   statsRoot: { flex: 1, backgroundColor: C.void },
   statsSafe: { flex: 1 },
   statsContent: { padding: 18, paddingBottom: 38 },
-  statsCategoryRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.09)' },
+  statsCategoryRow: { minHeight: 61, justifyContent: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.09)', paddingVertical: 10 },
+  statsCategoryTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   statsCategoryName: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  statsCategoryTrack: { height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.055)', overflow: 'hidden', marginTop: 9 },
+  statsCategoryFill: { height: 3, borderRadius: 2, backgroundColor: C.gold },
+  statsCalendarCard: { borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.72)', padding: 12 },
+  statsCalendarHeader: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  statsCalendarArrow: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
+  statsCalendarTitle: { flex: 1, color: C.goldLight, fontFamily: SERIF, fontSize: 18, textAlign: 'center', textTransform: 'capitalize' },
+  statsCalendarWeek: { flexDirection: 'row', marginTop: 6 },
+  statsCalendarWeekday: { width: '14.285%', color: 'rgba(255,244,208,0.48)', fontFamily: SANS, fontSize: 10, textAlign: 'center', textTransform: 'uppercase' },
+  statsCalendarGrid: { flexDirection: 'row', flexWrap: 'wrap', marginTop: 5 },
+  statsCalendarCell: { width: '14.285%', minHeight: 46, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  statsCalendarCellSelected: { backgroundColor: C.gold },
+  statsCalendarDay: { color: C.goldLight, fontFamily: SANS, fontSize: 13 },
+  statsCalendarDaySelected: { color: C.void, fontWeight: '800' },
+  statsCalendarDots: { height: 6, flexDirection: 'row', gap: 3, marginTop: 3 },
+  statsCalendarDot: { width: 5, height: 5, borderRadius: 3 },
+  statsCalendarIncomeDot: { backgroundColor: C.goldLight },
+  statsCalendarExpenseDot: { backgroundColor: C.red },
+  statsCalendarDetails: { minHeight: 76, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, marginTop: 10, paddingTop: 13, gap: 9 },
+  statsEmpty: { minHeight: 100, alignItems: 'center', justifyContent: 'center', gap: 5 },
   createCard: { borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.62)', padding: 17, marginTop: 22 },
   createEyebrow: { color: 'rgba(233,200,119,0.55)', fontFamily: SANS, fontSize: 8, letterSpacing: 1.7 },
   createTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 27, marginTop: 7, marginBottom: 8 },
   inputLabel: { color: 'rgba(255,244,208,0.4)', fontFamily: SANS, fontSize: 8, letterSpacing: 1.3, marginTop: 13, marginBottom: 7 },
   textInput: { height: 51, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.04)', color: C.goldLight, fontFamily: SANS, fontSize: 12, paddingHorizontal: 14 },
+  inputError: { borderColor: C.red },
+  inlineError: { color: C.red, fontFamily: SANS, fontSize: 11, lineHeight: 16, marginTop: 7 },
   managerInputRow: { flexDirection: 'row', gap: 9 },
   managerInputColumn: { flex: 1, minWidth: 0 },
   moneyInputShell: { height: 51, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.04)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 },
@@ -1479,9 +1557,11 @@ const styles = StyleSheet.create({
   createButton: { height: 53, borderRadius: 16, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center', marginTop: 22 },
   createButtonText: { color: C.void, fontFamily: SANS, fontSize: 10, fontWeight: '700', letterSpacing: 1.3 },
   disabledButton: { opacity: 0.35 },
-  entryBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.66)' },
-  entrySheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14', paddingHorizontal: 19, paddingBottom: 28 },
-  detailSheet: { borderTopLeftRadius: 28, borderTopRightRadius: 28, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14', paddingHorizontal: 19, paddingBottom: 28 },
+  entryBackdrop: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.66)' },
+  entrySheet: { width: '100%', maxWidth: 560, maxHeight: '90%', borderTopLeftRadius: 28, borderTopRightRadius: 28, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14' },
+  entrySheetContent: { flexGrow: 1, paddingHorizontal: 19, paddingBottom: 28 },
+  detailSheet: { maxHeight: '90%', borderTopLeftRadius: 28, borderTopRightRadius: 28, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14' },
+  detailSheetContent: { flexGrow: 1, paddingHorizontal: 19, paddingBottom: 28 },
   sheetHandle: { width: 38, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,244,208,0.2)', alignSelf: 'center', marginTop: 9, marginBottom: 13 },
   entryHeader: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' },
   detailHeaderCopy: { flex: 1 },
@@ -1495,13 +1575,17 @@ const styles = StyleSheet.create({
   kindText: { color: 'rgba(255,244,208,0.36)', fontFamily: SANS, fontSize: 9, letterSpacing: 0.9 },
   kindTextActive: { color: C.goldLight },
   amountInputShell: { height: 60, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.04)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15 },
-  amountCurrency: { color: C.gold, fontFamily: SERIF, fontSize: 26, marginRight: 7 },
+  amountCurrency: { color: C.gold, fontFamily: SANS, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, marginLeft: 9 },
   amountInput: { flex: 1, color: C.goldLight, fontFamily: SERIF, fontSize: 27, paddingVertical: 0 },
   categoryChips: { gap: 7, paddingBottom: 2 },
   categoryChip: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingHorizontal: 12, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 6 },
   categoryChipActive: { borderColor: C.gold, backgroundColor: 'rgba(233,200,119,0.13)' },
   categoryChipText: { color: 'rgba(255,244,208,0.43)', fontFamily: SANS, fontSize: 9 },
   categoryChipTextActive: { color: C.goldLight },
+  operationCategoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  operationCategoryChip: { width: '31.5%', minHeight: 38, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  operationCategoryChipNarrow: { width: '48%' },
+  operationCategoryText: { flexShrink: 1, textAlign: 'center' },
   detailAmountBlock: { alignItems: 'center', marginTop: 25, paddingBottom: 21, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line },
   detailKind: { fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 1.4 },
   detailAmount: { fontFamily: SERIF, fontSize: 34, marginTop: 7 },
