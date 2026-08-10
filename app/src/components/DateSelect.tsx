@@ -10,7 +10,7 @@ function validDate(value: string) {
   return Number.isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
-export default function DateSelect({ label, value, onChange, firstDayOfWeek = 1 }: { label: string; value: string; onChange: (value: string) => void; firstDayOfWeek?: 0 | 1 }) {
+export default function DateSelect({ label, value, onChange, firstDayOfWeek = 1, emptyLabel }: { label: string; value: string; onChange: (value: string) => void; firstDayOfWeek?: 0 | 1; emptyLabel?: string }) {
   const { t, i18n } = useTranslation();
   const selected = validDate(value);
   const [open, setOpen] = React.useState(false);
@@ -28,7 +28,7 @@ export default function DateSelect({ label, value, onChange, firstDayOfWeek = 1 
     <Text style={styles.label}>{label}</Text>
     <Pressable style={styles.select} onPress={() => { setMonth(new Date(selected.getFullYear(), selected.getMonth(), 1)); setOpen(true); }} accessibilityRole="button" accessibilityLabel={label}>
       <Ionicons name="calendar-outline" size={18} color={C.gold} />
-      <Text style={styles.value}>{selected.toLocaleDateString(language, { year: 'numeric', month: 'long', day: 'numeric' })}</Text>
+      <Text style={[styles.value, !value && styles.emptyValue]}>{value ? selected.toLocaleDateString(language, { year: 'numeric', month: 'long', day: 'numeric' }) : (emptyLabel ?? t('finance.selectDate'))}</Text>
       <Ionicons name="chevron-down-outline" size={17} color="rgba(255,244,208,0.42)" />
     </Pressable>
     <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -58,7 +58,7 @@ export default function DateSelect({ label, value, onChange, firstDayOfWeek = 1 
 const styles = StyleSheet.create({
   field: { gap: 8, marginTop: 14 }, label: { color: 'rgba(255,244,208,0.58)', fontFamily: SANS, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase' },
   select: { minHeight: 50, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(212,175,55,0.18)', backgroundColor: 'rgba(255,255,255,0.025)', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  value: { flex: 1, color: C.goldLight, fontFamily: SANS, fontSize: 15 }, backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.78)' }, center: { flexGrow: 1, justifyContent: 'center', padding: 18 },
+  value: { flex: 1, color: C.goldLight, fontFamily: SANS, fontSize: 15 }, emptyValue: { color: 'rgba(255,244,208,0.42)' }, backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.78)' }, center: { flexGrow: 1, justifyContent: 'center', padding: 18 },
   sheet: { width: '100%', maxWidth: 430, alignSelf: 'center', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(212,175,55,0.22)', backgroundColor: C.ink, padding: 18 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, month: { color: C.goldLight, fontFamily: SERIF, fontSize: 20, textTransform: 'capitalize' },
   week: { flexDirection: 'row', marginTop: 12 }, weekday: { width: '14.285%', textAlign: 'center', color: 'rgba(255,244,208,0.45)', fontFamily: SANS, fontSize: 10, textTransform: 'uppercase' },

@@ -297,7 +297,10 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
     updateFinanceState((current) => ({ ...current, settings: { ...current.settings, activeAccountId: budgets[0].id } }));
   }, [budgets, financeLoaded, financeState.settings.activeAccountId, updateFinanceState]);
 
-  React.useEffect(() => {
+  // Reopen the drawer in a layout effect so it is part of the first frame
+  // after a module closes. Using a regular effect briefly exposes the main
+  // screen with no drawer, which looks like a navigation flicker.
+  React.useLayoutEffect(() => {
     if (drawerReopenSignal > 0) setDrawerOpen(true);
   }, [drawerReopenSignal]);
 
@@ -1000,6 +1003,10 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                 <Ionicons name="chevron-forward-outline" size={17} color="rgba(255,244,208,0.35)" />
               </Pressable>
             ))}
+            <View style={styles.quickMenuWorkspaceDivider} />
+            <Pressable style={styles.quickMenuWorkspaceButton} onPress={() => { setQuickMenuOpen(false); updateFinanceState((current) => ({ ...current, settings: { ...current.settings, activeWorkspace: 'store' } })); }} accessibilityRole="button" accessibilityLabel={t('finance.workspace.store')} accessibilityHint={t('finance.workspace.store')}>
+              <Ionicons name="storefront-outline" size={19} color={C.gold} />
+            </Pressable>
           </View>
         </View>
       </Modal>
@@ -1367,6 +1374,8 @@ const styles = StyleSheet.create({
   quickMenuItemCopy: { flex: 1, minWidth: 0 },
   quickMenuItemText: { color: C.goldLight, fontFamily: SANS, fontSize: 13, letterSpacing: 0.25 },
   quickMenuItemSubtitle: { color: 'rgba(255,244,208,0.48)', fontFamily: SANS, fontSize: 11, marginTop: 4 },
+  quickMenuWorkspaceDivider: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(233,200,119,0.12)', marginTop: 10 },
+  quickMenuWorkspaceButton: { alignSelf: 'flex-end', width: 44, height: 44, borderRadius: 13, marginTop: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.055)', alignItems: 'center', justifyContent: 'center' },
   safe: { flex: 1 },
   root: { flex: 1 },
   header: { height: 78, paddingTop: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' },

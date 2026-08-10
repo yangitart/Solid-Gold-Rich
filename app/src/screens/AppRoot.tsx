@@ -11,6 +11,7 @@ import { FinanceProvider, useFinance } from '../core/finance/FinanceContext';
 import FinanceModulesScreen, { type FinanceModuleName } from './FinanceModulesScreen';
 import NotesFoldersScreen from './NotesFoldersScreen';
 import OnboardingScreen from './OnboardingScreen';
+import StoreScreen from './StoreScreen';
 import { useTranslation } from 'react-i18next';
 
 const ONBOARDING_KEY = '@solid-gold/onboarding-v1';
@@ -88,7 +89,7 @@ function AppContent() {
       <AuroraBackground />
       {!booted ? <BootScreen ready={loaded && onboardingReady} onDone={onDone} /> : persistenceStatus === 'error' && persistenceErrorPhase === 'load' ? <View style={styles.errorState}><View style={styles.errorCard}><Text style={styles.errorTitle}>{t('finance.releaseErrors.loadError')}</Text><Text style={styles.errorCopy}>{t('finance.releaseErrors.loadErrorCopy')}</Text><Pressable style={styles.retryButton} onPress={retryPersistence}><Text style={styles.retryText}>{t('finance.releaseErrors.retry')}</Text></Pressable></View></View> : !loaded || !onboardingReady ? null : !onboardingComplete ? <OnboardingScreen onComplete={finishOnboarding} /> : hasPin && !unlocked ? <PinScreen pinHash={state.settings.pinHash ?? ''} onUnlock={() => setUnlocked(true)} /> : <>
         <View style={styles.mainLayer} pointerEvents={moduleScreen ? 'none' : 'auto'} importantForAccessibility={moduleScreen ? 'no-hide-descendants' : 'auto'}>
-          <RichScreen onOpenModule={openModule} drawerReopenSignal={drawerReopenSignal} />
+          {state.settings.activeWorkspace === 'store' ? <StoreScreen /> : <RichScreen onOpenModule={openModule} drawerReopenSignal={drawerReopenSignal} />}
         </View>
         {moduleScreen && <View style={styles.moduleLayer}>
           {moduleScreen === 'notes'

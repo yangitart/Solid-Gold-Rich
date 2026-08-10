@@ -6,6 +6,11 @@ import type {
   FinanceState,
   NoteFolder,
   PaymentMethod,
+  StoreProduct,
+  StoreSale,
+  StoreSaleItem,
+  StoreState,
+  StoreStockMovement,
   Transaction,
   TransactionKind,
   TransactionStatus,
@@ -38,8 +43,18 @@ export const DEFAULT_CATEGORIES: FinanceCategories = {
   tag: [],
 };
 
+export const emptyStoreState = (): StoreState => ({
+  setupCompleted: false,
+  name: '',
+  currency: 'USD',
+  categories: [],
+  products: [],
+  stockMovements: [],
+  sales: [],
+});
+
 export const emptyFinanceState = (): FinanceState => ({
-  schemaVersion: 3,
+  schemaVersion: 4,
   accounts: [],
   transactions: [],
   transfers: [],
@@ -51,7 +66,8 @@ export const emptyFinanceState = (): FinanceState => ({
   notes: [],
   noteFolders: [],
   categories: cloneCategories(DEFAULT_CATEGORIES),
-  settings: { preferredCurrency: 'USD', exchangeRates: { USD: 1 }, firstDayOfWeek: 1, dateFormat: 'system' },
+  store: emptyStoreState(),
+  settings: { preferredCurrency: 'USD', exchangeRates: { USD: 1 }, firstDayOfWeek: 1, dateFormat: 'system', activeWorkspace: 'personal' },
 });
 
 function text(value: unknown, fallback = '') {
@@ -123,6 +139,82 @@ function normalizeTransaction(value: Partial<Transaction>, accountId: string): T
   };
 }
 
+function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState {
+  const source = value && typeof value === 'object' ? value : {};
+  const products = Array.isArray(source.products) ? source.products.map((product, index) => {
+    const item = product as Partial<StoreProduct>;
+    const type = item.type === 'service' ? 'service' : 'product';
+    const key = text(item.key, text(item.sku, `product-${index + 1}`)).trim();
+    const purchasePrice = number((item as Partial<StoreProduct> & { costPrice?: unknown }).purchasePrice, number((item as Partial<StoreProduct> & { costPrice?: unknown }).costPrice));
+    const rawAdditionalPrices = (item as Partial<StoreProduct> & { additionalPrices?: unknown }).additionalSalePrices ?? (item as Partial<StoreProduct> & { additionalPrices?: unknown }).additionalPrices;
+    return {
+      id: text(item.id, `store-product-${index}`),
+      key,
+      name: text(item.name, `Product ${index + 1}`),
+      type,
+      unit: text(item.unit, 'unit'),
+      category: text(item.category, 'other'),
+      sku: text(item.sku) || undefined,
+      salePrice: number(item.salePrice),
+      purchasePrice,
+      additionalSalePrices: Array.isArray(rawAdditionalPrices) ? rawAdditionalPrices.map((price) => number(price)).filter((price) => price >= 0) : [],
+      picture: text(item.picture) || undefined,
+      initialStock: Math.max(0, number(item.initialStock)),
+      reservedQuantity: Math.max(0, number(item.reservedQuantity)),
+      stockMinimum: Math.max(0, number(item.stockMinimum)),
+      expirationDate: text(item.expirationDate) || undefined,
+      additionalInfo: text(item.additionalInfo) || undefined,
+      active: item.active !== false,
+    } satisfies StoreProduct;
+  }) : [];
+  const productIds = new Set(products.map((product) => product.id));
+  const stockMovements = Array.isArray(source.stockMovements) ? source.stockMovements.map((movement, index) => {
+    const item = movement as Partial<StoreStockMovement>;
+    const type: StoreStockMovement['type'] = ['initial', 'entry', 'exit', 'adjustment', 'sale', 'saleReversal'].includes(item.type ?? '')
+      ? item.type as StoreStockMovement['type'] : 'adjustment';
+    return {
+      id: text(item.id, `store-stock-${index}`),
+      productId: text(item.productId),
+      type,
+      quantity: number(item.quantity),
+      date: text(item.date, new Date().toISOString()),
+      note: text(item.note),
+      saleId: text(item.saleId) || undefined,
+    } satisfies StoreStockMovement;
+  }).filter((movement) => productIds.has(movement.productId)) : [];
+  const sales = Array.isArray(source.sales) ? source.sales.map((sale, index) => {
+    const item = sale as Partial<StoreSale>;
+    const items: StoreSaleItem[] = Array.isArray(item.items) ? item.items.map((line) => ({
+      productId: text(line.productId),
+      name: text(line.name, 'Product'),
+      type: (line.type === 'service' ? 'service' : 'product') as StoreSaleItem['type'],
+      quantity: Math.max(0, number(line.quantity)),
+      unitPrice: Math.max(0, number(line.unitPrice)),
+      total: Math.max(0, number(line.total, number(line.quantity) * number(line.unitPrice))),
+    })) : [];
+    const paymentMethod = ['cash', 'card', 'bank', 'transfer', 'other'].includes(item.paymentMethod ?? '')
+      ? item.paymentMethod as PaymentMethod : undefined;
+    return {
+      id: text(item.id, `store-sale-${index}`),
+      date: text(item.date, new Date().toISOString()),
+      items,
+      total: Math.max(0, number(item.total, items.reduce((sum, line) => sum + line.total, 0))),
+      paymentMethod,
+      status: item.status === 'void' ? 'void' : 'completed',
+      note: text(item.note),
+    } satisfies StoreSale;
+  }) : [];
+  return {
+    setupCompleted: Boolean(source.setupCompleted),
+    name: text(source.name),
+    currency: text(source.currency, 'USD').toUpperCase(),
+    categories: Array.isArray(source.categories) ? source.categories.map((category) => text(category).trim()).filter(Boolean) : [],
+    products,
+    stockMovements,
+    sales,
+  };
+}
+
 export function normalizeFinanceState(value: Partial<FinanceState>): FinanceState {
   const state = emptyFinanceState();
   state.accounts = Array.isArray(value.accounts) ? value.accounts.map((account, index) => ({
@@ -154,6 +246,7 @@ export function normalizeFinanceState(value: Partial<FinanceState>): FinanceStat
     income: normalizeCategories(value.categories?.income, DEFAULT_CATEGORIES.income),
     tag: normalizeCategories(value.categories?.tag, DEFAULT_CATEGORIES.tag),
   };
+  state.store = normalizeStoreState(value.store);
   const exchangeRates = Object.entries(value.settings?.exchangeRates ?? {}).reduce<Record<string, number>>((all, [currency, rate]) => {
     if (Number.isFinite(rate) && rate > 0) all[currency.toUpperCase()] = rate;
     return all;
@@ -168,7 +261,9 @@ export function normalizeFinanceState(value: Partial<FinanceState>): FinanceStat
     activeAccountId: state.accounts.some((account) => account.id === value.settings?.activeAccountId)
       ? value.settings?.activeAccountId
       : state.accounts.find((account) => !account.archived)?.id,
+    activeWorkspace: value.settings?.activeWorkspace === 'store' ? 'store' : 'personal',
   };
+  if (!value.store?.currency) state.store.currency = state.settings.preferredCurrency;
   return state;
 }
 
@@ -284,7 +379,7 @@ export async function loadFinanceState() {
   const olderState = v3State && v2State ? v2State : legacyState;
   const merged = {
     ...savedState,
-    schemaVersion: 3 as const,
+    schemaVersion: 4 as const,
     accounts: mergeById(savedState.accounts, mergeById(olderState.accounts, legacyState.accounts)),
     transactions: mergeById(savedState.transactions, mergeById(olderState.transactions, legacyState.transactions)),
     transfers: mergeById(savedState.transfers, olderState.transfers),
@@ -295,6 +390,7 @@ export async function loadFinanceState() {
     reminders: mergeById(savedState.reminders, olderState.reminders),
     notes: mergeById(savedState.notes, olderState.notes),
     noteFolders: mergeById(savedState.noteFolders, olderState.noteFolders),
+    store: savedState.store ?? olderState.store ?? emptyStoreState(),
   };
   if (!merged.settings.activeAccountId && legacyState.settings.activeAccountId) merged.settings.activeAccountId = legacyState.settings.activeAccountId;
   return normalizeFinanceState(merged);

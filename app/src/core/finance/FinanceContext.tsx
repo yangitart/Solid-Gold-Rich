@@ -256,7 +256,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   const importJson = React.useCallback((json: string) => {
     try {
       const parsed = JSON.parse(json) as FinanceState;
-      if (!parsed || ![2, 3].includes(Number(parsed.schemaVersion)) || !Array.isArray(parsed.accounts) || !Array.isArray(parsed.transactions)) return false;
+      if (!parsed || ![2, 3, 4].includes(Number(parsed.schemaVersion)) || !Array.isArray(parsed.accounts) || !Array.isArray(parsed.transactions)) return false;
       setState(normalizeFinanceState(parsed));
       return true;
     } catch {

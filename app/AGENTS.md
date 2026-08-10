@@ -63,3 +63,13 @@ npx.cmd expo export --platform android
 - Validar también que todos los JSON de traducción se puedan parsear.
 - No usar `npm audit fix --force`; puede actualizar Expo con cambios incompatibles.
 - No crear commits ni hacer push salvo que el usuario lo solicite explícitamente.
+
+## Store workspace
+
+- The app has a separate Store workspace backed by `FinanceState.store` (schema version 4); do not mix store products, stock movements, or sales with personal accounts and transactions.
+- `src/screens/StoreScreen.tsx` is the single Store entry point. Its left menu stays limited to Inventory, Employees, Clients, Services, Sales, and Settings.
+- The workspace switch is an icon-only action at the bottom of the right quick menu. Do not re-add a large text toggle to the left drawer.
+- Inventory uses a fixed search field for product name, key, and SKU. The floating `+` opens the single responsive product form directly; there is no add-method chooser or scanner flow.
+- Product fields include key, name, type, unit, purchase price, sale price, optional additional sale prices, optional picture URI, category, quantity, reserved quantity, stock minimum, optional expiration, and optional additional information.
+- Keep product stock derived from stock movements. Reserved quantity reduces sellable stock, services do not consume inventory, and cancelled sales restore product stock.
+- Keep all Store strings in the six locale files. Never add visible English-only labels or scanner/menu copy without updating every `translation_*.json` file.

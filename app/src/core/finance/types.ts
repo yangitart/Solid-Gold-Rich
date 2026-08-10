@@ -165,6 +165,7 @@ export type NoteFolder = {
 
 export type AppSettings = {
   activeAccountId?: string;
+  activeWorkspace?: 'personal' | 'store';
   preferredCurrency: Currency;
   exchangeRates?: Record<string, number>;
   firstDayOfWeek: 0 | 1;
@@ -186,8 +187,71 @@ export type FinanceCategories = {
   tag: FinanceCategory[];
 };
 
+export type StoreProductType = 'product' | 'service';
+export type StoreStockMovementType = 'initial' | 'entry' | 'exit' | 'adjustment' | 'sale' | 'saleReversal';
+export type StoreSaleStatus = 'completed' | 'void';
+
+export type StoreProduct = {
+  id: string;
+  key: string;
+  name: string;
+  type: StoreProductType;
+  unit: string;
+  category: string;
+  sku?: string;
+  salePrice: number;
+  purchasePrice: number;
+  additionalSalePrices: number[];
+  picture?: string;
+  initialStock: number;
+  reservedQuantity: number;
+  stockMinimum: number;
+  expirationDate?: string;
+  additionalInfo?: string;
+  active: boolean;
+};
+
+export type StoreStockMovement = {
+  id: string;
+  productId: string;
+  type: StoreStockMovementType;
+  quantity: number;
+  date: string;
+  note: string;
+  saleId?: string;
+};
+
+export type StoreSaleItem = {
+  productId: string;
+  name: string;
+  type: StoreProductType;
+  quantity: number;
+  unitPrice: number;
+  total: number;
+};
+
+export type StoreSale = {
+  id: string;
+  date: string;
+  items: StoreSaleItem[];
+  total: number;
+  paymentMethod?: PaymentMethod;
+  status: StoreSaleStatus;
+  note: string;
+};
+
+export type StoreState = {
+  setupCompleted: boolean;
+  name: string;
+  currency: Currency;
+  categories: string[];
+  products: StoreProduct[];
+  stockMovements: StoreStockMovement[];
+  sales: StoreSale[];
+};
+
 export type FinanceState = {
-  schemaVersion: 3;
+  schemaVersion: 4;
   accounts: Account[];
   transactions: Transaction[];
   transfers: Transfer[];
@@ -199,5 +263,6 @@ export type FinanceState = {
   notes: Note[];
   noteFolders: NoteFolder[];
   categories: FinanceCategories;
+  store: StoreState;
   settings: AppSettings;
 };
