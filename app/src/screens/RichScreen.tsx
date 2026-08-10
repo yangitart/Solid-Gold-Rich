@@ -779,18 +779,26 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                <Ionicons name="analytics-outline" size={18} color={C.gold} />
              </Pressable>
              <Pressable style={styles.statsIconButton} onPress={() => setQuickMenuOpen(true)} accessibilityLabel={t('finance.quickOptions')}>
-               <Ionicons name="ellipsis-horizontal" size={19} color={C.gold} />
+               <Ionicons name="grid-outline" size={18} color={C.gold} />
              </Pressable>
            </View>
         </View>
         <View style={[styles.panel, styles.fixedOperationsPanel]}>
-          <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={styles.operationsScrollContent}>
+          <ScrollView style={styles.operationsScroll} nestedScrollEnabled showsVerticalScrollIndicator={false} contentContainerStyle={styles.operationsScrollContent}>
             {renderTransactions(activeBudget.transactions)}
           </ScrollView>
         </View>
 
         <Pressable style={styles.floatingAdd} onPress={() => openEntry('expense')} accessibilityRole="button" accessibilityLabel={t('finance.newEntry')}>
           <Ionicons name="add" size={24} color={C.void} />
+        </Pressable>
+        <Pressable
+          style={styles.floatingWorkspace}
+          onPress={() => updateFinanceState((current) => ({ ...current, settings: { ...current.settings, activeWorkspace: 'store' } }))}
+          accessibilityRole="button"
+          accessibilityLabel={t('finance.workspace.store')}
+        >
+          <Ionicons name="storefront-outline" size={19} color={C.gold} />
         </Pressable>
       </View>
     );
@@ -828,7 +836,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
             <Ionicons name="analytics-outline" size={18} color={C.gold} />
           </Pressable>
           <Pressable style={styles.statsIconButton} onPress={() => setQuickMenuOpen(true)} accessibilityLabel={t('finance.quickOptions')}>
-            <Ionicons name="ellipsis-horizontal" size={19} color={C.gold} />
+            <Ionicons name="grid-outline" size={18} color={C.gold} />
           </Pressable>
         </View>
       </View>
@@ -858,7 +866,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
           </View>
           <Pressable
             style={styles.headerButton}
-            onPress={() => onOpenModule ? onOpenModule('accounts') : openBudgetManager()}
+            onPress={() => { if (onOpenModule) onOpenModule('accounts'); else openBudgetManager(); }}
             accessibilityRole="button"
             accessibilityLabel={t('finance.manageBudgets')}
           >
@@ -989,6 +997,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
         <View style={styles.quickMenuBackdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setQuickMenuOpen(false)} />
           <View style={styles.quickMenuPanel}>
+            <ScrollView contentContainerStyle={styles.quickMenuScroll} showsVerticalScrollIndicator={false}>
             <Text style={styles.quickMenuTitle}>{t('finance.quickOptions')}</Text>
             <Text style={styles.quickMenuSubtitle}>{t('finance.navigation.quickCopy')}</Text>
             {[
@@ -1003,10 +1012,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                 <Ionicons name="chevron-forward-outline" size={17} color="rgba(255,244,208,0.35)" />
               </Pressable>
             ))}
-            <View style={styles.quickMenuWorkspaceDivider} />
-            <Pressable style={styles.quickMenuWorkspaceButton} onPress={() => { setQuickMenuOpen(false); updateFinanceState((current) => ({ ...current, settings: { ...current.settings, activeWorkspace: 'store' } })); }} accessibilityRole="button" accessibilityLabel={t('finance.workspace.store')} accessibilityHint={t('finance.workspace.store')}>
-              <Ionicons name="storefront-outline" size={19} color={C.gold} />
-            </Pressable>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -1366,7 +1372,8 @@ const styles = StyleSheet.create({
   editCancelButton: { minHeight: 46, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.gold, alignItems: 'center', justifyContent: 'center' },
   editCancelText: { color: C.gold, fontFamily: SANS, fontSize: 10, fontWeight: '700' },
   quickMenuBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.68)', justifyContent: 'center', paddingHorizontal: 24 },
-  quickMenuPanel: { borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#090B12', padding: 16 },
+  quickMenuPanel: { maxHeight: '88%', borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#090B12', padding: 16 },
+  quickMenuScroll: { paddingBottom: 2 },
   quickMenuTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 22 },
   quickMenuSubtitle: { color: 'rgba(255,244,208,0.5)', fontFamily: SANS, fontSize: 11, lineHeight: 17, marginTop: 5, marginBottom: 12 },
   quickMenuItem: { minHeight: 68, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(233,200,119,0.12)', gap: 12 },
@@ -1374,8 +1381,6 @@ const styles = StyleSheet.create({
   quickMenuItemCopy: { flex: 1, minWidth: 0 },
   quickMenuItemText: { color: C.goldLight, fontFamily: SANS, fontSize: 13, letterSpacing: 0.25 },
   quickMenuItemSubtitle: { color: 'rgba(255,244,208,0.48)', fontFamily: SANS, fontSize: 11, marginTop: 4 },
-  quickMenuWorkspaceDivider: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(233,200,119,0.12)', marginTop: 10 },
-  quickMenuWorkspaceButton: { alignSelf: 'flex-end', width: 44, height: 44, borderRadius: 13, marginTop: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.055)', alignItems: 'center', justifyContent: 'center' },
   safe: { flex: 1 },
   root: { flex: 1 },
   header: { height: 78, paddingTop: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' },
@@ -1433,9 +1438,11 @@ const styles = StyleSheet.create({
   statsBarTall: { width: 3, height: 15, borderRadius: 2, backgroundColor: C.goldLight },
   statsBarMid: { width: 3, height: 11, borderRadius: 2, backgroundColor: C.goldMid },
   fixedSectionHeader: { minHeight: 54, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 5 },
-  fixedOperationsPanel: { flex: 1, minHeight: 96, paddingBottom: 49 },
+  fixedOperationsPanel: { flex: 1, minHeight: 0, paddingBottom: 49 },
+  operationsScroll: { flex: 1 },
   operationsScrollContent: { flexGrow: 1 },
   floatingAdd: { position: 'absolute', right: 13, bottom: 12, width: 46, height: 46, borderRadius: 23, borderWidth: StyleSheet.hairlineWidth, borderColor: C.goldLight, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center', shadowColor: C.gold, shadowOpacity: 0.2, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 9 },
+  floatingWorkspace: { position: 'absolute', right: 14, bottom: 68, width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.34)', backgroundColor: '#11141D', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.24, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 7 },
   hero: { borderRadius: 26, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, padding: 18, overflow: 'hidden', backgroundColor: 'rgba(10,12,20,0.66)' },
   heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   eyebrow: { color: 'rgba(233,200,119,0.58)', fontFamily: SANS, fontSize: 8, letterSpacing: 2.1 },
@@ -1475,7 +1482,7 @@ const styles = StyleSheet.create({
   transactionAmount: { width: 91, fontFamily: SERIF, fontSize: 14, textAlign: 'right' },
   transactionActions: { flexDirection: 'row', alignItems: 'center', gap: 2, marginLeft: 7 },
   transactionAction: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  emptyState: { alignItems: 'center', paddingHorizontal: 20, paddingVertical: 31 },
+  emptyState: { flexGrow: 1, minHeight: 150, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20, paddingVertical: 24 },
   emptyDiamond: { width: 19, height: 19, borderWidth: 1, borderColor: C.gold, transform: [{ rotate: '45deg' }], marginBottom: 13, opacity: 0.75 },
   emptyTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 11, letterSpacing: 0.8 },
   emptyCopy: { color: 'rgba(255,244,208,0.5)', fontFamily: SANS, fontSize: 11, lineHeight: 17, textAlign: 'center', marginTop: 7 },

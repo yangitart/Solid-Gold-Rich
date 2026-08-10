@@ -29,6 +29,10 @@ function money(value: number, currency: string) {
   return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`;
 }
 
+function MenuGlyph() {
+  return <View style={styles.menuGlyph}><View style={styles.menuLineWide} /><View style={styles.menuLine} /><View style={styles.menuLineWide} /></View>;
+}
+
 function Field({ title, value, onChangeText, placeholder, numeric = false, multiline = false }: { title: string; value: string; onChangeText: (value: string) => void; placeholder?: string; numeric?: boolean; multiline?: boolean }) {
   return <View style={styles.field}><Text style={styles.fieldLabel}>{title}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="rgba(255,244,208,0.3)" keyboardType={numeric ? 'decimal-pad' : 'default'} multiline={multiline} style={[styles.input, multiline && styles.multiline]} accessibilityLabel={title} />{value.trim() && title.toLowerCase().includes('picture') && <Image source={{ uri: value.trim() }} style={styles.picturePreview} resizeMode="cover" />}</View>;
 }
@@ -51,7 +55,6 @@ export default function StoreScreen() {
   const currency = store.currency || state.settings.preferredCurrency || 'USD';
   const [view, setView] = React.useState<StoreView>('inventory');
   const [drawerOpen, setDrawerOpen] = React.useState(false);
-  const [rightMenuOpen, setRightMenuOpen] = React.useState(false);
   const [productOpen, setProductOpen] = React.useState(false);
   const [editingProduct, setEditingProduct] = React.useState<StoreProduct | null>(null);
   const [productDraft, setProductDraft] = React.useState<ProductDraft>({ key: '', name: '', type: 'product', unit: 'unit', category: '', purchasePrice: '', salePrice: '', additionalSalePrices: '', picture: '', stock: '', reservedQuantity: '0', stockMinimum: '0', expirationDate: '', additionalInfo: '' });
@@ -91,7 +94,6 @@ export default function StoreScreen() {
 
   const switchWorkspace = (storeActive: boolean) => {
     setDrawerOpen(false);
-    setRightMenuOpen(false);
     if (storeActive) return;
     finance.updateState((current) => ({ ...current, settings: { ...current.settings, activeWorkspace: 'personal' } }));
   };
@@ -220,10 +222,10 @@ export default function StoreScreen() {
   const title = view === 'inventory' ? storeText('inventory', 'Inventory') : view === 'sales' ? t('finance.store.sales') : view === 'services' ? storeText('services', 'Services') : view === 'employees' ? storeText('employees', 'Employees') : storeText('clients', 'Clients');
 
   return <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-    <Modal visible={rightMenuOpen} transparent animationType="fade" onRequestClose={() => setRightMenuOpen(false)}><View style={styles.storeMenuBackdrop}><Pressable style={StyleSheet.absoluteFill} onPress={() => setRightMenuOpen(false)} /><View style={styles.storeMenuPanel}><Pressable style={styles.storeMenuWorkspaceButton} onPress={() => switchWorkspace(false)} accessibilityRole="button" accessibilityLabel={t('finance.workspace.personal')} accessibilityHint={t('finance.workspace.personal')}><Ionicons name="wallet-outline" size={19} color={C.gold} /></Pressable></View></View></Modal>
-    <View style={styles.header}><Pressable style={styles.headerButton} onPress={() => setDrawerOpen(true)} accessibilityRole="button" accessibilityLabel={t('finance.menu')}><Ionicons name="menu-outline" size={25} color={C.goldLight} /></Pressable><View style={styles.headerCopy}><Text style={styles.headerTitle} numberOfLines={1}>{title}</Text><Text style={styles.headerSubtitle}>{t('finance.store.subtitle')}</Text></View><Pressable style={styles.headerButton} onPress={() => setRightMenuOpen(true)} accessibilityRole="button" accessibilityLabel={t('finance.quickOptions')}><Ionicons name="ellipsis-horizontal" size={22} color={C.gold} /></Pressable></View>
+    <View style={styles.header}><Pressable style={styles.headerButton} onPress={() => setDrawerOpen(true)} accessibilityRole="button" accessibilityLabel={t('finance.menu')}><MenuGlyph /></Pressable><View style={styles.headerCopy}><Text style={styles.headerTitle} numberOfLines={1}>{title}</Text><Text style={styles.headerSubtitle}>{t('finance.store.subtitle')}</Text></View><View style={styles.headerSpacer} /></View>
     {view === 'inventory' || view === 'services' ? renderProducts() : view === 'sales' ? renderSales() : renderSimpleSection(view)}
-    {(view === 'inventory' || view === 'services') && <Pressable style={styles.fab} onPress={() => openProduct()} accessibilityRole="button" accessibilityLabel={t('finance.store.addProduct')}><Ionicons name="add" size={28} color={C.void} /></Pressable>}
+    <Pressable style={[styles.workspaceFab, (view === 'inventory' || view === 'services') ? styles.workspaceFabStacked : styles.workspaceFabSolo]} onPress={() => switchWorkspace(false)} accessibilityRole="button" accessibilityLabel={t('finance.workspace.personal')}><Ionicons name="wallet-outline" size={19} color={C.gold} /></Pressable>
+    {(view === 'inventory' || view === 'services') && <Pressable style={styles.fab} onPress={() => openProduct()} accessibilityRole="button" accessibilityLabel={t('finance.store.addProduct')}><Ionicons name="add" size={24} color={C.void} /></Pressable>}
 
     <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}><View style={styles.drawerBackdrop}><Pressable style={StyleSheet.absoluteFill} onPress={() => setDrawerOpen(false)} /><SafeAreaView style={styles.drawer} edges={['top', 'bottom']}><ScrollView contentContainerStyle={styles.drawerContent} showsVerticalScrollIndicator={false}><View style={styles.drawerNav}><DrawerItem icon="cube-outline" label={storeText('inventory', 'Inventory')} active={view === 'inventory'} onPress={() => { setView('inventory'); setLowStockOnly(false); setDrawerOpen(false); }} /><DrawerItem icon="people-outline" label={storeText('employees', 'Employees')} active={view === 'employees'} onPress={() => { setView('employees'); setDrawerOpen(false); }} /><DrawerItem icon="person-outline" label={storeText('clients', 'Clients')} active={view === 'clients'} onPress={() => { setView('clients'); setDrawerOpen(false); }} /><DrawerItem icon="construct-outline" label={storeText('services', 'Services')} active={view === 'services'} onPress={() => { setView('services'); setLowStockOnly(false); setDrawerOpen(false); }} /><DrawerItem icon="cart-outline" label={t('finance.store.sales')} active={view === 'sales'} onPress={() => { setView('sales'); setDrawerOpen(false); }} /><DrawerItem icon="settings-outline" label={t('finance.store.settings')} onPress={() => { setSettingsOpen(true); setDrawerOpen(false); }} /></View></ScrollView></SafeAreaView></View></Modal>
 
@@ -254,11 +256,15 @@ function DrawerItem({ icon, label, active = false, onPress }: { icon: IconName; 
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: C.void },
-  header: { height: 78, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line },
-  headerButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  headerCopy: { flex: 1, minWidth: 0, alignItems: 'center' },
-  headerTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 21 },
-  headerSubtitle: { color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 9, letterSpacing: 1, marginTop: 3 },
+  header: { height: 78, paddingTop: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line },
+  headerButton: { width: 44, height: 44, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.055)', alignItems: 'center', justifyContent: 'center' },
+  headerSpacer: { width: 44, height: 44 },
+  headerCopy: { flex: 1, minWidth: 0, alignItems: 'center', paddingHorizontal: 8 },
+  headerTitle: { maxWidth: 220, color: C.goldLight, fontFamily: SANS, fontSize: 15, fontWeight: '600', letterSpacing: 0.2 },
+  headerSubtitle: { color: 'rgba(255,244,208,0.48)', fontFamily: SANS, fontSize: 9.5, letterSpacing: 1.35, marginTop: 3 },
+  menuGlyph: { width: 18, gap: 3.5 },
+  menuLineWide: { width: 18, height: 1.5, borderRadius: 2, backgroundColor: C.goldLight },
+  menuLine: { width: 12, height: 1.5, borderRadius: 2, backgroundColor: C.goldLight },
   tabs: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line },
   tab: { minHeight: 42, flex: 1, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
   tabActive: { backgroundColor: C.gold, borderColor: C.gold },
@@ -311,7 +317,10 @@ const styles = StyleSheet.create({
   primaryText: { color: C.void, fontFamily: SANS, fontSize: 11, fontWeight: '700', letterSpacing: 0.6 },
   secondary: { minHeight: 46, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
   secondaryText: { color: C.gold, fontFamily: SANS, fontSize: 11, fontWeight: '700' },
-  fab: { position: 'absolute', right: 20, bottom: 22, width: 58, height: 58, borderRadius: 29, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.35, shadowRadius: 10, shadowOffset: { width: 0, height: 5 }, elevation: 7 },
+  fab: { position: 'absolute', right: 20, bottom: 22, width: 46, height: 46, borderRadius: 23, borderWidth: StyleSheet.hairlineWidth, borderColor: C.goldLight, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center', shadowColor: C.gold, shadowOpacity: 0.2, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 9 },
+  workspaceFab: { position: 'absolute', right: 21, width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.34)', backgroundColor: '#11141D', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.24, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 7 },
+  workspaceFabStacked: { bottom: 78 },
+  workspaceFabSolo: { bottom: 22 },
   danger: { minHeight: 46, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: '#F08B88', alignItems: 'center', justifyContent: 'center', marginTop: 8 },
   dangerText: { color: '#F08B88', fontFamily: SANS, fontSize: 11, fontWeight: '700' },
   disabled: { opacity: 0.42 },
@@ -344,9 +353,6 @@ const styles = StyleSheet.create({
   drawerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.68)' },
   drawer: { width: '84%', height: '100%', backgroundColor: '#090B12', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.line, paddingHorizontal: 18 },
   drawerContent: { paddingTop: 14, paddingBottom: 28 },
-  storeMenuBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.68)', alignItems: 'flex-end', paddingTop: 78, paddingRight: 14 },
-  storeMenuPanel: { width: 54, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#090B12', padding: 4 },
-  storeMenuWorkspaceButton: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(233,200,119,0.055)' },
   drawerBrand: { padding: 15, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.05)', marginBottom: 18 },
   drawerName: { color: C.goldLight, fontFamily: SERIF, fontSize: 23, marginTop: 9 },
   drawerHint: { color: 'rgba(255,244,208,0.4)', fontFamily: SANS, fontSize: 9, marginTop: 4 },
