@@ -203,5 +203,10 @@
     ,"releaseImport": { "importCopy": "Paste a JSON backup or a CSV operation list.", "importFailed": "Import failed", "invalidBackup": "The JSON backup is invalid.", "csvWarnings": "CSV warnings" }
     ,"releaseFrequency": { "daily": "Daily", "weekly": "Weekly", "monthly": "Monthly", "yearly": "Yearly", "custom": "Custom" }
     ,"releaseArchive": { "archiveCopy": "This hides the account from daily views. You can restore it later without losing its operations." }
+    ,"storeFilters": { "search": "Search by name or code", "filters": "Filters", "status": "Status", "active": "Active", "inactive": "Inactive", "clear": "Clear filters" }
+    ,"storeDrawer": { "totalInvested": "Total invested", "inventoryValue": "Business balance" }
+    ,"storeAccount": { "name": "Business" }
+    ,"storePurchase": { "purchaseFrom": "Purchase paid from", "none": "No account", "insufficientBusiness": "The Business account does not have enough balance.", "insufficientAccount": "The selected account does not have enough balance.", "sourceRequired": "Select a valid purchase source.", "inventoryPurchase": "Inventory purchase" }
+    ,"storeFunding": { "addMenuTitle": "Add to store", "productTab": "Product", "tab": "Funding", "productCopy": "Create a product, set its stock and choose how the purchase is paid.", "title": "Fund business", "copy": "Move money from a personal account to the business balance, or add it without linking an account.", "account": "Fund from", "amount": "Amount to add", "note": "Note (optional)", "save": "Add funds", "insufficient": "The selected account does not have enough balance.", "missingRate": "Configure a valid exchange rate for these currencies.", "invalid": "Enter a valid amount." }
   }
 }

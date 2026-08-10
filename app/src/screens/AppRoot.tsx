@@ -13,6 +13,7 @@ import NotesFoldersScreen from './NotesFoldersScreen';
 import OnboardingScreen from './OnboardingScreen';
 import StoreScreen from './StoreScreen';
 import { useTranslation } from 'react-i18next';
+import Animated, { Easing, FadeIn, FadeOut, SlideInRight } from 'react-native-reanimated';
 
 const ONBOARDING_KEY = '@solid-gold/onboarding-v1';
 
@@ -88,14 +89,14 @@ function AppContent() {
     <View style={styles.root}>
       <AuroraBackground />
       {!booted ? <BootScreen ready={loaded && onboardingReady} onDone={onDone} /> : persistenceStatus === 'error' && persistenceErrorPhase === 'load' ? <View style={styles.errorState}><View style={styles.errorCard}><Text style={styles.errorTitle}>{t('finance.releaseErrors.loadError')}</Text><Text style={styles.errorCopy}>{t('finance.releaseErrors.loadErrorCopy')}</Text><Pressable style={styles.retryButton} onPress={retryPersistence}><Text style={styles.retryText}>{t('finance.releaseErrors.retry')}</Text></Pressable></View></View> : !loaded || !onboardingReady ? null : !onboardingComplete ? <OnboardingScreen onComplete={finishOnboarding} /> : hasPin && !unlocked ? <PinScreen pinHash={state.settings.pinHash ?? ''} onUnlock={() => setUnlocked(true)} /> : <>
-        <View style={styles.mainLayer} pointerEvents={moduleScreen ? 'none' : 'auto'} importantForAccessibility={moduleScreen ? 'no-hide-descendants' : 'auto'}>
+        <Animated.View key={state.settings.activeWorkspace} entering={FadeIn.duration(260).easing(Easing.out(Easing.cubic))} exiting={FadeOut.duration(170).easing(Easing.in(Easing.cubic))} style={styles.mainLayer} pointerEvents={moduleScreen ? 'none' : 'auto'} importantForAccessibility={moduleScreen ? 'no-hide-descendants' : 'auto'}>
           {state.settings.activeWorkspace === 'store' ? <StoreScreen /> : <RichScreen onOpenModule={openModule} drawerReopenSignal={drawerReopenSignal} />}
-        </View>
-        {moduleScreen && <View style={styles.moduleLayer}>
+        </Animated.View>
+        {moduleScreen && <Animated.View key={moduleScreen} entering={SlideInRight.duration(280).easing(Easing.out(Easing.cubic))} exiting={FadeOut.duration(170).easing(Easing.in(Easing.cubic))} style={styles.moduleLayer}>
           {moduleScreen === 'notes'
             ? <NotesFoldersScreen onBack={closeModule} />
             : <FinanceModulesScreen module={moduleScreen} onBack={closeModule} />}
-        </View>}
+        </Animated.View>}
         {persistenceStatus === 'error' && persistenceErrorPhase === 'save' && <View style={styles.saveBanner} accessibilityRole="alert">
           <View style={styles.saveBannerCopy}><Text style={styles.saveBannerTitle}>{t('finance.releaseErrors.saveError')}</Text><Text style={styles.saveBannerText}>{t('finance.releaseErrors.saveErrorCopy')}</Text></View>
           <Pressable style={styles.bannerRetry} onPress={retryPersistence} accessibilityLabel={t('finance.releaseErrors.retry')}><Text style={styles.bannerRetryText}>{t('finance.releaseErrors.retry')}</Text></Pressable>

@@ -203,5 +203,10 @@
     ,"releaseImport": { "importCopy": "Fuege eine JSON-Sicherung oder eine CSV-Vorgangsliste ein.", "importFailed": "Import fehlgeschlagen", "invalidBackup": "Die JSON-Sicherung ist ungueltig.", "csvWarnings": "CSV-Warnungen" }
     ,"releaseFrequency": { "daily": "Taeglich", "weekly": "Woechentlich", "monthly": "Monatlich", "yearly": "Jaehrlich", "custom": "Benutzerdefiniert" }
     ,"releaseArchive": { "archiveCopy": "Das Konto wird in Alltagsansichten ausgeblendet. Du kannst es spaeter ohne Datenverlust wiederherstellen." }
+    ,"storeFilters": { "search": "Nach Name oder Code suchen", "filters": "Filter", "status": "Status", "active": "Aktiv", "inactive": "Inaktiv", "clear": "Filter zurücksetzen" }
+    ,"storeDrawer": { "totalInvested": "Gesamt investiert", "inventoryValue": "Geschäftsguthaben" }
+    ,"storeAccount": { "name": "Geschäft" }
+    ,"storePurchase": { "purchaseFrom": "Kauf bezahlt von", "none": "Kein Konto", "insufficientBusiness": "Das Geschäftskonto hat nicht genügend Guthaben.", "insufficientAccount": "Das ausgewählte Konto hat nicht genügend Guthaben.", "sourceRequired": "Wähle eine gültige Kaufquelle.", "inventoryPurchase": "Inventarkauf" }
+    ,"storeFunding": { "addMenuTitle": "Zum Geschäft hinzufügen", "productTab": "Produkt", "tab": "Finanzieren", "productCopy": "Erstelle ein Produkt, lege den Bestand fest und wähle die Zahlungsquelle.", "title": "Geschäft finanzieren", "copy": "Verschiebe Geld von einem privaten Konto zum Geschäftsguthaben oder füge es ohne Konto hinzu.", "account": "Finanzieren von", "amount": "Betrag hinzufügen", "note": "Notiz (optional)", "save": "Geld hinzufügen", "insufficient": "Das ausgewählte Konto hat nicht genügend Guthaben.", "missingRate": "Lege einen gültigen Wechselkurs für diese Währungen fest.", "invalid": "Gib einen gültigen Betrag ein." }
   }
 }

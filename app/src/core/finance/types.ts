@@ -240,11 +240,19 @@ export type StoreSale = {
   note: string;
 };
 
+export type StoreAccount = {
+  id: 'store-business';
+  name: string;
+  currency: Currency;
+  balance: number;
+};
+
 export type StoreState = {
   setupCompleted: boolean;
   name: string;
   currency: Currency;
   categories: string[];
+  businessAccount: StoreAccount;
   products: StoreProduct[];
   stockMovements: StoreStockMovement[];
   sales: StoreSale[];

@@ -203,5 +203,10 @@
     ,"releaseImport": { "importCopy": "Collez une sauvegarde JSON ou une liste d'operations CSV.", "importFailed": "Echec de l'importation", "invalidBackup": "La sauvegarde JSON n'est pas valide.", "csvWarnings": "Avertissements CSV" }
     ,"releaseFrequency": { "daily": "Quotidien", "weekly": "Hebdomadaire", "monthly": "Mensuel", "yearly": "Annuel", "custom": "Personnalise" }
     ,"releaseArchive": { "archiveCopy": "Le compte sera masque des vues quotidiennes. Vous pourrez le restaurer sans perdre ses operations." }
+    ,"storeFilters": { "search": "Rechercher par nom ou code", "filters": "Filtres", "status": "Statut", "active": "Actifs", "inactive": "Inactifs", "clear": "Effacer les filtres" }
+    ,"storeDrawer": { "totalInvested": "Total investi", "inventoryValue": "Solde de l'entreprise" }
+    ,"storeAccount": { "name": "Entreprise" }
+    ,"storePurchase": { "purchaseFrom": "Achat payé depuis", "none": "Aucun compte", "insufficientBusiness": "Le compte Entreprise n’a pas assez de solde.", "insufficientAccount": "Le compte sélectionné n’a pas assez de solde.", "sourceRequired": "Sélectionnez une source d’achat valide.", "inventoryPurchase": "Achat de stock" }
+    ,"storeFunding": { "addMenuTitle": "Ajouter à la boutique", "productTab": "Produit", "tab": "Financer", "productCopy": "Créez un produit, définissez son stock et choisissez le mode de paiement.", "title": "Financer l’entreprise", "copy": "Transférez de l’argent d’un compte personnel vers le solde de l’entreprise ou ajoutez-le sans compte lié.", "account": "Financer depuis", "amount": "Montant à ajouter", "note": "Note (facultatif)", "save": "Ajouter des fonds", "insufficient": "Le compte sélectionné n’a pas assez de solde.", "missingRate": "Configurez un taux de change valide pour ces devises.", "invalid": "Saisissez un montant valide." }
   }
 }

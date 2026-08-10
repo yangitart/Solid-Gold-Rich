@@ -203,5 +203,10 @@
     ,"releaseImport": { "importCopy": "Cole um backup JSON ou uma lista de operacoes CSV.", "importFailed": "Falha ao importar", "invalidBackup": "O backup JSON e invalido.", "csvWarnings": "Avisos do CSV" }
     ,"releaseFrequency": { "daily": "Diario", "weekly": "Semanal", "monthly": "Mensal", "yearly": "Anual", "custom": "Personalizado" }
     ,"releaseArchive": { "archiveCopy": "Isso oculta a conta das telas diarias. Voce pode restaura-la depois sem perder operacoes." }
+    ,"storeFilters": { "search": "Buscar por nome ou código", "filters": "Filtros", "status": "Estado", "active": "Ativos", "inactive": "Inativos", "clear": "Limpar filtros" }
+    ,"storeDrawer": { "totalInvested": "Total investido", "inventoryValue": "Saldo do negócio" }
+    ,"storeAccount": { "name": "Negócio" }
+    ,"storePurchase": { "purchaseFrom": "Compra paga por", "none": "Sem conta", "insufficientBusiness": "A conta Negócio não tem saldo suficiente.", "insufficientAccount": "A conta selecionada não tem saldo suficiente.", "sourceRequired": "Selecione uma origem de compra válida.", "inventoryPurchase": "Compra de estoque" }
+    ,"storeFunding": { "addMenuTitle": "Adicionar à loja", "productTab": "Produto", "tab": "Financiar", "productCopy": "Crie um produto, defina o estoque e escolha como a compra será paga.", "title": "Financiar negócio", "copy": "Mova dinheiro de uma conta pessoal para o saldo do negócio ou adicione dinheiro sem vincular uma conta.", "account": "Financiar de", "amount": "Valor a adicionar", "note": "Nota (opcional)", "save": "Adicionar fundos", "insufficient": "A conta selecionada não tem saldo suficiente.", "missingRate": "Configure uma taxa de câmbio válida para estas moedas.", "invalid": "Insira um valor válido." }
   }
 }

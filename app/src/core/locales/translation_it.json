@@ -203,5 +203,10 @@
     ,"releaseImport": { "importCopy": "Incolla un backup JSON o un elenco di operazioni CSV.", "importFailed": "Importazione non riuscita", "invalidBackup": "Il backup JSON non e valido.", "csvWarnings": "Avvisi CSV" }
     ,"releaseFrequency": { "daily": "Giornaliero", "weekly": "Settimanale", "monthly": "Mensile", "yearly": "Annuale", "custom": "Personalizzato" }
     ,"releaseArchive": { "archiveCopy": "Il conto verra nascosto dalle viste quotidiane. Potrai ripristinarlo senza perdere le operazioni." }
+    ,"storeFilters": { "search": "Cerca per nome o codice", "filters": "Filtri", "status": "Stato", "active": "Attivi", "inactive": "Inattivi", "clear": "Cancella filtri" }
+    ,"storeDrawer": { "totalInvested": "Totale investito", "inventoryValue": "Saldo dell'attività" }
+    ,"storeAccount": { "name": "Attività" }
+    ,"storePurchase": { "purchaseFrom": "Acquisto pagato da", "none": "Nessun conto", "insufficientBusiness": "Il conto Attività non ha saldo sufficiente.", "insufficientAccount": "Il conto selezionato non ha saldo sufficiente.", "sourceRequired": "Seleziona una fonte di acquisto valida.", "inventoryPurchase": "Acquisto inventario" }
+    ,"storeFunding": { "addMenuTitle": "Aggiungi al negozio", "productTab": "Prodotto", "tab": "Finanzia", "productCopy": "Crea un prodotto, imposta la scorta e scegli come pagare l’acquisto.", "title": "Finanzia attività", "copy": "Sposta denaro da un conto personale al saldo dell’attività oppure aggiungilo senza collegare un conto.", "account": "Finanzia da", "amount": "Importo da aggiungere", "note": "Nota (facoltativa)", "save": "Aggiungi fondi", "insufficient": "Il conto selezionato non ha saldo sufficiente.", "missingRate": "Configura un tasso di cambio valido per queste valute.", "invalid": "Inserisci un importo valido." }
   }
 }

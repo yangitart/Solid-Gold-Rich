@@ -202,20 +202,35 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   const deleteTransaction = React.useCallback((id: string) => updateState((current) => ({ ...current, transactions: current.transactions.filter((item) => item.id !== id) })), [updateState]);
   const addTransfer = React.useCallback((transfer: Transfer) => {
     updateState((current) => {
-      const fromTransaction: Transaction = {
+      const isStoreSource = transfer.fromAccountId === 'store-business';
+      const isStoreTarget = transfer.toAccountId === 'store-business';
+      const fromTransaction: Transaction | null = isStoreSource ? null : {
         id: `${transfer.id}-out`, accountId: transfer.fromAccountId, kind: 'transfer', amount: transfer.fromAmount + transfer.fee,
         currency: transfer.fromCurrency, date: transfer.date, payee: 'Transfer', category: 'transfer',
         paymentMethod: 'transfer', status: transfer.status, reference: transfer.id, description: transfer.note, transferId: transfer.id,
       };
-      const toTransaction: Transaction = {
+      const toTransaction: Transaction | null = isStoreTarget ? null : {
         id: `${transfer.id}-in`, accountId: transfer.toAccountId, kind: 'income', amount: transfer.toAmount,
         currency: transfer.toCurrency, date: transfer.date, payee: 'Transfer', category: 'transfer',
         paymentMethod: 'transfer', status: transfer.status, reference: transfer.id, description: transfer.note, transferId: transfer.id,
       };
-      return { ...current, transfers: [...current.transfers, transfer], transactions: [toTransaction, fromTransaction, ...current.transactions] };
+      const businessBalance = current.store.businessAccount.balance + (isStoreTarget ? transfer.toAmount : 0) - (isStoreSource ? transfer.fromAmount + transfer.fee : 0);
+      return {
+        ...current,
+        transfers: [...current.transfers, transfer],
+        transactions: [toTransaction, fromTransaction, ...current.transactions].filter((item): item is Transaction => Boolean(item)),
+        store: { ...current.store, businessAccount: { ...current.store.businessAccount, balance: businessBalance } },
+      };
     });
   }, [updateState]);
-  const deleteTransfer = React.useCallback((id: string) => updateState((current) => ({ ...current, transfers: current.transfers.filter((item) => item.id !== id), transactions: current.transactions.filter((item) => item.transferId !== id) })), [updateState]);
+  const deleteTransfer = React.useCallback((id: string) => updateState((current) => {
+    const transfer = current.transfers.find((item) => item.id === id);
+    if (!transfer) return current;
+    const businessBalance = current.store.businessAccount.balance
+      - (transfer.toAccountId === 'store-business' ? transfer.toAmount : 0)
+      + (transfer.fromAccountId === 'store-business' ? transfer.fromAmount + transfer.fee : 0);
+    return { ...current, transfers: current.transfers.filter((item) => item.id !== id), transactions: current.transactions.filter((item) => item.transferId !== id), store: { ...current.store, businessAccount: { ...current.store.businessAccount, balance: businessBalance } } };
+  }), [updateState]);
   const addBudget = React.useCallback((budget: Budget) => updateState((current) => ({ ...current, budgets: [...current.budgets, budget] })), [updateState]);
   const updateBudget = React.useCallback((budget: Budget) => updateState((current) => ({ ...current, budgets: replaceById(current.budgets, budget) })), [updateState]);
   const deleteBudget = React.useCallback((id: string) => updateState((current) => ({ ...current, budgets: current.budgets.filter((item) => item.id !== id) })), [updateState]);
