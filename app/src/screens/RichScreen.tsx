@@ -19,7 +19,7 @@ import { useTranslation } from 'react-i18next';
 import Gem from '../components/Gem';
 import { C, SANS, SERIF } from '../theme/luxury';
 import type { FinanceModuleName } from './FinanceModulesScreen';
-import { useFinance } from '../core/finance/FinanceContext';
+import { useFinance } from '../stores/FinanceContext';
 import type { Account as FinanceAccount } from '../core/finance/types';
 import { currencyRate } from '../core/finance/currency';
 
@@ -102,6 +102,11 @@ function balanceFor(budget: BudgetAccount) {
     .reduce((sum, item) => sum + item.amount, 0);
 }
 
+function balanceImpact(kind: TransactionKind | 'adjustment', amount: number) {
+  if (kind === 'adjustment') return amount;
+  return kind === 'income' ? Math.abs(amount) : -Math.abs(amount);
+}
+
 function formatMoney(value: number, language: string, currency = 'USD') {
   return `${value.toLocaleString(language, { maximumFractionDigits: 2 })} ${currency}`;
 }
@@ -132,7 +137,7 @@ function DrawerModuleGlyph({ module }: { module: string }) {
     accounts: 'wallet-outline', activity: 'receipt-outline', budget: 'speedometer-outline', recurring: 'repeat-outline',
     debt: 'card-outline', savings: 'trending-up-outline', reminders: 'notifications-outline', calendar: 'calendar-outline',
     charts: 'bar-chart-outline', categories: 'grid-outline', notes: 'document-text-outline', tools: 'calculator-outline',
-    settings: 'settings-outline', about: 'information-circle-outline',
+    progress: 'diamond-outline', settings: 'settings-outline', about: 'information-circle-outline',
   };
   const iconName = icons[module] ?? 'apps-outline';
 
@@ -331,6 +336,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
   }, [budgets.length, financeLoaded, onOpenModule]);
 
   const activeBudget = budgets.find((budget) => budget.id === activeBudgetId) ?? budgets[0];
+  const activeBudgetHasLimit = Boolean(activeBudget && Number.isFinite(Number(activeBudget.limit)) && Number(activeBudget.limit) > 0);
   const entryBudget = editingTransaction ? budgets.find((budget) => budget.id === editingTransaction.budgetId) : activeBudget;
   const operationCategories = entryKind === 'income' ? financeState.categories.income : financeState.categories.expense;
   const filteredOperationCategories = operationCategories.filter((category) => {
@@ -438,10 +444,8 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
   const transferSource = transferOptions.find((budget) => budget.id === transferSourceId);
   const transferTarget = transferOptions.find((budget) => budget.id === transferTargetId);
   const transferHasRate = parseAmount(transferReceivedAmount) > 0 || parseAmount(transferRate) > 0;
-  const transferFundsError = entryKind === 'transfer' && transferSource && parseAmount(entryAmount) > 0 && balanceFor(transferSource) < parseAmount(entryAmount)
-    ? t('finance.insufficientFunds', { defaultValue: 'The source account does not have enough balance.' }) : '';
-  const entryCanSave = parseAmount(entryAmount) > 0 && (entryKind !== 'transfer' || Boolean(transferSource && transferTarget && transferSource.id !== transferTarget.id && transferHasRate && !transferFundsError));
-  const transferValidationError = transferError || transferFundsError || (entryKind === 'transfer' && transferSource && transferTarget && transferSource.currency !== transferTarget.currency && !transferHasRate ? t('finance.releaseErrors.missingRate') : '');
+  const entryCanSave = parseAmount(entryAmount) > 0 && (entryKind !== 'transfer' || Boolean(transferSource && transferTarget && transferSource.id !== transferTarget.id && transferHasRate));
+  const transferValidationError = transferError || (entryKind === 'transfer' && transferSource && transferTarget && transferSource.currency !== transferTarget.currency && !transferHasRate ? t('finance.releaseErrors.missingRate') : '');
   const selectBudget = React.useCallback((budgetId: string) => {
     updateFinanceState((current) => ({ ...current, settings: { ...current.settings, activeAccountId: budgetId } }));
     setScreenMode('budget');
@@ -560,69 +564,113 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
     const amount = parseAmount(entryAmount);
     if (amount <= 0) return;
 
+    let projectedBalance: number | undefined;
+    let projectedAccountName = '';
+    let projectedCurrency = baseCurrency;
+
     if (editingTransaction) {
       const original = financeState.transactions.find((item) => item.id === editingTransaction.transaction.id);
       const budget = budgets.find((item) => item.id === editingTransaction.budgetId);
       if (!original || !budget) return;
-      finance.updateTransaction({
-        ...original,
+      projectedBalance = balanceFor(budget) - balanceImpact(original.kind, original.amount) + balanceImpact(entryKind, amount);
+      projectedAccountName = budget.name;
+      projectedCurrency = budget.currency;
+    } else if (entryKind === 'transfer') {
+      const source = transferOptions.find((budget) => budget.id === transferSourceId);
+      if (source) {
+        projectedBalance = balanceFor(source) - amount;
+        projectedAccountName = source.name;
+        projectedCurrency = source.currency;
+      }
+    } else if (activeBudget) {
+      projectedBalance = balanceFor(activeBudget) + balanceImpact(entryKind, amount);
+      projectedAccountName = activeBudget.name;
+      projectedCurrency = activeBudget.currency;
+    }
+
+    const commit = () => {
+      if (editingTransaction) {
+        const original = financeState.transactions.find((item) => item.id === editingTransaction.transaction.id);
+        const budget = budgets.find((item) => item.id === editingTransaction.budgetId);
+        if (!original || !budget) return;
+        finance.updateTransaction({
+          ...original,
+          payee: entryTitle.trim() || t('finance.untitled'),
+          description: entryTitle.trim() || t('finance.untitled'),
+          category: entryCategory,
+          amount,
+          kind: entryKind,
+          currency: budget.currency,
+        });
+        closeEntry();
+        return;
+      }
+
+      if (entryKind === 'transfer') {
+        const source = transferOptions.find((budget) => budget.id === transferSourceId);
+        const target = transferOptions.find((budget) => budget.id === transferTargetId);
+        const explicitReceived = parseAmount(transferReceivedAmount);
+        const enteredRate = parseAmount(transferRate);
+        const rate = explicitReceived > 0 ? explicitReceived / amount : enteredRate;
+        const received = explicitReceived > 0 ? explicitReceived : amount * rate;
+        if (!source || !target || source.id === target.id || rate <= 0 || received <= 0) {
+          setTransferError(t('finance.releaseErrors.missingRate'));
+          return;
+        }
+        finance.addTransfer({
+          id: `transfer-${Date.now()}`,
+          fromAccountId: source.id,
+          toAccountId: target.id,
+          fromAmount: amount,
+          toAmount: received,
+          fromCurrency: source.currency,
+          toCurrency: target.currency,
+          rate,
+          fee: 0,
+          date: new Date().toISOString(),
+          note: '',
+          status: 'cleared',
+        });
+        closeEntry();
+        return;
+      }
+
+      if (!activeBudget) return;
+      finance.addTransaction({
+        id: `transaction-${Date.now()}`,
+        accountId: activeBudget.id,
         payee: entryTitle.trim() || t('finance.untitled'),
         description: entryTitle.trim() || t('finance.untitled'),
         category: entryCategory,
         amount,
         kind: entryKind,
-        currency: budget.currency,
-      });
-      closeEntry();
-      return;
-    }
-
-    if (entryKind === 'transfer') {
-      const source = transferOptions.find((budget) => budget.id === transferSourceId);
-      const target = transferOptions.find((budget) => budget.id === transferTargetId);
-      const explicitReceived = parseAmount(transferReceivedAmount);
-      const enteredRate = parseAmount(transferRate);
-      const rate = explicitReceived > 0 ? explicitReceived / amount : enteredRate;
-      const received = explicitReceived > 0 ? explicitReceived : amount * rate;
-      if (!source || !target || source.id === target.id || rate <= 0 || received <= 0) {
-        setTransferError(t('finance.releaseErrors.missingRate'));
-        return;
-      }
-      finance.addTransfer({
-        id: `transfer-${Date.now()}`,
-        fromAccountId: source.id,
-        toAccountId: target.id,
-        fromAmount: amount,
-        toAmount: received,
-        fromCurrency: source.currency,
-        toCurrency: target.currency,
-        rate,
-        fee: 0,
         date: new Date().toISOString(),
-        note: '',
+        currency: activeBudget.currency,
+        paymentMethod: 'cash',
         status: 'cleared',
+        reference: '',
       });
       closeEntry();
+    };
+
+    if (projectedBalance !== undefined && projectedBalance < 0) {
+      Alert.alert(
+        t('finance.negativeBalanceTitle', { defaultValue: 'Balance will go below zero' }),
+        t('finance.negativeBalanceMessage', {
+          defaultValue: 'This operation will leave {{account}} at {{amount}}. Do you want to continue?',
+          account: projectedAccountName,
+          amount: formatMoney(projectedBalance, language, projectedCurrency),
+        }),
+        [
+          { text: t('finance.cancel'), style: 'cancel' },
+          { text: t('finance.continueAction', { defaultValue: 'Continue' }), onPress: commit },
+        ],
+      );
       return;
     }
 
-    if (!activeBudget) return;
-    finance.addTransaction({
-      id: `transaction-${Date.now()}`,
-      accountId: activeBudget.id,
-      payee: entryTitle.trim() || t('finance.untitled'),
-      description: entryTitle.trim() || t('finance.untitled'),
-      category: entryCategory,
-      amount,
-      kind: entryKind,
-      date: new Date().toISOString(),
-      currency: activeBudget.currency,
-      paymentMethod: 'cash',
-      status: 'cleared',
-      reference: '',
-    });
-    closeEntry();
-  }, [activeBudget, budgets, closeEntry, editingTransaction, entryAmount, entryCategory, entryKind, entryTitle, finance, financeState.transactions, t, transferOptions, transferRate, transferReceivedAmount, transferSourceId, transferTargetId]);
+    commit();
+  }, [activeBudget, baseCurrency, budgets, closeEntry, editingTransaction, entryAmount, entryCategory, entryKind, entryTitle, finance, financeState.transactions, language, t, transferOptions, transferRate, transferReceivedAmount, transferSourceId, transferTargetId]);
 
   const createBudget = React.useCallback(() => {
     const name = newBudgetName.trim();
@@ -772,7 +820,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
               {activeBudget.currency !== baseCurrency && <Text style={styles.compactEquivalent} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>≈ {formatMoney(toBaseCurrency(activeBudget, balance), language, baseCurrency)}</Text>}
             </View>
 
-            {activeBudget.limitSet && activeBudget.limit > 0 && (
+            {activeBudgetHasLimit && (
               <>
                 <View style={styles.compactLimitTop}>
                   <Text style={styles.compactLimitLabel}>{t('finance.budgetLimit')}</Text>
@@ -941,10 +989,10 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
               </View>
 
               <View style={styles.drawerNav}>
-                {(['tools', 'categories', 'notes', 'settings'] as FinanceModuleName[]).map((module) => (
+                {(['tools', 'categories', 'notes', 'progress', 'settings'] as FinanceModuleName[]).map((module) => (
                   <Pressable key={module} style={styles.drawerItem} onPress={() => openDrawerModule(module)}>
                     <View style={styles.drawerItemIcon}><DrawerModuleGlyph module={module} /></View>
-                    <View style={styles.drawerItemCopy}><Text style={styles.drawerItemText}>{t(`finance.navigation.items.${module}.title`)}</Text><Text style={styles.drawerItemSubtitle} numberOfLines={1}>{module === 'tools' ? t('finance.releaseExtra.toolsSubtitle') : t(`finance.navigation.items.${module}.subtitle`)}</Text></View>
+                    <View style={styles.drawerItemCopy}><Text style={styles.drawerItemText}>{module === 'progress' ? t('finance.progress.title') : t(`finance.navigation.items.${module}.title`)}</Text><Text style={styles.drawerItemSubtitle} numberOfLines={1}>{module === 'tools' ? t('finance.releaseExtra.toolsSubtitle') : module === 'progress' ? t('finance.progress.subtitle') : t(`finance.navigation.items.${module}.subtitle`)}</Text></View>
                     <Ionicons name="chevron-forward-outline" size={15} color="rgba(255,244,208,0.25)" />
                   </Pressable>
                 ))}

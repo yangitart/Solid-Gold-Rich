@@ -1,7 +1,5 @@
 import { Platform } from 'react-native';
 
-// Paleta única de la app: obsidiana + oro. Todo el resto de componentes tira de
-// aquí para que no haya dos dorados distintos peleándose en pantalla.
 export const C = {
   void: '#04050A', // fondo, casi negro
   ink: '#0A0C14', // superficies elevadas

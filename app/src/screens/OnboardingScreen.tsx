@@ -1,29 +1,44 @@
 import React from 'react';
-import { NativeScrollEvent, NativeSyntheticEvent, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { KeyboardAvoidingView, Modal, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { C, SANS, SERIF } from '../theme/luxury';
+import { useFinance } from '../stores/FinanceContext';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
-const PAGES: { key: 'accounts' | 'operations' | 'statistics' | 'organize' | 'privacy'; icon: IconName }[] = [
+const CURRENCY_OPTIONS = [
+  'AED', 'ARS', 'AUD', 'BRL', 'CAD', 'CHF', 'CLP', 'CNY', 'COP', 'CRC', 'CUP', 'CZK', 'DKK', 'DOP', 'EGP', 'EUR', 'GBP', 'GTQ', 'HKD', 'HNL', 'HUF', 'IDR', 'ILS', 'INR', 'ISK', 'JPY', 'KRW', 'MXN', 'NIO', 'NOK', 'NZD', 'PAB', 'PEN', 'PHP', 'PLN', 'PYG', 'RON', 'RUB', 'SEK', 'SGD', 'THB', 'TRY', 'UAH', 'USD', 'UYU', 'VES', 'VND', 'ZAR',
+] as const;
+const PAGES: { key: 'accounts' | 'operations' | 'statistics' | 'organize' | 'privacy' | 'currency'; icon: IconName }[] = [
   { key: 'accounts', icon: 'wallet-outline' },
   { key: 'operations', icon: 'receipt-outline' },
   { key: 'statistics', icon: 'analytics-outline' },
   { key: 'organize', icon: 'folder-open-outline' },
   { key: 'privacy', icon: 'shield-checkmark-outline' },
+  { key: 'currency', icon: 'cash-outline' },
 ];
 
 export default function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
   const { t } = useTranslation();
+  const { state, updateState } = useFinance();
   const { width, height } = useWindowDimensions();
   const scrollRef = React.useRef<ScrollView>(null);
   const [page, setPage] = React.useState(0);
+  const [currency, setCurrency] = React.useState(state.settings.preferredCurrency || 'USD');
+  const [currencyPickerOpen, setCurrencyPickerOpen] = React.useState(false);
+  const [currencyQuery, setCurrencyQuery] = React.useState('');
   const compact = height < 700;
   const veryCompact = height < 620;
   const lastPage = page === PAGES.length - 1;
+  const filteredCurrencies = CURRENCY_OPTIONS.filter((item) => !currencyQuery.trim() || item.includes(currencyQuery.trim().toUpperCase()));
+
+  const completeOnboarding = () => {
+    updateState((current) => ({ ...current, settings: { ...current.settings, preferredCurrency: currency, exchangeRates: { ...(current.settings.exchangeRates ?? {}), USD: 1 } } }));
+    onComplete();
+  };
 
   const updatePage = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     setPage(Math.max(0, Math.min(PAGES.length - 1, Math.round(event.nativeEvent.contentOffset.x / width))));
@@ -31,7 +46,7 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
 
   const continueFlow = () => {
     if (lastPage) {
-      onComplete();
+      completeOnboarding();
       return;
     }
     scrollRef.current?.scrollTo({ x: width * (page + 1), animated: true });
@@ -43,7 +58,7 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
       <View style={styles.topBar}>
         <View style={styles.brandMark}><View style={styles.brandDiamond} /></View>
         <Text style={styles.brand}>SOLID GOLD RICH</Text>
-        {!lastPage ? <Pressable onPress={onComplete} hitSlop={10}><Text style={styles.skip}>{t('app.onboarding.skip')}</Text></Pressable> : <View style={styles.topSpacer} />}
+        {!lastPage ? <Pressable onPress={completeOnboarding} hitSlop={10}><Text style={styles.skip}>{t('app.onboarding.skip')}</Text></Pressable> : <View style={styles.topSpacer} />}
       </View>
 
       <ScrollView
@@ -65,9 +80,10 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
               <View style={[styles.iconShell, veryCompact && styles.iconShellVeryCompact]}><Ionicons name={item.icon} size={veryCompact ? 31 : compact ? 38 : 44} color={C.goldLight} /></View>
               <View style={[styles.visualTag, index === 1 && styles.visualTagRight]}><View style={styles.visualTagDot} /><Text style={styles.visualTagText}>0{index + 1}</Text></View>
             </View>
-            <Text style={styles.eyebrow}>{t(`app.onboarding.pages.${item.key}.eyebrow`)}</Text>
-            <Text style={[styles.title, compact && styles.titleCompact, veryCompact && styles.titleVeryCompact]}>{t(`app.onboarding.pages.${item.key}.title`)}</Text>
-            <Text style={[styles.body, veryCompact && styles.bodyVeryCompact]}>{t(`app.onboarding.pages.${item.key}.body`)}</Text>
+            <Text style={styles.eyebrow}>{item.key === 'currency' ? t('app.onboarding.currency.eyebrow') : t(`app.onboarding.pages.${item.key}.eyebrow`)}</Text>
+            <Text style={[styles.title, compact && styles.titleCompact, veryCompact && styles.titleVeryCompact]}>{item.key === 'currency' ? t('app.onboarding.currency.title') : t(`app.onboarding.pages.${item.key}.title`)}</Text>
+            <Text style={[styles.body, veryCompact && styles.bodyVeryCompact]}>{item.key === 'currency' ? t('app.onboarding.currency.body') : t(`app.onboarding.pages.${item.key}.body`)}</Text>
+            {item.key === 'currency' && <Pressable style={styles.currencySelect} onPress={() => { setCurrencyQuery(''); setCurrencyPickerOpen(true); }} accessibilityRole="button" accessibilityLabel={t('app.onboarding.currency.select')}><View><Text style={styles.currencyCode}>{currency}</Text><Text style={styles.currencyHint}>{t('app.onboarding.currency.select')}</Text></View><Ionicons name="chevron-down-outline" size={18} color={C.gold} /></Pressable>}
           </View>
         ))}
       </ScrollView>
@@ -79,6 +95,16 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
           <Ionicons name={lastPage ? 'checkmark' : 'arrow-forward'} size={18} color={C.void} />
         </Pressable>
       </View>
+      <Modal visible={currencyPickerOpen} transparent animationType="fade" onRequestClose={() => setCurrencyPickerOpen(false)}>
+        <KeyboardAvoidingView style={styles.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setCurrencyPickerOpen(false)} />
+          <View style={styles.currencySheet}>
+            <View style={styles.currencyHeader}><Text style={styles.currencyTitle}>{t('app.onboarding.currency.select')}</Text><Pressable style={styles.closeButton} onPress={() => setCurrencyPickerOpen(false)} accessibilityLabel={t('app.onboarding.currency.close')}><Ionicons name="close" size={18} color={C.goldLight} /></Pressable></View>
+            <View style={styles.currencySearch}><Ionicons name="search-outline" size={17} color="rgba(255,244,208,0.4)" /><TextInput value={currencyQuery} onChangeText={setCurrencyQuery} autoCapitalize="characters" autoCorrect={false} placeholder={t('app.onboarding.currency.search')} placeholderTextColor="rgba(255,244,208,0.3)" style={styles.currencySearchInput} /></View>
+            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>{filteredCurrencies.map((item) => <Pressable key={item} style={[styles.currencyOption, currency === item && styles.currencyOptionActive]} onPress={() => { setCurrency(item); setCurrencyPickerOpen(false); }}><Text style={styles.currencyOptionText}>{item}</Text>{currency === item && <Ionicons name="checkmark" size={18} color={C.gold} />}</Pressable>)}</ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -111,6 +137,19 @@ const styles = StyleSheet.create({
   titleVeryCompact: { fontSize: 25, lineHeight: 29, marginTop: 8 },
   body: { maxWidth: 330, color: 'rgba(255,244,208,0.52)', fontFamily: SANS, fontSize: 12, lineHeight: 19, textAlign: 'center', marginTop: 14 },
   bodyVeryCompact: { fontSize: 10.5, lineHeight: 15, marginTop: 8 },
+  currencySelect: { width: '100%', maxWidth: 300, minHeight: 60, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.38)', backgroundColor: 'rgba(233,200,119,0.08)', paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 22 },
+  currencyCode: { color: C.goldLight, fontFamily: SERIF, fontSize: 22 },
+  currencyHint: { color: 'rgba(255,244,208,0.48)', fontFamily: SANS, fontSize: 9, marginTop: 2 },
+  modalBackdrop: { flex: 1, justifyContent: 'center', padding: 18, backgroundColor: 'rgba(0,0,0,0.76)' },
+  currencySheet: { width: '100%', maxWidth: 430, maxHeight: '76%', alignSelf: 'center', borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14', padding: 16 },
+  currencyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  currencyTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 22 },
+  closeButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.07)', alignItems: 'center', justifyContent: 'center' },
+  currencySearch: { height: 44, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.055)', paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 12 },
+  currencySearchInput: { flex: 1, height: 43, color: C.goldLight, fontFamily: SANS, fontSize: 12, paddingVertical: 0 },
+  currencyOption: { minHeight: 50, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)', paddingHorizontal: 5, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  currencyOptionActive: { backgroundColor: 'rgba(233,200,119,0.06)' },
+  currencyOptionText: { color: C.goldLight, fontFamily: SANS, fontSize: 12, fontWeight: '600', letterSpacing: 1 },
   footer: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 8 },
   dots: { height: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginBottom: 10 },
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(233,200,119,0.22)' },

@@ -11,8 +11,8 @@ import type {
   SavingsGoal,
   Transaction,
   Transfer,
-} from './types';
-import { emptyFinanceState, importCsv, loadFinanceState, normalizeFinanceState, saveFinanceState } from './storage';
+} from '../core/finance/types';
+import { emptyFinanceState, importCsv, loadFinanceState, normalizeFinanceState, saveFinanceState } from './financeStorage';
 
 export type PersistenceStatus = 'loading' | 'ready' | 'saving' | 'error';
 export type PersistenceErrorPhase = 'load' | 'save' | null;
@@ -64,7 +64,6 @@ function replaceById<T extends { id: string }>(items: T[], value: T) {
     ? items.map((item) => item.id === value.id ? value : item)
     : [...items, value];
 }
-
 function nextRecurringDate(date: string, frequency: RecurringTransaction['frequency']) {
   const next = new Date(date);
   if (frequency === 'daily') next.setDate(next.getDate() + 1);

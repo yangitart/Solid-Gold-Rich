@@ -6,6 +6,8 @@ import type {
   FinanceState,
   NoteFolder,
   PaymentMethod,
+  StoreClient,
+  StoreEmployee,
   StoreProduct,
   StoreSale,
   StoreSaleItem,
@@ -14,7 +16,7 @@ import type {
   Transaction,
   TransactionKind,
   TransactionStatus,
-} from './types';
+} from '../core/finance/types';
 
 export const FINANCE_STATE_KEY = '@solid-gold/finance-state-v3';
 const FINANCE_STATE_V2_KEY = '@solid-gold/finance-state-v2';
@@ -49,6 +51,8 @@ export const emptyStoreState = (): StoreState => ({
   currency: 'USD',
   categories: [],
   businessAccount: { id: 'store-business', name: 'Business', currency: 'USD', balance: 0 },
+  employees: [],
+  clients: [],
   products: [],
   stockMovements: [],
   sales: [],
@@ -205,6 +209,29 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       note: text(item.note),
     } satisfies StoreSale;
   }) : [];
+  const employees = Array.isArray(source.employees) ? source.employees.map((employee, index) => {
+    const item = employee as Partial<StoreEmployee>;
+    return {
+      id: text(item.id, `store-employee-${index}`),
+      name: text(item.name, `Employee ${index + 1}`),
+      role: text(item.role) || undefined,
+      phone: text(item.phone) || undefined,
+      active: item.active !== false,
+      createdAt: text(item.createdAt, new Date().toISOString()),
+    } satisfies StoreEmployee;
+  }) : [];
+  const clients = Array.isArray(source.clients) ? source.clients.map((client, index) => {
+    const item = client as Partial<StoreClient>;
+    return {
+      id: text(item.id, `store-client-${index}`),
+      name: text(item.name, `Client ${index + 1}`),
+      phone: text(item.phone) || undefined,
+      email: text(item.email) || undefined,
+      note: text(item.note) || undefined,
+      active: item.active !== false,
+      createdAt: text(item.createdAt, new Date().toISOString()),
+    } satisfies StoreClient;
+  }) : [];
   return {
     setupCompleted: Boolean(source.setupCompleted),
     name: text(source.name),
@@ -216,6 +243,8 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       currency: text(source.businessAccount?.currency, text(source.currency, 'USD')).toUpperCase(),
       balance: number(source.businessAccount?.balance),
     },
+    employees,
+    clients,
     products,
     stockMovements,
     sales,

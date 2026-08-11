@@ -247,12 +247,33 @@ export type StoreAccount = {
   balance: number;
 };
 
+export type StoreEmployee = {
+  id: string;
+  name: string;
+  role?: string;
+  phone?: string;
+  active: boolean;
+  createdAt: string;
+};
+
+export type StoreClient = {
+  id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  note?: string;
+  active: boolean;
+  createdAt: string;
+};
+
 export type StoreState = {
   setupCompleted: boolean;
   name: string;
   currency: Currency;
   categories: string[];
   businessAccount: StoreAccount;
+  employees: StoreEmployee[];
+  clients: StoreClient[];
   products: StoreProduct[];
   stockMovements: StoreStockMovement[];
   sales: StoreSale[];

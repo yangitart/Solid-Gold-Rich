@@ -4,14 +4,17 @@ import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import Animated, { Easing, FadeIn, FadeOut } from 'react-native-reanimated';
-import { useFinance } from '../core/finance/FinanceContext';
-import type { PaymentMethod, StoreProduct, StoreProductType, StoreSale, StoreSaleItem, StoreStockMovementType } from '../core/finance/types';
+import { useFinance } from '../stores/FinanceContext';
+import type { PaymentMethod, StoreClient, StoreEmployee, StoreProduct, StoreProductType, StoreSale, StoreSaleItem, StoreStockMovementType } from '../core/finance/types';
 import { currencyRate } from '../core/finance/currency';
 import { C, SANS, SERIF } from '../theme/luxury';
 import DateSelect from '../components/DateSelect';
 
-type StoreView = 'inventory' | 'sales' | 'employees' | 'clients' | 'services';
+type StoreView = 'inventory' | 'sales' | 'employees' | 'clients' | 'services' | 'reports';
 type AddStoreTab = 'product' | 'funding';
+type DirectoryKind = 'employees' | 'clients';
+type StoreReportKind = 'transactionsPerDay' | 'totalTransactions' | 'topProductsServices' | 'topClients' | 'topProviders';
+type DirectoryDraft = { name: string; role: string; phone: string; email: string; note: string };
 type StockAction = 'entry' | 'exit' | 'adjustment';
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 type ProductDraft = { key: string; name: string; type: StoreProductType; unit: string; category: string; purchasePrice: string; salePrice: string; additionalSalePrices: string; picture: string; stock: string; reservedQuantity: string; stockMinimum: string; expirationDate: string; additionalInfo: string };
@@ -41,12 +44,12 @@ function MenuGlyph() {
   return <View style={styles.menuGlyph}><View style={styles.menuLineWide} /><View style={styles.menuLine} /><View style={styles.menuLineWide} /></View>;
 }
 
-function Field({ title, value, onChangeText, placeholder, numeric = false, multiline = false }: { title: string; value: string; onChangeText: (value: string) => void; placeholder?: string; numeric?: boolean; multiline?: boolean }) {
-  return <View style={styles.field}><Text style={styles.fieldLabel}>{title}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="rgba(255,244,208,0.3)" keyboardType={numeric ? 'decimal-pad' : 'default'} multiline={multiline} style={[styles.input, multiline && styles.multiline]} accessibilityLabel={title} />{value.trim() && title.toLowerCase().includes('picture') && <Image source={{ uri: value.trim() }} style={styles.picturePreview} resizeMode="cover" />}</View>;
+function Field({ title, value, onChangeText, placeholder, numeric = false, multiline = false, keyboardType }: { title: string; value: string; onChangeText: (value: string) => void; placeholder?: string; numeric?: boolean; multiline?: boolean; keyboardType?: React.ComponentProps<typeof TextInput>['keyboardType'] }) {
+  return <View style={styles.field}><Text style={styles.fieldLabel}>{title}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="rgba(255,244,208,0.3)" keyboardType={keyboardType ?? (numeric ? 'decimal-pad' : 'default')} multiline={multiline} style={[styles.input, multiline && styles.multiline]} accessibilityLabel={title} />{value.trim() && title.toLowerCase().includes('picture') && <Image source={{ uri: value.trim() }} style={styles.picturePreview} resizeMode="cover" />}</View>;
 }
 
-function Choice({ values, value, labels, onChange }: { values: string[]; value: string; labels: Record<string, string>; onChange: (value: string) => void }) {
-  return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choices}>{values.map((item) => <Pressable key={item} onPress={() => onChange(item)} style={[styles.choice, value === item && styles.choiceActive]} accessibilityRole="radio" accessibilityState={{ selected: value === item }} accessibilityLabel={labels[item]}><Text style={[styles.choiceText, value === item && styles.choiceTextActive]}>{labels[item]}</Text></Pressable>)}</ScrollView>;
+function Choice({ values, value, labels, onChange, compact = false }: { values: string[]; value: string; labels: Record<string, string>; onChange: (value: string) => void; compact?: boolean }) {
+  return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choices}>{values.map((item) => <Pressable key={item} onPress={() => onChange(item)} hitSlop={4} style={[styles.choice, compact && styles.choiceCompact, value === item && styles.choiceActive]} accessibilityRole="radio" accessibilityState={{ selected: value === item }} accessibilityLabel={labels[item]}><Text style={[styles.choiceText, compact && styles.choiceTextCompact, value === item && styles.choiceTextActive]}>{labels[item]}</Text></Pressable>)}</ScrollView>;
 }
 
 function StoreSheet({ visible, onClose, children }: { visible: boolean; onClose: () => void; children: React.ReactNode }) {
@@ -63,6 +66,7 @@ export default function StoreScreen() {
   const storeText = (key: string, fallback: string) => t(`finance.store.${key}`, { defaultValue: fallback });
   const currency = store.currency || state.settings.preferredCurrency || 'USD';
   const [view, setView] = React.useState<StoreView>('inventory');
+  const [reportKind, setReportKind] = React.useState<StoreReportKind | null>(null);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [addMenuOpen, setAddMenuOpen] = React.useState(false);
   const [addTab, setAddTab] = React.useState<AddStoreTab>('product');
@@ -90,11 +94,22 @@ export default function StoreScreen() {
   const [settingsOpen, setSettingsOpen] = React.useState(false);
   const [storeName, setStoreName] = React.useState(store.name);
   const [categoryDraft, setCategoryDraft] = React.useState('');
+  const [directoryOpen, setDirectoryOpen] = React.useState(false);
+  const [directoryKind, setDirectoryKind] = React.useState<DirectoryKind>('employees');
+  const [editingDirectoryId, setEditingDirectoryId] = React.useState<string | null>(null);
+  const [directoryActive, setDirectoryActive] = React.useState(true);
+  const [directoryQuery, setDirectoryQuery] = React.useState('');
+  const [directoryDraft, setDirectoryDraft] = React.useState<DirectoryDraft>({ name: '', role: '', phone: '', email: '', note: '' });
+  const [directoryError, setDirectoryError] = React.useState('');
   const [fundingOpen, setFundingOpen] = React.useState(false);
   const [fundingAccountId, setFundingAccountId] = React.useState('none');
   const [fundingAmount, setFundingAmount] = React.useState('');
   const [fundingNote, setFundingNote] = React.useState('');
   const [fundingError, setFundingError] = React.useState('');
+
+  React.useEffect(() => {
+    setDirectoryQuery('');
+  }, [view]);
 
   const stockFor = React.useCallback((productId: string) => {
     const product = store.products.find((item) => item.id === productId);
@@ -182,12 +197,36 @@ export default function StoreScreen() {
     setFundingOpen(false);
   };
 
+  const openDirectoryEntry = (kind: DirectoryKind, item?: StoreEmployee | StoreClient) => {
+    setDirectoryKind(kind);
+    setEditingDirectoryId(item?.id ?? null);
+    setDirectoryActive(item?.active ?? true);
+    setDirectoryError('');
+    setDirectoryDraft(item ? { name: item.name, role: 'role' in item ? item.role ?? '' : '', phone: item.phone ?? '', email: 'email' in item ? item.email ?? '' : '', note: 'note' in item ? item.note ?? '' : '' } : { name: '', role: '', phone: '', email: '', note: '' });
+    setDirectoryOpen(true);
+  };
+
+  const saveDirectoryEntry = () => {
+    const name = directoryDraft.name.trim();
+    if (!name) return setDirectoryError(t(`finance.store.${directoryKind}NameRequired`, { defaultValue: directoryKind === 'employees' ? 'Enter an employee name.' : 'Enter a client name.' }));
+    const now = new Date().toISOString();
+    finance.updateState((current) => {
+      if (directoryKind === 'employees') {
+        const value: StoreEmployee = { id: editingDirectoryId ?? uid('store-employee'), name, role: directoryDraft.role.trim() || undefined, phone: directoryDraft.phone.trim() || undefined, active: directoryActive, createdAt: editingDirectoryId ? current.store.employees.find((item) => item.id === editingDirectoryId)?.createdAt ?? now : now };
+        return { ...current, store: { ...current.store, employees: editingDirectoryId ? current.store.employees.map((item) => item.id === editingDirectoryId ? { ...item, ...value } : item) : [value, ...current.store.employees] } };
+      }
+      const value: StoreClient = { id: editingDirectoryId ?? uid('store-client'), name, phone: directoryDraft.phone.trim() || undefined, email: directoryDraft.email.trim() || undefined, note: directoryDraft.note.trim() || undefined, active: directoryActive, createdAt: editingDirectoryId ? current.store.clients.find((item) => item.id === editingDirectoryId)?.createdAt ?? now : now };
+      return { ...current, store: { ...current.store, clients: editingDirectoryId ? current.store.clients.map((item) => item.id === editingDirectoryId ? { ...item, ...value } : item) : [value, ...current.store.clients] } };
+    });
+    setDirectoryOpen(false);
+  };
+
   const saveProduct = () => {
     const key = productDraft.key.trim();
     const name = productDraft.name.trim();
     const purchasePrice = numberValue(productDraft.purchasePrice || '0');
     const salePrice = numberValue(productDraft.salePrice);
-    const initialStock = numberValue(productDraft.stock || '0');
+    const initialStock = productDraft.type === 'service' ? 0 : numberValue(productDraft.stock || '0');
     const reservedQuantity = numberValue(productDraft.reservedQuantity || '0');
     const stockMinimum = numberValue(productDraft.stockMinimum || '0');
     const additionalSalePrices = productDraft.additionalSalePrices.split(',').map((value) => numberValue(value.trim())).filter((value) => Number.isFinite(value) && value >= 0);
@@ -226,7 +265,13 @@ export default function StoreScreen() {
 
   const addCategory = () => {
     const category = categoryDraft.trim();
-    if (!category || store.categories.includes(category)) return;
+    if (!category) return;
+    const existingCategory = store.categories.find((item) => item.toLocaleLowerCase() === category.toLocaleLowerCase());
+    if (existingCategory) {
+      setProductDraft((current) => ({ ...current, category: existingCategory }));
+      setCategoryDraft('');
+      return;
+    }
     finance.updateState((current) => ({ ...current, store: { ...current.store, categories: [...current.store.categories, category] } }));
     setProductDraft((current) => ({ ...current, category }));
     setCategoryDraft('');
@@ -239,6 +284,7 @@ export default function StoreScreen() {
     const currentStock = stockFor(stockProduct.id);
     const delta = stockAction === 'entry' ? value : stockAction === 'exit' ? -value : value - currentStock;
     if (currentStock + delta < 0) return setStockError(t('finance.store.errors.insufficientStock'));
+    if (currentStock + delta < stockProduct.reservedQuantity) return setStockError(t('finance.store.errors.reserve'));
     const movementType: StoreStockMovementType = stockAction;
     finance.updateState((current) => ({ ...current, store: { ...current.store, stockMovements: [...current.store.stockMovements, { id: uid('store-stock'), productId: stockProduct.id, type: movementType, quantity: delta, date: new Date().toISOString(), note: stockNote.trim() }] } }));
     setStockProduct(null);
@@ -268,6 +314,11 @@ export default function StoreScreen() {
 
   const completeSale = () => {
     if (!cart.length) return setSaleError(t('finance.store.errors.emptySale'));
+    const unavailable = cart.find((item) => {
+      const product = activeProducts.find((candidate) => candidate.id === item.productId);
+      return product?.type === 'product' && item.quantity > availableFor(product);
+    });
+    if (unavailable) return setSaleError(t('finance.store.errors.insufficientStock'));
     const saleId = uid('store-sale');
     const sale: StoreSale = { id: saleId, date: new Date().toISOString(), items: cart, total: cartTotal, paymentMethod: paymentMethod || undefined, status: 'completed', note: '' };
     const movements = cart.filter((item) => item.type === 'product').map((item) => ({ id: uid('store-stock'), productId: item.productId, type: 'sale' as const, quantity: -item.quantity, date: sale.date, note: t('finance.store.saleStock'), saleId }));
@@ -295,7 +346,7 @@ export default function StoreScreen() {
   const renderProducts = () => <View style={styles.productView}>
     <View style={styles.searchContainer}><View style={styles.searchRow}><Ionicons name="search-outline" size={18} color="rgba(255,244,208,0.4)" /><TextInput value={productQuery} onChangeText={setProductQuery} placeholder={t('finance.storeFilters.search')} placeholderTextColor="rgba(255,244,208,0.3)" style={styles.searchInput} accessibilityLabel={t('finance.storeFilters.search')} /><Pressable style={[styles.filterButton, filtersActive && styles.filterButtonActive]} onPress={() => setFilterOpen(true)} accessibilityLabel={t('finance.storeFilters.filters')}><Ionicons name="options-outline" size={18} color={filtersActive ? C.void : C.gold} />{filtersActive && <View style={styles.filterDot} />}</Pressable></View></View>
     <ScrollView style={styles.productScroll} contentContainerStyle={[styles.productList, !visibleProducts.length && styles.productListEmpty]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-    {visibleProducts.map((product) => <ProductRow key={product.id} product={product} stock={stockFor(product.id)} available={availableFor(product)} currency={currency} onPress={() => openProduct(product)} onStock={() => { setStockProduct(product); setStockError(''); }} t={t} />)}
+    {visibleProducts.map((product) => <ProductRow key={product.id} product={product} stock={stockFor(product.id)} available={availableFor(product)} currency={currency} onPress={() => openProduct(product)} onStock={() => { setStockProduct(product); setStockAction('entry'); setStockQuantity(''); setStockNote(''); setStockError(''); }} t={t} />)}
     {!visibleProducts.length && <View style={styles.productEmpty}><View style={styles.emptyDiamond} /><Text style={styles.productEmptyTitle}>{t('finance.store.noProducts')}</Text><Text style={styles.productEmptyCopy}>{t('finance.store.noProductsCopy')}</Text></View>}
     </ScrollView>
   </View>;
@@ -306,17 +357,62 @@ export default function StoreScreen() {
     {!store.sales.length && <View style={styles.empty}><Text style={styles.emptyTitle}>{t('finance.store.noSales')}</Text><Text style={styles.emptyBody}>{t('finance.store.noSalesCopy')}</Text></View>}
   </ScrollView>;
 
-  const renderSimpleSection = (section: 'employees' | 'clients') => { const label = storeText(section, section === 'employees' ? 'Employees' : 'Clients'); return <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}><View style={styles.emptyModule}><Ionicons name={section === 'employees' ? 'people-outline' : 'person-outline'} size={32} color={C.gold} /><Text style={styles.sectionTitle}>{label}</Text><Text style={styles.emptyBody}>{storeText(`${section}Copy`, section === 'employees' ? 'Employee management is not enabled yet.' : 'Client management is not enabled yet.')}</Text></View></ScrollView>; };
+  const renderReports = () => {
+    const completedSales = store.sales.filter((sale) => sale.status === 'completed');
+    const reportOptions: { kind: StoreReportKind; icon: IconName; title: string; copy: string }[] = [
+      { kind: 'transactionsPerDay', icon: 'calendar-outline', title: t('finance.store.reportTransactionsPerDay'), copy: t('finance.store.reportTransactionsPerDayCopy') },
+      { kind: 'totalTransactions', icon: 'receipt-outline', title: t('finance.store.reportTotalTransactions'), copy: t('finance.store.reportTotalTransactionsCopy') },
+      { kind: 'topProductsServices', icon: 'trending-up-outline', title: t('finance.store.reportTopProductsServices'), copy: t('finance.store.reportTopProductsServicesCopy') },
+      { kind: 'topClients', icon: 'people-outline', title: t('finance.store.reportTopClients'), copy: t('finance.store.reportTopClientsCopy') },
+      { kind: 'topProviders', icon: 'business-outline', title: t('finance.store.reportTopProviders'), copy: t('finance.store.reportTopProvidersCopy') },
+    ];
+    const daily = Array.from(completedSales.reduce((map, sale) => {
+      const key = new Date(sale.date).toISOString().slice(0, 10);
+      const current = map.get(key) ?? { count: 0, total: 0 };
+      map.set(key, { count: current.count + 1, total: current.total + sale.total });
+      return map;
+    }, new Map<string, { count: number; total: number }>())).sort(([left], [right]) => right.localeCompare(left)).slice(0, 7);
+    const topProducts = Array.from(completedSales.reduce((map, sale) => {
+      sale.items.forEach((item) => {
+        const current = map.get(item.productId) ?? { name: item.name, type: item.type, quantity: 0, total: 0 };
+        map.set(item.productId, { ...current, quantity: current.quantity + item.quantity, total: current.total + item.total });
+      });
+      return map;
+    }, new Map<string, { name: string; type: 'product' | 'service'; quantity: number; total: number }>())).sort(([, left], [, right]) => right.quantity - left.quantity).slice(0, 5);
+    const detailTitle = reportOptions.find((option) => option.kind === reportKind)?.title;
+    return <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      {reportKind && <Pressable style={styles.reportBack} onPress={() => setReportKind(null)}><Ionicons name="arrow-back-outline" size={17} color={C.gold} /><Text style={styles.reportBackText}>{t('finance.store.reportBack')}</Text></Pressable>}
+      {!reportKind ? <>
+        <Text style={styles.sectionTitle}>{t('finance.store.reports')}</Text>
+        <Text style={styles.sheetCaption}>{t('finance.store.reportsCopy')}</Text>
+        {reportOptions.map((option) => <Pressable key={option.kind} style={styles.reportOption} onPress={() => setReportKind(option.kind)}><View style={styles.reportIcon}><Ionicons name={option.icon} size={18} color={C.gold} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{option.title}</Text><Text style={styles.rowMeta}>{option.copy}</Text></View><Ionicons name="chevron-forward-outline" size={17} color="rgba(255,244,208,0.3)" /></Pressable>)}
+      </> : <>
+        <Text style={styles.sectionTitle}>{detailTitle}</Text>
+        {reportKind === 'transactionsPerDay' && (daily.length ? daily.map(([date, value]) => <View key={date} style={styles.reportRow}><View style={styles.rowMain}><Text style={styles.rowTitle}>{new Date(`${date}T12:00:00`).toLocaleDateString()}</Text><Text style={styles.rowMeta}>{value.count} {t('finance.store.reportTransactions')} </Text></View><Text style={styles.rowAmount}>{money(value.total, currency)}</Text></View>) : <ReportEmpty t={t} />)}
+        {reportKind === 'totalTransactions' && <View style={styles.reportMetric}><Text style={styles.reportMetricValue}>{completedSales.length}</Text><Text style={styles.reportMetricLabel}>{t('finance.store.reportTransactions')}</Text><Text style={styles.reportMetricAmount}>{money(completedSales.reduce((sum, sale) => sum + sale.total, 0), currency)}</Text></View>}
+        {reportKind === 'topProductsServices' && (topProducts.length ? topProducts.map(([id, value]) => <View key={id} style={styles.reportRow}><View style={styles.rowMain}><Text style={styles.rowTitle}>{value.name}</Text><Text style={styles.rowMeta}>{value.type === 'service' ? t('finance.store.service') : t('finance.store.product')} · {value.quantity} {t('finance.store.reportUnits')}</Text></View><Text style={styles.rowAmount}>{money(value.total, currency)}</Text></View>) : <ReportEmpty t={t} />)}
+        {(reportKind === 'topClients' || reportKind === 'topProviders') && <ReportEmpty t={t} copy={reportKind === 'topClients' ? t('finance.store.reportClientsEmpty') : t('finance.store.reportProvidersEmpty')} />}
+      </>}
+    </ScrollView>;
+  };
 
-  const title = view === 'inventory' ? storeText('inventory', 'Inventory') : view === 'sales' ? t('finance.store.sales') : view === 'services' ? storeText('services', 'Services') : view === 'employees' ? storeText('employees', 'Employees') : storeText('clients', 'Clients');
+  const renderDirectory = (section: DirectoryKind) => {
+    const label = storeText(section, section === 'employees' ? 'Employees' : 'Clients');
+    const items = section === 'employees' ? store.employees : store.clients;
+    const query = directoryQuery.trim().toLowerCase();
+    const visibleItems = items.filter((item) => `${item.name} ${'role' in item ? item.role ?? '' : ''} ${item.phone ?? ''} ${'email' in item ? item.email ?? '' : ''}`.toLowerCase().includes(query));
+    return <View style={styles.directoryView}><View style={styles.directoryToolbar}><View style={styles.directorySearch}><Ionicons name="search-outline" size={17} color="rgba(255,244,208,0.4)" /><TextInput value={directoryQuery} onChangeText={setDirectoryQuery} placeholder={t('finance.store.directorySearch', { defaultValue: `Search ${label.toLowerCase()}` })} placeholderTextColor="rgba(255,244,208,0.3)" style={styles.directorySearchInput} accessibilityLabel={t('finance.store.directorySearch', { defaultValue: `Search ${label.toLowerCase()}` })} /></View><Pressable style={styles.directoryAdd} onPress={() => openDirectoryEntry(section)} accessibilityLabel={t('finance.store.addDirectory', { defaultValue: `Add ${label}` })}><Ionicons name="add" size={19} color={C.void} /></Pressable></View><ScrollView contentContainerStyle={[styles.content, !visibleItems.length && styles.directoryEmptyContent]} showsVerticalScrollIndicator={false}>{visibleItems.map((item) => <Pressable key={item.id} style={[styles.directoryRow, !item.active && styles.directoryRowInactive]} onPress={() => openDirectoryEntry(section, item)}><View style={styles.directoryAvatar}><Text style={styles.directoryAvatarText}>{item.name.trim().charAt(0).toUpperCase()}</Text></View><View style={styles.rowMain}><Text style={styles.rowTitle} numberOfLines={1}>{item.name}</Text><Text style={styles.rowMeta} numberOfLines={1}>{section === 'employees' ? (('role' in item && item.role) || t('finance.store.employeeRoleEmpty', { defaultValue: 'No role added' })) : ([('phone' in item && item.phone), ('email' in item && item.email)].filter(Boolean).join(' · ') || t('finance.store.clientContactEmpty', { defaultValue: 'No contact details added' }))}</Text></View><Ionicons name="chevron-forward-outline" size={17} color="rgba(255,244,208,0.3)" /></Pressable>)}{!visibleItems.length && <View style={styles.emptyModule}><Ionicons name={section === 'employees' ? 'people-outline' : 'person-outline'} size={32} color={C.gold} /><Text style={styles.sectionTitle}>{items.length ? t('finance.store.directoryNoResults', { defaultValue: 'No results' }) : t(`finance.store.no${section === 'employees' ? 'Employees' : 'Clients'}`, { defaultValue: `No ${label.toLowerCase()} yet` })}</Text><Text style={styles.emptyBody}>{items.length ? t('finance.store.directoryNoResultsCopy', { defaultValue: 'Try another search.' }) : t(`finance.store.${section}Copy`, { defaultValue: `Add your first ${label.toLowerCase().replace(/s$/, '')}.` })}</Text>{!items.length && <Pressable style={styles.emptyAction} onPress={() => openDirectoryEntry(section)}><Text style={styles.emptyActionText}>{t('finance.store.addDirectory', { defaultValue: `Add ${label}` })}</Text></Pressable>}</View>}</ScrollView></View>;
+  };
+
+  const title = view === 'inventory' ? storeText('inventory', 'Inventory') : view === 'sales' ? t('finance.store.sales') : view === 'services' ? storeText('services', 'Services') : view === 'reports' ? t('finance.store.reports') : view === 'employees' ? storeText('employees', 'Employees') : storeText('clients', 'Clients');
 
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}><View style={styles.root}>
     <View style={styles.header}><Pressable style={styles.headerButton} onPress={() => setDrawerOpen(true)} accessibilityRole="button" accessibilityLabel={t('finance.menu')}><MenuGlyph /></Pressable><View style={styles.headerCopy}><Text style={styles.headerTitle} numberOfLines={1}>{title}</Text><Text style={styles.headerSubtitle}>{t('finance.store.subtitle')}</Text></View><View style={styles.headerSpacer} /></View>
-    <Animated.View key={view} entering={FadeIn.duration(220).easing(Easing.out(Easing.cubic))} exiting={FadeOut.duration(140).easing(Easing.in(Easing.cubic))} style={styles.screenTransition}>{view === 'inventory' || view === 'services' ? renderProducts() : view === 'sales' ? renderSales() : renderSimpleSection(view)}</Animated.View>
+    <Animated.View key={view} entering={FadeIn.duration(220).easing(Easing.out(Easing.cubic))} exiting={FadeOut.duration(140).easing(Easing.in(Easing.cubic))} style={styles.screenTransition}>{view === 'inventory' || view === 'services' ? renderProducts() : view === 'sales' ? renderSales() : view === 'reports' ? renderReports() : renderDirectory(view)}</Animated.View>
     <Pressable style={[styles.workspaceFab, (view === 'inventory' || view === 'services') ? styles.workspaceFabStacked : styles.workspaceFabSolo]} onPress={() => switchWorkspace(false)} accessibilityRole="button" accessibilityLabel={t('finance.workspace.personal')}><Ionicons name="wallet-outline" size={19} color={C.gold} /></Pressable>
     {(view === 'inventory' || view === 'services') && <Pressable style={styles.fab} onPress={openAddMenu} accessibilityRole="button" accessibilityLabel={t('finance.store.addProduct')}><Ionicons name="add" size={24} color={C.void} /></Pressable>}
 
-    <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}><View style={styles.drawerBackdrop}><Pressable style={StyleSheet.absoluteFill} onPress={() => setDrawerOpen(false)} /><SafeAreaView style={styles.drawer} edges={['top', 'bottom']}><ScrollView contentContainerStyle={styles.drawerContent} showsVerticalScrollIndicator={false}><View style={styles.drawerStoreCard}><Text style={styles.drawerStoreEyebrow}>{t('finance.storeDrawer.totalInvested')}</Text><Text style={styles.drawerStoreValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>{money(totalInvested, currency)}</Text><Text style={styles.drawerStoreCaption}>{t('finance.storeDrawer.inventoryValue')}: {money(store.businessAccount.balance, store.businessAccount.currency)}</Text></View><View style={styles.drawerNav}><DrawerItem icon="cube-outline" label={storeText('inventory', 'Inventory')} active={view === 'inventory'} onPress={() => { setView('inventory'); setStockFilter(''); setDrawerOpen(false); }} /><DrawerItem icon="people-outline" label={storeText('employees', 'Employees')} active={view === 'employees'} onPress={() => { setView('employees'); setDrawerOpen(false); }} /><DrawerItem icon="person-outline" label={storeText('clients', 'Clients')} active={view === 'clients'} onPress={() => { setView('clients'); setDrawerOpen(false); }} /><DrawerItem icon="construct-outline" label={storeText('services', 'Services')} active={view === 'services'} onPress={() => { setView('services'); setStockFilter(''); setDrawerOpen(false); }} /><DrawerItem icon="cart-outline" label={t('finance.store.sales')} active={view === 'sales'} onPress={() => { setView('sales'); setDrawerOpen(false); }} /><DrawerItem icon="settings-outline" label={t('finance.store.settings')} onPress={() => { setSettingsOpen(true); setDrawerOpen(false); }} /></View></ScrollView></SafeAreaView></View></Modal>
+    <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}><View style={styles.drawerBackdrop}><Pressable style={StyleSheet.absoluteFill} onPress={() => setDrawerOpen(false)} /><SafeAreaView style={styles.drawer} edges={['top', 'bottom']}><ScrollView contentContainerStyle={styles.drawerContent} showsVerticalScrollIndicator={false}><View style={styles.drawerStoreCard}><Text style={styles.drawerStoreEyebrow}>{t('finance.storeDrawer.totalInvested')}</Text><Text style={styles.drawerStoreValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>{money(totalInvested, currency)}</Text><Text style={styles.drawerStoreCaption}>{t('finance.storeDrawer.inventoryValue')}: {money(store.businessAccount.balance, store.businessAccount.currency)}</Text></View><View style={styles.drawerNav}><DrawerItem icon="cube-outline" label={storeText('inventory', 'Inventory')} active={view === 'inventory'} onPress={() => { setView('inventory'); setStockFilter(''); setDrawerOpen(false); }} /><DrawerItem icon="people-outline" label={storeText('employees', 'Employees')} active={view === 'employees'} onPress={() => { setView('employees'); setDrawerOpen(false); }} /><DrawerItem icon="person-outline" label={storeText('clients', 'Clients')} active={view === 'clients'} onPress={() => { setView('clients'); setDrawerOpen(false); }} /><DrawerItem icon="construct-outline" label={storeText('services', 'Services')} active={view === 'services'} onPress={() => { setView('services'); setStockFilter(''); setDrawerOpen(false); }} /><DrawerItem icon="cart-outline" label={t('finance.store.sales')} active={view === 'sales'} onPress={() => { setView('sales'); setDrawerOpen(false); }} /><DrawerItem icon="bar-chart-outline" label={t('finance.store.reports')} active={view === 'reports'} onPress={() => { setView('reports'); setReportKind(null); setDrawerOpen(false); }} /><DrawerItem icon="settings-outline" label={t('finance.store.settings')} onPress={() => { setSettingsOpen(true); setDrawerOpen(false); }} /></View></ScrollView></SafeAreaView></View></Modal>
 
     <StoreSheet visible={addMenuOpen} onClose={() => setAddMenuOpen(false)}><Text style={styles.sheetTitle}>{t('finance.storeFunding.addMenuTitle')}</Text><View style={styles.addTabs}><Pressable style={[styles.addTab, addTab === 'product' && styles.addTabActive]} onPress={() => setAddTab('product')}><Ionicons name="cube-outline" size={17} color={addTab === 'product' ? C.void : C.gold} /><Text style={[styles.addTabText, addTab === 'product' && styles.addTabTextActive]}>{t('finance.storeFunding.productTab', { defaultValue: 'Product' })}</Text></Pressable><Pressable style={[styles.addTab, addTab === 'funding' && styles.addTabActive]} onPress={() => setAddTab('funding')}><Ionicons name="wallet-outline" size={17} color={addTab === 'funding' ? C.void : C.gold} /><Text style={[styles.addTabText, addTab === 'funding' && styles.addTabTextActive]}>{t('finance.storeFunding.tab', { defaultValue: 'Funding' })}</Text></Pressable></View><View style={styles.addTabPanel}>{addTab === 'product' ? <><Text style={styles.addPanelTitle}>{t('finance.store.addProduct')}</Text><Text style={styles.addPanelCopy}>{t('finance.storeFunding.productCopy', { defaultValue: 'Create a product, set its stock and choose how the purchase is paid.' })}</Text><Pressable style={styles.actionSave} onPress={() => { setAddMenuOpen(false); openProduct(); }}><Ionicons name="add" size={17} color={C.void} /><Text style={styles.actionSaveText}>{t('finance.store.addProduct')}</Text></Pressable></> : <><Text style={styles.addPanelTitle}>{t('finance.storeFunding.title')}</Text><Text style={styles.addPanelCopy}>{t('finance.storeFunding.copy', { defaultValue: 'Move money from a personal account to the business balance, or add it without linking an account.' })}</Text><Pressable style={styles.actionSave} onPress={openFunding}><Ionicons name="wallet-outline" size={17} color={C.void} /><Text style={styles.actionSaveText}>{t('finance.storeFunding.save')}</Text></Pressable></>}</View></StoreSheet>
     <StoreSheet visible={fundingOpen} onClose={() => setFundingOpen(false)}><Text style={styles.sheetTitle}>{t('finance.storeFunding.title')}</Text><Text style={styles.sheetCaption}>{t('finance.storeFunding.copy', { defaultValue: 'Add money to the business balance.' })}</Text><Text style={styles.fieldLabel}>{t('finance.storeFunding.account')}</Text><Choice values={fundingSources.map((source) => source.id)} value={fundingAccountId} labels={Object.fromEntries(fundingSources.map((source) => [source.id, source.name]))} onChange={setFundingAccountId} /><Field title={t('finance.storeFunding.amount')} value={fundingAmount} onChangeText={(value) => { setFundingAmount(value); setFundingError(''); }} numeric placeholder={money(0, currency)} /><Field title={t('finance.storeFunding.note')} value={fundingNote} onChangeText={setFundingNote} /><Text style={styles.sheetCaption}>{t('finance.store.currency')}: {currency}</Text>{Boolean(fundingError) && <Text style={styles.error}>{fundingError}</Text>}<View style={styles.modalActions}><View style={styles.actionMainRow}><Pressable style={styles.actionCancel} onPress={() => setFundingOpen(false)}><Text style={styles.actionCancelText}>{t('finance.cancel')}</Text></Pressable><Pressable style={styles.actionSave} onPress={saveFunding}><Text style={styles.actionSaveText}>{t('finance.storeFunding.save')}</Text></Pressable></View></View></StoreSheet>
@@ -330,6 +426,7 @@ export default function StoreScreen() {
 
     <StoreSheet visible={Boolean(selectedSale)} onClose={() => setSelectedSale(null)}><Text style={styles.sheetTitle}>{t('finance.store.saleDetails')}</Text><Text style={styles.sheetCaption}>{selectedSale ? new Date(selectedSale.date).toLocaleString() : ''}</Text>{selectedSale?.items.map((item) => <View key={item.productId} style={styles.detailRow}><Text style={styles.rowTitle}>{item.name} × {item.quantity}</Text><Text style={styles.rowAmount}>{money(item.total, currency)}</Text></View>)}<View style={styles.totalRow}><Text style={styles.totalLabel}>{t('finance.store.total')}</Text><Text style={styles.totalValue}>{selectedSale ? money(selectedSale.total, currency) : ''}</Text></View><Text style={selectedSale?.status === 'void' ? styles.voidText : styles.paidText}>{selectedSale?.status === 'void' ? t('finance.store.voided') : t('finance.store.completed')}</Text>{selectedSale?.status === 'completed' && <Pressable style={styles.danger} onPress={() => { if (selectedSale) voidSale(selectedSale); setSelectedSale(null); }}><Text style={styles.dangerText}>{t('finance.store.voidSale')}</Text></Pressable>}</StoreSheet>
 
+    <StoreSheet visible={directoryOpen} onClose={() => setDirectoryOpen(false)}><Text style={styles.sheetTitle}>{editingDirectoryId ? t('finance.store.editDirectory', { defaultValue: 'Edit' }) : t('finance.store.addDirectory', { defaultValue: 'Add' })} {storeText(directoryKind, directoryKind === 'employees' ? 'Employees' : 'Clients')}</Text><Field title={t('finance.store.directoryName', { defaultValue: 'Name' })} value={directoryDraft.name} onChangeText={(value) => { setDirectoryDraft((current) => ({ ...current, name: value })); setDirectoryError(''); }} placeholder={t('finance.store.directoryNamePlaceholder', { defaultValue: 'Full name' })} />{directoryKind === 'employees' ? <><Field title={t('finance.store.employeeRole', { defaultValue: 'Role' })} value={directoryDraft.role} onChangeText={(value) => setDirectoryDraft((current) => ({ ...current, role: value }))} placeholder={t('finance.store.employeeRolePlaceholder', { defaultValue: 'e.g. Sales' })} /><Field title={t('finance.store.phone', { defaultValue: 'Phone' })} value={directoryDraft.phone} onChangeText={(value) => setDirectoryDraft((current) => ({ ...current, phone: value }))} keyboardType="phone-pad" /></> : <><Field title={t('finance.store.phone', { defaultValue: 'Phone' })} value={directoryDraft.phone} onChangeText={(value) => setDirectoryDraft((current) => ({ ...current, phone: value }))} keyboardType="phone-pad" /><Field title={t('finance.store.email', { defaultValue: 'Email' })} value={directoryDraft.email} onChangeText={(value) => setDirectoryDraft((current) => ({ ...current, email: value }))} keyboardType="email-address" /><Field title={t('finance.store.note', { defaultValue: 'Note' })} value={directoryDraft.note} onChangeText={(value) => setDirectoryDraft((current) => ({ ...current, note: value }))} multiline /> </>}{Boolean(directoryError) && <Text style={styles.error}>{directoryError}</Text>}<View style={styles.modalActions}><View style={styles.actionMainRow}><Pressable style={styles.actionCancel} onPress={() => setDirectoryOpen(false)}><Text style={styles.actionCancelText}>{t('finance.cancel')}</Text></Pressable><Pressable style={styles.actionSave} onPress={saveDirectoryEntry}><Text style={styles.actionSaveText}>{t('finance.done')}</Text></Pressable></View></View></StoreSheet>
     <StoreSheet visible={settingsOpen} onClose={() => setSettingsOpen(false)}><Text style={styles.sheetTitle}>{t('finance.store.settings')}</Text><Field title={t('finance.store.storeName')} value={storeName} onChangeText={setStoreName} placeholder={t('finance.store.storeNamePlaceholder')} /><Text style={styles.sheetCaption}>{t('finance.store.currency')}: {currency}</Text><Pressable style={styles.primary} onPress={saveSettings}><Text style={styles.primaryText}>{t('finance.store.saveSettings')}</Text></Pressable></StoreSheet>
   </View></SafeAreaView>;
 }
@@ -341,6 +438,10 @@ function ProductRow({ product, stock, available, currency, onPress, onStock, t }
 
 function SaleRow({ sale, currency, onPress, t }: { sale: StoreSale; currency: string; onPress: () => void; t: (key: string) => string }) {
   return <Pressable style={styles.saleRow} onPress={onPress}><View style={styles.saleIcon}><Ionicons name="receipt-outline" size={18} color={sale.status === 'void' ? 'rgba(255,244,208,0.3)' : C.gold} /></View><View style={styles.rowMain}><Text style={[styles.rowTitle, sale.status === 'void' && styles.voidText]}>{sale.items.length} {t('finance.store.items')} · {new Date(sale.date).toLocaleDateString()}</Text><Text style={styles.rowMeta}>{sale.paymentMethod ? t(`finance.accountTypes.${sale.paymentMethod}`) : t('finance.store.noPaymentMethod')}</Text></View><Text style={[styles.rowAmount, sale.status === 'void' && styles.voidText]}>{money(sale.total, currency)}</Text></Pressable>;
+}
+
+function ReportEmpty({ t, copy }: { t: (key: string) => string; copy?: string }) {
+  return <View style={styles.emptyModule}><Ionicons name="bar-chart-outline" size={32} color={C.gold} /><Text style={styles.sectionTitle}>{t('finance.store.reportNoData')}</Text><Text style={styles.emptyBody}>{copy ?? t('finance.store.reportNoDataCopy')}</Text></View>;
 }
 
 function DrawerItem({ icon, label, active = false, onPress }: { icon: IconName; label: string; active?: boolean; onPress: () => void }) {
@@ -378,6 +479,27 @@ const styles = StyleSheet.create({
   sectionTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 18 },
   link: { color: C.gold, fontFamily: SANS, fontSize: 10 },
   productView: { flex: 1 },
+  directoryView: { flex: 1 },
+  directoryToolbar: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
+  directorySearch: { flex: 1, minHeight: 46, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.05)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8 },
+  directorySearchInput: { flex: 1, minHeight: 44, color: C.goldLight, fontFamily: SANS, fontSize: 13 },
+  directoryAdd: { width: 44, height: 44, borderRadius: 13, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center' },
+  directoryEmptyContent: { flexGrow: 1 },
+  directoryRow: { minHeight: 68, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  directoryRowInactive: { opacity: 0.52 },
+  directoryAvatar: { width: 40, height: 40, borderRadius: 13, backgroundColor: 'rgba(233,200,119,0.1)', alignItems: 'center', justifyContent: 'center' },
+  directoryAvatarText: { color: C.goldLight, fontFamily: SERIF, fontSize: 17 },
+  emptyAction: { minHeight: 42, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.gold, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', marginTop: 14 },
+  emptyActionText: { color: C.gold, fontFamily: SANS, fontSize: 11, fontWeight: '700' },
+  reportOption: { minHeight: 72, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 10 },
+  reportIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(233,200,119,0.1)', alignItems: 'center', justifyContent: 'center' },
+  reportBack: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 7 },
+  reportBackText: { color: C.gold, fontFamily: SANS, fontSize: 11, fontWeight: '700' },
+  reportRow: { minHeight: 62, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 8 },
+  reportMetric: { minHeight: 220, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.06)', alignItems: 'center', justifyContent: 'center', padding: 18, gap: 7 },
+  reportMetricValue: { color: C.goldLight, fontFamily: SERIF, fontSize: 44 },
+  reportMetricLabel: { color: 'rgba(255,244,208,0.58)', fontFamily: SANS, fontSize: 11 },
+  reportMetricAmount: { color: C.gold, fontFamily: SERIF, fontSize: 22, marginTop: 10 },
   searchContainer: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 4 },
   productScroll: { flex: 1 },
   productList: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 112, gap: 12 },
@@ -455,9 +577,11 @@ const styles = StyleSheet.create({
   clearDate: { minHeight: 40, alignItems: 'center', justifyContent: 'center', marginTop: 4 },
   clearDateText: { color: C.gold, fontFamily: SANS, fontSize: 10 },
   choices: { gap: 7, paddingVertical: 3 },
-  choice: { minHeight: 40, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingHorizontal: 12, justifyContent: 'center' },
+  choice: { minHeight: 36, borderRadius: 9, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingHorizontal: 10, justifyContent: 'center' },
+  choiceCompact: { minHeight: 32, borderRadius: 8, paddingHorizontal: 8 },
   choiceActive: { backgroundColor: C.gold, borderColor: C.gold },
-  choiceText: { color: 'rgba(255,244,208,0.65)', fontFamily: SANS, fontSize: 11 },
+  choiceText: { color: 'rgba(255,244,208,0.65)', fontFamily: SANS, fontSize: 10 },
+  choiceTextCompact: { fontSize: 9 },
   choiceTextActive: { color: C.void, fontWeight: '700' },
   error: { color: '#F08B88', fontFamily: SANS, fontSize: 11, marginTop: 10, lineHeight: 16 },
   sheetTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 21, lineHeight: 26, paddingRight: 52, marginBottom: 8 },

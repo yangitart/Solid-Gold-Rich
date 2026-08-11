@@ -3,8 +3,8 @@ import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, Sh
 import { Ionicons } from '@expo/vector-icons';
 import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFinance } from '../core/finance/FinanceContext';
-import { DEFAULT_COLORS, exportCsv, exportJson } from '../core/finance/storage';
+import { useFinance } from '../stores/FinanceContext';
+import { DEFAULT_COLORS, exportCsv, exportJson } from '../stores/financeStorage';
 import { hashPin } from '../core/pin';
 import { supportedLanguages } from '../core/locales/i18next';
 import type { Account, AppLanguage, Budget, Debt, FinanceCategory, RecurringFrequency, RecurringTransaction, SavingsGoal } from '../core/finance/types';
@@ -12,7 +12,7 @@ import { C, SANS, SERIF } from '../theme/luxury';
 import DateSelect from '../components/DateSelect';
 import { currencyRate as resolveCurrencyRate } from '../core/finance/currency';
 
-export type FinanceModuleName = 'accounts' | 'debt' | 'notes' | 'tools' | 'savings' | 'budget' | 'activity' | 'recurring' | 'categories' | 'settings';
+export type FinanceModuleName = 'accounts' | 'debt' | 'notes' | 'tools' | 'savings' | 'budget' | 'activity' | 'recurring' | 'categories' | 'progress' | 'settings';
 
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const money = (value: number, currency: string) => `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`;
@@ -66,8 +66,12 @@ function Field({ title, value, onChangeText, placeholder, multiline = false, num
   return <View style={styles.field}><Text style={styles.fieldLabel}>{title}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="rgba(255,244,208,0.3)" keyboardType={numeric ? 'decimal-pad' : 'default'} multiline={multiline} secureTextEntry={secureTextEntry} maxLength={maxLength} style={[styles.input, multiline && styles.multiline]} accessibilityLabel={title} /></View>;
 }
 
+function ProgressBar({ progress, color }: { progress: number; color: string }) {
+  return <View style={styles.progressTrack}><View style={[styles.progressFill, { width: `${Math.min(100, Math.max(0, progress * 100))}%`, backgroundColor: color }]} /></View>;
+}
+
 function Choice({ values, value, onChange, labels }: { values: string[]; value: string; onChange: (value: string) => void; labels?: Record<string, string> }) {
-  return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choices}>{values.map((item) => <Pressable key={item} onPress={() => onChange(item)} style={[styles.choice, item === value && styles.choiceActive]} accessibilityRole="radio" accessibilityState={{ selected: item === value }} accessibilityLabel={labels?.[item] ?? item}><Text style={[styles.choiceText, item === value && styles.choiceTextActive]}>{labels?.[item] ?? item}</Text></Pressable>)}</ScrollView>;
+  return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choices}>{values.map((item) => <Pressable key={item} onPress={() => onChange(item)} hitSlop={4} style={[styles.choice, { minHeight: 36, borderRadius: 9, paddingHorizontal: 10 }, item === value && styles.choiceActive]} accessibilityRole="radio" accessibilityState={{ selected: item === value }} accessibilityLabel={labels?.[item] ?? item}><Text style={[styles.choiceText, { fontSize: 10 }, item === value && styles.choiceTextActive]}>{labels?.[item] ?? item}</Text></Pressable>)}</ScrollView>;
 }
 
 function Empty({ title, body }: { title: string; body: string }) {
@@ -139,6 +143,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
   const [currencyRate, setCurrencyRate] = React.useState('1');
   const [currencyRateError, setCurrencyRateError] = React.useState('');
   const [activityFilter, setActivityFilter] = React.useState<ActivityFilter>('all');
+  const [activityCategory, setActivityCategory] = React.useState('all');
   const [activityQuery, setActivityQuery] = React.useState('');
   const [debtPaymentTarget, setDebtPaymentTarget] = React.useState<Debt | null>(null);
   const [debtPaymentAmount, setDebtPaymentAmount] = React.useState('');
@@ -413,8 +418,14 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
 
   const renderActivity = () => {
     const query = activityQuery.trim().toLowerCase();
-    const items = state.transactions.filter((item) => item.status !== 'void' && (activityFilter === 'all' || item.kind === activityFilter) && (!query || `${item.payee} ${item.description} ${item.category}`.toLowerCase().includes(query))).slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    return <View style={styles.panel}><View style={styles.activitySearch}><Ionicons name="search-outline" size={17} color="rgba(255,244,208,0.35)" /><TextInput value={activityQuery} onChangeText={setActivityQuery} placeholder={t('finance.modules.searchActivity')} placeholderTextColor="rgba(255,244,208,0.3)" style={styles.activitySearchInput} /></View><Choice values={['all', 'expense', 'income']} value={activityFilter} onChange={(value) => setActivityFilter(value as ActivityFilter)} labels={{ all: t('finance.filters.all'), expense: t('finance.filters.expense'), income: t('finance.filters.income') }} />{items.map((item) => { const category = state.categories[item.kind === 'income' ? 'income' : 'expense'].find((entry) => entry.id === item.category); const icon: IconName = item.transferId ? 'swap-horizontal-outline' : category?.icon as IconName ?? (item.kind === 'income' ? 'cash-outline' : 'pricetag-outline'); const accountName = state.accounts.find((accountItem) => accountItem.id === item.accountId)?.name; return <View key={item.id} style={styles.row}><View style={[styles.activityIcon, item.kind === 'income' && styles.activityIncomeIcon]}><Ionicons name={icon} size={18} color={item.kind === 'income' ? C.goldLight : C.gold} /></View><View style={styles.rowMain}><Text style={styles.cardTitle} numberOfLines={1}>{item.payee || item.description || item.category}</Text><Text style={styles.cardMeta} numberOfLines={1}>{accountName ? `${accountName} · ` : ''}{dateText(item.date)}</Text></View><Text style={item.kind === 'income' ? styles.positive : styles.negative} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>{item.kind === 'income' ? '+' : '-'}{money(item.amount, item.currency)}</Text></View>; })}{!items.length && <Empty title={t('finance.modules.noResults')} body={t('finance.modules.noResultsCopy')} />}</View>;
+    const activityCategories = Array.from(new Set([
+      ...state.categories.expense.map((item) => item.id),
+      ...state.categories.income.map((item) => item.id),
+      ...state.transactions.map((item) => item.category),
+    ].filter(Boolean)));
+    const items = state.transactions.filter((item) => item.status !== 'void' && (activityFilter === 'all' || item.kind === activityFilter) && (activityCategory === 'all' || item.category === activityCategory) && (!query || `${item.payee} ${item.description} ${item.category}`.toLowerCase().includes(query))).slice().sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    const categoryLabels = Object.fromEntries(activityCategories.map((category) => [category, t(`finance.categories.${category}`, { defaultValue: category })]));
+    return <View style={styles.panel}><View style={styles.activitySearch}><Ionicons name="search-outline" size={17} color="rgba(255,244,208,0.35)" /><TextInput value={activityQuery} onChangeText={setActivityQuery} placeholder={t('finance.modules.searchActivity')} placeholderTextColor="rgba(255,244,208,0.3)" style={styles.activitySearchInput} /></View><Choice values={['all', 'expense', 'income']} value={activityFilter} onChange={(value) => setActivityFilter(value as ActivityFilter)} labels={{ all: t('finance.filters.all'), expense: t('finance.filters.expense'), income: t('finance.filters.income') }} /><Text style={styles.fieldLabel}>{t('finance.category')}</Text><Choice values={['all', ...activityCategories]} value={activityCategory} onChange={setActivityCategory} labels={{ all: t('finance.filters.all'), ...categoryLabels }} />{items.map((item) => { const category = state.categories[item.kind === 'income' ? 'income' : 'expense'].find((entry) => entry.id === item.category); const icon: IconName = item.transferId ? 'swap-horizontal-outline' : category?.icon as IconName ?? (item.kind === 'income' ? 'cash-outline' : 'pricetag-outline'); const accountName = state.accounts.find((accountItem) => accountItem.id === item.accountId)?.name; return <View key={item.id} style={styles.row}><View style={[styles.activityIcon, item.kind === 'income' && styles.activityIncomeIcon]}><Ionicons name={icon} size={18} color={item.kind === 'income' ? C.goldLight : C.gold} /></View><View style={styles.rowMain}><Text style={styles.cardTitle} numberOfLines={1}>{item.payee || item.description || item.category}</Text><Text style={styles.cardMeta} numberOfLines={1}>{accountName ? `${accountName} · ` : ''}{dateText(item.date)}</Text></View><Text style={item.kind === 'income' ? styles.positive : styles.negative} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>{item.kind === 'income' ? '+' : '-'}{money(item.amount, item.currency)}</Text></View>; })}{!items.length && <Empty title={t('finance.modules.noResults')} body={t('finance.modules.noResultsCopy')} />}</View>;
   };
   const renderAccounts = () => (
     <View style={styles.panel}>
@@ -549,6 +560,48 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
       </View>
     );
   };
+  const renderProgress = () => {
+    const incomeTransactions = state.transactions.filter((item) => item.kind === 'income' && item.status !== 'void' && !item.transferId);
+    const points = incomeTransactions.length;
+    const level = Math.floor(points / 5) + 1;
+    const pointsInLevel = points % 5;
+    const levelProgress = pointsInLevel / 5;
+    const levelNodes = Array.from({ length: 5 }, (_, index) => index < Math.min(5, level));
+
+    return (
+      <View style={styles.panel}>
+        <View style={styles.progressIntro}>
+          <Text style={styles.fieldLabel}>{t('finance.progress.eyebrow')}</Text>
+          <Text style={styles.progressTitle}>{t('finance.progress.title')}</Text>
+          <Text style={styles.progressCopy}>{t('finance.progress.copy')}</Text>
+        </View>
+        <View style={styles.progressCard}>
+          <View style={styles.progressTreeArt} accessibilityLabel={t('finance.progress.treeLabel')}>
+            <View style={styles.progressBranchLeft} />
+            <View style={styles.progressBranchRight} />
+            <View style={styles.progressTrunk} />
+            <View style={styles.progressCrown}>
+              <Ionicons name="diamond" size={46} color={C.gold} />
+            </View>
+            <View style={styles.progressNodes}>
+              {levelNodes.map((active, index) => <View key={index} style={[styles.progressNode, active && styles.progressNodeActive]}><Ionicons name="diamond" size={13} color={active ? C.void : 'rgba(233,200,119,0.32)'} /></View>)}
+            </View>
+          </View>
+          <View style={styles.progressSummary}>
+            <Text style={styles.progressLevelLabel}>{t('finance.progress.level', { level })}</Text>
+            <Text style={styles.progressPoints}>{points} <Text style={styles.progressPointsUnit}>{t('finance.progress.points')}</Text></Text>
+            <Text style={styles.cardMeta}>{t('finance.progress.incomeCount', { count: incomeTransactions.length })}</Text>
+            <ProgressBar progress={levelProgress} color={C.gold} />
+            <Text style={styles.progressNext}>{t('finance.progress.nextLevel', { count: 5 - pointsInLevel })}</Text>
+          </View>
+        </View>
+        <View style={styles.progressRule}>
+          <Ionicons name="sparkles-outline" size={18} color={C.gold} />
+          <Text style={styles.cardMeta}>{t('finance.progress.rule')}</Text>
+        </View>
+      </View>
+    );
+  };
   const renderSettings = () => {
     const currentLanguage = supportedLanguages.includes((translationI18n.resolvedLanguage ?? 'en') as AppLanguage)
       ? (translationI18n.resolvedLanguage ?? 'en')
@@ -631,8 +684,8 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
     const percentage = Math.min(100, spent / Math.max(1, item.limit + item.rolloverAmount) * 100);
     return <View key={item.id} style={styles.module}><View style={styles.row}><View style={styles.rowMain}><Text style={styles.cardTitle}>{t(`finance.categories.${item.category}`, { defaultValue: item.category })}</Text><Text style={styles.cardMeta}>{accountName} · {t(`finance.releaseFrequency.${item.period}`)}</Text></View><Text style={spent > item.limit + item.rolloverAmount ? styles.negative : styles.positive} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>{money(spent, budgetCurrency)}</Text><Pressable style={styles.smallAction} onPress={() => confirmDelete(t('finance.modules.deleteBudget'), () => finance.deleteBudget(item.id))} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View><View style={styles.track}><View style={[styles.fill, { width: `${percentage}%`, backgroundColor: percentage >= 100 ? C.red : percentage >= 80 ? C.gold : C.goldLight }]} /></View><Text style={styles.cardMeta}>{t('finance.modules.budgetRemaining', { amount: money(Math.max(0, item.limit + item.rolloverAmount - spent), budgetCurrency) })}</Text></View>;
   })}{!categoryBudgets.length && <Empty title={t('finance.modules.noBudgets')} body={t('finance.modules.noBudgetsCopy')} />}<AddAction label={t('finance.modules.addBudget')} onPress={() => { setBudgetDraft((current) => ({ ...current, accountId: current.accountId || accounts[0]?.id || '' })); setBudgetOpen(true); }} /></View>;
-  const content = module === 'accounts' ? renderAccounts() : module === 'activity' ? renderActivity() : module === 'recurring' ? renderRecurring() : module === 'categories' ? renderCategories() : module === 'debt' ? renderDebts() : module === 'savings' ? renderSavings() : module === 'tools' ? renderTools() : module === 'settings' || module === 'notes' ? renderSettings() : renderBudget();
-  const titles = Object.fromEntries((['accounts', 'debt', 'notes', 'tools', 'savings', 'budget', 'activity', 'recurring', 'categories', 'settings'] as FinanceModuleName[]).map((item) => [item, t(`finance.navigation.items.${item}.title`)])) as Record<FinanceModuleName, string>;
+  const content = module === 'accounts' ? renderAccounts() : module === 'activity' ? renderActivity() : module === 'recurring' ? renderRecurring() : module === 'categories' ? renderCategories() : module === 'progress' ? renderProgress() : module === 'debt' ? renderDebts() : module === 'savings' ? renderSavings() : module === 'tools' ? renderTools() : module === 'settings' || module === 'notes' ? renderSettings() : renderBudget();
+  const titles = Object.fromEntries((['accounts', 'debt', 'notes', 'tools', 'savings', 'budget', 'activity', 'recurring', 'categories', 'progress', 'settings'] as FinanceModuleName[]).map((item) => [item, item === 'progress' ? t('finance.progress.title') : t(`finance.navigation.items.${item}.title`)])) as Record<FinanceModuleName, string>;
   const debtPaymentAccount = accounts.find((item) => item.id === debtPaymentAccountId);
   const debtPaymentReady = Boolean(debtPaymentTarget && debtPaymentAccount && Number(debtPaymentAmount) > 0 && rateBetweenCurrencies(debtPaymentTarget.currency, debtPaymentAccount.currency));
   const debtPaymentValidationError = linkedActionError || (debtPaymentTarget && debtPaymentAccount && Number(debtPaymentAmount) > 0 && !rateBetweenCurrencies(debtPaymentTarget.currency, debtPaymentAccount.currency) ? t('finance.releaseErrors.missingRate') : '');
@@ -874,6 +927,26 @@ const styles = StyleSheet.create({
   buttonDisabled: { opacity: 0.42 },
   dangerButton: { minHeight: 46, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.red, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
   dangerButtonText: { color: C.red, fontFamily: SANS, fontSize: 11, fontWeight: '700', letterSpacing: 0.6 },
+  progressIntro: { paddingHorizontal: 2, marginBottom: 14 },
+  progressTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 26, marginTop: 3 },
+  progressCopy: { color: 'rgba(255,244,208,0.58)', fontFamily: SANS, fontSize: 12, lineHeight: 18, marginTop: 7 },
+  progressCard: { borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.24)', backgroundColor: 'rgba(233,200,119,0.07)', padding: 14 },
+  progressTreeArt: { height: 182, alignItems: 'center', justifyContent: 'flex-start', position: 'relative', overflow: 'hidden' },
+  progressCrown: { width: 92, height: 92, borderRadius: 46, borderWidth: 1, borderColor: 'rgba(233,200,119,0.44)', backgroundColor: 'rgba(233,200,119,0.12)', alignItems: 'center', justifyContent: 'center', marginTop: 4 },
+  progressTrunk: { position: 'absolute', width: 2, height: 58, backgroundColor: 'rgba(233,200,119,0.4)', top: 88 },
+  progressBranchLeft: { position: 'absolute', width: 54, height: 2, backgroundColor: 'rgba(233,200,119,0.3)', top: 120, left: '25%', transform: [{ rotate: '-27deg' }] },
+  progressBranchRight: { position: 'absolute', width: 54, height: 2, backgroundColor: 'rgba(233,200,119,0.3)', top: 120, right: '25%', transform: [{ rotate: '27deg' }] },
+  progressNodes: { position: 'absolute', top: 139, left: 0, right: 0, flexDirection: 'row', justifyContent: 'center', gap: 10 },
+  progressNode: { width: 27, height: 27, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.25)', backgroundColor: 'rgba(10,12,20,0.46)', alignItems: 'center', justifyContent: 'center' },
+  progressNodeActive: { borderColor: C.gold, backgroundColor: C.gold },
+  progressSummary: { alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(233,200,119,0.16)', paddingTop: 14 },
+  progressTrack: { width: '100%', height: 6, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.1)', overflow: 'hidden', marginTop: 12 },
+  progressFill: { height: '100%', borderRadius: 4 },
+  progressLevelLabel: { color: C.gold, fontFamily: SANS, fontSize: 10, fontWeight: '700', letterSpacing: 1 },
+  progressPoints: { color: C.goldLight, fontFamily: SERIF, fontSize: 34, marginTop: 3 },
+  progressPointsUnit: { color: 'rgba(255,244,208,0.52)', fontFamily: SANS, fontSize: 11 },
+  progressNext: { color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 10, marginTop: 7 },
+  progressRule: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 3, marginTop: 14 },
   aboutCompact: { alignItems: 'center', paddingHorizontal: 12, paddingBottom: 8 },
   root: { flex: 1, backgroundColor: C.void }, header: { height: 78, paddingTop: 12, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, back: { width: 42 }, backText: { color: C.goldLight, fontSize: 34, fontWeight: '200' }, headerTitle: { flex: 1, textAlign: 'center', color: C.goldLight, fontFamily: SERIF, fontSize: 21 }, headerSpace: { width: 42 }, content: { paddingHorizontal: 18, paddingBottom: 50 }, panel: { width: '100%', maxWidth: 720, alignSelf: 'center', borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.72)', padding: 14, marginBottom: 15 }, row: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)' }, rowMain: { flex: 1, minWidth: 0 }, accountStripe: { width: 5, height: 38, borderRadius: 3 }, cardTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13 }, cardMeta: { color: 'rgba(255,244,208,0.52)', fontFamily: SANS, fontSize: 11, marginTop: 4 }, positive: { color: C.goldLight, fontFamily: SERIF, fontSize: 14 }, negative: { color: C.red, fontFamily: SERIF, fontSize: 14 }, primary: { minHeight: 48, borderRadius: 14, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center', marginTop: 14 }, primaryText: { color: C.void, fontFamily: SANS, fontSize: 11, fontWeight: '700', letterSpacing: 1 }, secondary: { minHeight: 46, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.gold, alignItems: 'center', justifyContent: 'center', marginTop: 10 }, secondaryText: { color: C.gold, fontFamily: SANS, fontSize: 11, fontWeight: '700' }, danger: { minHeight: 46, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.red, alignItems: 'center', justifyContent: 'center', marginTop: 10 }, dangerText: { color: C.red, fontFamily: SANS, fontSize: 11, fontWeight: '700' }, module: { paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, body: { color: 'rgba(255,244,208,0.72)', fontFamily: SANS, fontSize: 13, lineHeight: 20, marginVertical: 10 }, track: { height: 6, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.1)', overflow: 'hidden', marginVertical: 9 }, fill: { height: '100%', borderRadius: 4, backgroundColor: C.gold }, chart: { marginBottom: 14 }, chartTop: { flexDirection: 'row', justifyContent: 'space-between' }, check: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: C.gold, color: C.gold, textAlign: 'center', textAlignVertical: 'center' }, checkDone: { backgroundColor: C.gold, borderColor: C.gold, color: C.void }, strike: { textDecorationLine: 'line-through', opacity: 0.5 }, toolResult: { color: C.goldLight, fontFamily: SERIF, fontSize: 29, marginBottom: 15 }, toolChoices: { gap: 7, paddingBottom: 8 }, toolChoice: { minHeight: 44, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 6 }, toolChoiceActive: { backgroundColor: C.gold, borderColor: C.gold }, toolChoiceText: { color: 'rgba(255,244,208,0.62)', fontFamily: SANS, fontSize: 11 }, toolChoiceTextActive: { color: C.void, fontWeight: '700' }, menuLink: { paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, field: { marginTop: 11 }, fieldLabel: { color: 'rgba(233,200,119,0.72)', fontFamily: SANS, fontSize: 11, letterSpacing: 1, marginBottom: 6 }, input: { minHeight: 48, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', color: C.goldLight, fontFamily: SANS, fontSize: 14, paddingHorizontal: 12, paddingVertical: 10 }, multiline: { minHeight: 80, textAlignVertical: 'top' }, import: { minHeight: 210, textAlignVertical: 'top', marginTop: 12 }, choices: { gap: 7, paddingVertical: 8 }, choice: { minHeight: 44, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingHorizontal: 12, justifyContent: 'center' }, choiceActive: { backgroundColor: 'rgba(233,200,119,0.14)', borderColor: C.gold }, choiceText: { color: 'rgba(255,244,208,0.62)', fontFamily: SANS, fontSize: 11 }, choiceTextActive: { color: C.goldLight }, iconChoices: { gap: 8, paddingVertical: 8 }, iconChoice: { width: 44, height: 44, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', alignItems: 'center', justifyContent: 'center' }, iconChoiceActive: { backgroundColor: C.gold, borderColor: C.gold }, categoryRowIcon: { width: 40, height: 40, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.06)', alignItems: 'center', justifyContent: 'center' }, categoryRowName: { flex: 1 }, empty: { alignItems: 'center', paddingVertical: 28 }, diamond: { width: 22, height: 22, borderWidth: 1, borderColor: C.gold, transform: [{ rotate: '45deg' }], marginBottom: 15 }, emptyTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13 }, emptyBody: { color: 'rgba(255,244,208,0.52)', fontFamily: SANS, fontSize: 11, marginTop: 7, textAlign: 'center' }, modalBackdrop: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.72)' }, sheet: { width: '100%', maxWidth: 620, maxHeight: '90%', borderTopLeftRadius: 25, borderTopRightRadius: 25, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14', padding: 18 }, sheetTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 23, marginBottom: 12 }, about: { color: C.gold, fontFamily: SERIF, fontSize: 48, textAlign: 'center', marginTop: 20 }, aboutTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 24, textAlign: 'center', marginBottom: 12 },
 });

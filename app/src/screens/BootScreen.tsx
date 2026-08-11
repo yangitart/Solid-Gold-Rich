@@ -19,10 +19,6 @@ const BOOT_MS = 900;
 const BAR_W = 256;
 const BOOT_LEVEL_VALUES = [0, 10_000, 1_000_000, 1_000_000_000, 1_000_000_000_000] as const;
 
-// Las líneas de estado. Son puro teatro — no hay nada que verificar — pero es
-// justo el teatro lo que vende la broma: la app se comporta como si validara una
-// fortuna antes de dejarte pasar.
-
 // Pantalla de carga. Comparte fondo con la pantalla principal, así que la
 // transición no es un corte: la carga se desvanece y la joya aparece encima del
 // MISMO negro. Ese detalle es lo que hace que no parezca "otra pantalla".
