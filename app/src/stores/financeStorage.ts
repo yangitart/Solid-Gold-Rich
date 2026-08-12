@@ -7,6 +7,8 @@ import type {
   NoteFolder,
   PaymentMethod,
   StoreClient,
+  StoreCategory,
+  StoreCashMovement,
   StoreEmployee,
   StoreProduct,
   StoreSale,
@@ -18,12 +20,15 @@ import type {
   TransactionStatus,
 } from '../core/finance/types';
 
-export const FINANCE_STATE_KEY = '@solid-gold/finance-state-v3';
+export const FINANCE_STATE_KEY = '@solid-gold/finance-state-v6';
+const FINANCE_STATE_V5_KEY = '@solid-gold/finance-state-v5';
+const FINANCE_STATE_V3_KEY = '@solid-gold/finance-state-v3';
 const FINANCE_STATE_V2_KEY = '@solid-gold/finance-state-v2';
 const LEGACY_BUDGETS_KEY = '@solid-gold/budget-accounts-v1';
 const LEGACY_ACTIVE_KEY = '@solid-gold/active-budget-v1';
 const LEGACY_TRANSACTIONS_KEY = '@solid-gold/transactions';
 const LEGACY_BUDGET_KEY = '@solid-gold/monthly-budget';
+const LEGACY_DEFAULT_LIMIT = 2500;
 
 export const DEFAULT_COLORS = ['#E9C877', '#B7AD84', '#80B9FF', '#D99BEF', '#F08B88'];
 export const DEFAULT_CATEGORIES: FinanceCategories = {
@@ -46,11 +51,11 @@ export const DEFAULT_CATEGORIES: FinanceCategories = {
 };
 
 export const emptyStoreState = (): StoreState => ({
-  setupCompleted: false,
   name: '',
   currency: 'USD',
-  categories: [],
+  categories: [{ id: 'general', name: 'General', builtIn: true }],
   businessAccount: { id: 'store-business', name: 'Business', currency: 'USD', balance: 0 },
+  cashMovements: [],
   employees: [],
   clients: [],
   products: [],
@@ -59,7 +64,7 @@ export const emptyStoreState = (): StoreState => ({
 });
 
 export const emptyFinanceState = (): FinanceState => ({
-  schemaVersion: 4,
+  schemaVersion: 6,
   accounts: [],
   transactions: [],
   transfers: [],
@@ -84,6 +89,21 @@ function number(value: unknown, fallback = 0) {
   return Number.isFinite(result) ? result : fallback;
 }
 
+function recordArray(value: unknown): Record<string, unknown>[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+    : [];
+}
+
+function uniqueById<T extends { id: string }>(items: T[]) {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (!item.id || seen.has(item.id)) return false;
+    seen.add(item.id);
+    return true;
+  });
+}
+
 const SUPPORTED_LANGUAGES: AppLanguage[] = ['en', 'es', 'pt', 'fr', 'de', 'it'];
 
 const DEFAULT_CATEGORY_ICONS: Record<string, string> = Object.fromEntries(
@@ -106,7 +126,11 @@ function normalizeCategory(value: unknown): FinanceCategory | null {
   const record = value as Record<string, unknown>;
   const id = text(record.id).trim().toLowerCase();
   if (!id) return null;
-  return { id, icon: text(record.icon, DEFAULT_CATEGORY_ICONS[id] ?? 'pricetag-outline') };
+  return {
+    id,
+    icon: text(record.icon, DEFAULT_CATEGORY_ICONS[id] ?? 'pricetag-outline'),
+    name: text(record.name).trim() || undefined,
+  };
 }
 
 function normalizeCategories(value: unknown, fallback: FinanceCategory[]) {
@@ -144,24 +168,53 @@ function normalizeTransaction(value: Partial<Transaction>, accountId: string): T
   };
 }
 
+function slug(value: string, fallback: string) {
+  const result = value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  return result || fallback;
+}
+
 function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState {
-  const source = value && typeof value === 'object' ? value : {};
-  const products = Array.isArray(source.products) ? source.products.map((product, index) => {
-    const item = product as Partial<StoreProduct>;
+  const source = value && typeof value === 'object' ? value as Partial<StoreState> & Record<string, unknown> : {};
+  const rawCategories: unknown[] = Array.isArray(source.categories) ? source.categories as unknown[] : [];
+  const categories: StoreCategory[] = [];
+  const usedCategoryIds = new Set<string>();
+  const addCategory = (category: StoreCategory) => {
+    let id = category.id || 'category';
+    let suffix = 2;
+    while (usedCategoryIds.has(id)) { id = `${category.id || 'category'}-${suffix}`; suffix += 1; }
+    usedCategoryIds.add(id);
+    categories.push({ ...category, id });
+  };
+  addCategory({ id: 'general', name: 'General', builtIn: true });
+  rawCategories.forEach((raw, index) => {
+    const record = raw && typeof raw === 'object' ? raw as Record<string, unknown> : null;
+    const name = typeof raw === 'string' ? raw.trim() : text(record?.name).trim();
+    if (!name || name.toLocaleLowerCase() === 'general') return;
+    const requestedId = text(record?.id).trim() || slug(name, `category-${index + 1}`);
+    addCategory({ id: requestedId, name, builtIn: Boolean(record?.builtIn) });
+  });
+  const categoryIdFor = (rawId: unknown, rawName: unknown) => {
+    const id = text(rawId).trim();
+    if (categories.some((item) => item.id === id)) return id;
+    const name = text(rawName).trim();
+    return categories.find((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase())?.id ?? 'general';
+  };
+  const products = recordArray(source.products).map((product, index) => {
+    const item = product as Partial<StoreProduct> & { category?: unknown; costPrice?: unknown; additionalPrices?: unknown };
     const type = item.type === 'service' ? 'service' : 'product';
     const key = text(item.key, text(item.sku, `product-${index + 1}`)).trim();
-    const purchasePrice = number((item as Partial<StoreProduct> & { costPrice?: unknown }).purchasePrice, number((item as Partial<StoreProduct> & { costPrice?: unknown }).costPrice));
-    const rawAdditionalPrices = (item as Partial<StoreProduct> & { additionalPrices?: unknown }).additionalSalePrices ?? (item as Partial<StoreProduct> & { additionalPrices?: unknown }).additionalPrices;
+    const purchasePrice = number(item.purchasePrice, number(item.costPrice));
+    const rawAdditionalPrices = item.additionalSalePrices ?? item.additionalPrices;
     return {
       id: text(item.id, `store-product-${index}`),
       key,
       name: text(item.name, `Product ${index + 1}`),
       type,
       unit: text(item.unit, 'unit'),
-      category: text(item.category, 'other'),
+      categoryId: categoryIdFor(item.categoryId, item.category),
       sku: text(item.sku) || undefined,
-      salePrice: number(item.salePrice),
-      purchasePrice,
+      salePrice: Math.max(0, number(item.salePrice)),
+      purchasePrice: Math.max(0, purchasePrice),
       additionalSalePrices: Array.isArray(rawAdditionalPrices) ? rawAdditionalPrices.map((price) => number(price)).filter((price) => price >= 0) : [],
       picture: text(item.picture) || undefined,
       initialStock: Math.max(0, number(item.initialStock)),
@@ -171,9 +224,9 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       additionalInfo: text(item.additionalInfo) || undefined,
       active: item.active !== false,
     } satisfies StoreProduct;
-  }) : [];
+  });
   const productIds = new Set(products.map((product) => product.id));
-  const stockMovements = Array.isArray(source.stockMovements) ? source.stockMovements.map((movement, index) => {
+  const stockMovements = recordArray(source.stockMovements).map((movement, index) => {
     const item = movement as Partial<StoreStockMovement>;
     const type: StoreStockMovement['type'] = ['initial', 'entry', 'exit', 'adjustment', 'sale', 'saleReversal'].includes(item.type ?? '')
       ? item.type as StoreStockMovement['type'] : 'adjustment';
@@ -185,18 +238,20 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       date: text(item.date, new Date().toISOString()),
       note: text(item.note),
       saleId: text(item.saleId) || undefined,
+      cashMovementId: text(item.cashMovementId) || undefined,
+      personalTransactionId: text(item.personalTransactionId) || undefined,
     } satisfies StoreStockMovement;
-  }).filter((movement) => productIds.has(movement.productId)) : [];
-  const sales = Array.isArray(source.sales) ? source.sales.map((sale, index) => {
+  }).filter((movement) => productIds.has(movement.productId));
+  const sales = recordArray(source.sales).map((sale, index) => {
     const item = sale as Partial<StoreSale>;
-    const items: StoreSaleItem[] = Array.isArray(item.items) ? item.items.map((line) => ({
+    const items: StoreSaleItem[] = recordArray(item.items).map((line) => ({
       productId: text(line.productId),
       name: text(line.name, 'Product'),
       type: (line.type === 'service' ? 'service' : 'product') as StoreSaleItem['type'],
       quantity: Math.max(0, number(line.quantity)),
       unitPrice: Math.max(0, number(line.unitPrice)),
       total: Math.max(0, number(line.total, number(line.quantity) * number(line.unitPrice))),
-    })) : [];
+    }));
     const paymentMethod = ['cash', 'card', 'bank', 'transfer', 'other'].includes(item.paymentMethod ?? '')
       ? item.paymentMethod as PaymentMethod : undefined;
     return {
@@ -207,9 +262,11 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       paymentMethod,
       status: item.status === 'void' ? 'void' : 'completed',
       note: text(item.note),
+      clientId: text(item.clientId) || undefined,
+      employeeId: text(item.employeeId) || undefined,
     } satisfies StoreSale;
-  }) : [];
-  const employees = Array.isArray(source.employees) ? source.employees.map((employee, index) => {
+  }).filter((sale) => sale.items.length > 0);
+  const employees = recordArray(source.employees).map((employee, index) => {
     const item = employee as Partial<StoreEmployee>;
     return {
       id: text(item.id, `store-employee-${index}`),
@@ -219,8 +276,8 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       active: item.active !== false,
       createdAt: text(item.createdAt, new Date().toISOString()),
     } satisfies StoreEmployee;
-  }) : [];
-  const clients = Array.isArray(source.clients) ? source.clients.map((client, index) => {
+  });
+  const clients = recordArray(source.clients).map((client, index) => {
     const item = client as Partial<StoreClient>;
     return {
       id: text(item.id, `store-client-${index}`),
@@ -231,18 +288,39 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       active: item.active !== false,
       createdAt: text(item.createdAt, new Date().toISOString()),
     } satisfies StoreClient;
-  }) : [];
+  });
+  const rawBalance = number(source.businessAccount?.balance);
+  const cashMovements: StoreCashMovement[] = recordArray(source.cashMovements).map((movement, index) => {
+    const item = movement as Partial<StoreCashMovement>;
+    const type = ['opening', 'funding', 'withdrawal', 'sale', 'saleReversal', 'purchase', 'purchaseReversal'].includes(item.type ?? '')
+      ? item.type as StoreCashMovement['type'] : 'opening';
+    return {
+      id: text(item.id, `store-cash-${index}`),
+      type,
+      amount: number(item.amount),
+      date: text(item.date, new Date().toISOString()),
+      note: text(item.note),
+      transferId: text(item.transferId) || undefined,
+      saleId: text(item.saleId) || undefined,
+      productId: text(item.productId) || undefined,
+      personalTransactionId: text(item.personalTransactionId) || undefined,
+    };
+  }).filter((movement) => movement.amount !== 0);
+  if (!cashMovements.length && rawBalance !== 0) {
+    cashMovements.push({ id: 'store-cash-opening-v5', type: 'opening', amount: rawBalance, date: new Date().toISOString(), note: '' });
+  }
+  const businessBalance = cashMovements.reduce((total, movement) => total + movement.amount, 0);
   return {
-    setupCompleted: Boolean(source.setupCompleted),
     name: text(source.name),
     currency: text(source.currency, 'USD').toUpperCase(),
-    categories: Array.isArray(source.categories) ? source.categories.map((category) => text(category).trim()).filter(Boolean) : [],
+    categories,
     businessAccount: {
       id: 'store-business',
       name: text(source.businessAccount?.name, 'Business'),
       currency: text(source.businessAccount?.currency, text(source.currency, 'USD')).toUpperCase(),
-      balance: number(source.businessAccount?.balance),
+      balance: businessBalance,
     },
+    cashMovements,
     employees,
     clients,
     products,
@@ -252,31 +330,71 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
 }
 
 export function normalizeFinanceState(value: Partial<FinanceState>): FinanceState {
+  const sourceSchemaVersion = number(value.schemaVersion);
   const state = emptyFinanceState();
-  state.accounts = Array.isArray(value.accounts) ? value.accounts.map((account, index) => ({
+  state.accounts = uniqueById(recordArray(value.accounts).map((account, index) => ({
     id: text(account.id, `account-${index}`),
     name: text(account.name, `Account ${index + 1}`),
-    type: ['cash', 'bank', 'card', 'savings', 'debt'].includes(account.type ?? '') ? account.type! : 'other',
+    type: ['cash', 'bank', 'card', 'savings', 'debt'].includes(text(account.type)) ? text(account.type) as FinanceState['accounts'][number]['type'] : 'other',
     currency: text(account.currency, 'USD'),
     exchangeRate: typeof account.exchangeRate === 'number' && Number.isFinite(account.exchangeRate) && account.exchangeRate > 0 ? account.exchangeRate : undefined,
     openingBalance: number(account.openingBalance),
     color: text(account.color, DEFAULT_COLORS[index % DEFAULT_COLORS.length]),
     archived: Boolean(account.archived),
-  })) : [];
+  })) as FinanceState['accounts']);
   const firstAccountId = state.accounts[0]?.id ?? 'personal';
-  state.transactions = Array.isArray(value.transactions)
-    ? value.transactions.map((item) => normalizeTransaction(item, firstAccountId))
-    : [];
-  state.transfers = Array.isArray(value.transfers) ? value.transfers : [];
-  state.budgets = Array.isArray(value.budgets) ? value.budgets : [];
-  state.recurring = Array.isArray(value.recurring) ? value.recurring : [];
-  state.debts = Array.isArray(value.debts) ? value.debts : [];
-  state.savingsGoals = Array.isArray(value.savingsGoals) ? value.savingsGoals : [];
-  state.reminders = Array.isArray(value.reminders) ? value.reminders : [];
-  state.notes = Array.isArray(value.notes) ? value.notes.map((note) => ({ ...note, folderId: typeof note.folderId === 'string' ? note.folderId : undefined })) : [];
-  state.noteFolders = Array.isArray(value.noteFolders)
-    ? value.noteFolders.filter((folder): folder is NoteFolder => Boolean(folder && typeof folder.id === 'string' && typeof folder.name === 'string')).map((folder) => ({ ...folder, createdAt: text(folder.createdAt, new Date().toISOString()), updatedAt: text(folder.updatedAt, new Date().toISOString()) }))
-    : [];
+  const accountIds = new Set(state.accounts.map((account) => account.id));
+  state.transactions = uniqueById(recordArray(value.transactions)
+    .map((item) => normalizeTransaction(item, firstAccountId))
+    .filter((item) => accountIds.has(item.accountId) && item.amount >= 0));
+  state.transfers = uniqueById(recordArray(value.transfers).map((item, index) => ({
+    id: text(item.id, `transfer-${index}`), fromAccountId: text(item.fromAccountId), toAccountId: text(item.toAccountId),
+    fromAmount: Math.max(0, number(item.fromAmount)), toAmount: Math.max(0, number(item.toAmount)),
+    fromCurrency: text(item.fromCurrency, 'USD'), toCurrency: text(item.toCurrency, 'USD'), rate: Math.max(0, number(item.rate)), fee: Math.max(0, number(item.fee)),
+    date: text(item.date, new Date().toISOString()), note: text(item.note), status: item.status === 'pending' || item.status === 'void' ? item.status : 'cleared',
+  } satisfies FinanceState['transfers'][number])).filter((item) => item.fromAccountId !== item.toAccountId
+    && (accountIds.has(item.fromAccountId) || item.fromAccountId === 'store-business')
+    && (accountIds.has(item.toAccountId) || item.toAccountId === 'store-business')
+    && item.fromAmount > 0 && item.toAmount > 0 && item.rate > 0));
+  state.budgets = uniqueById(recordArray(value.budgets).map((item, index) => ({
+    id: text(item.id, `budget-${index}`), accountId: text(item.accountId), category: text(item.category, 'other'),
+    period: item.period === 'weekly' || item.period === 'custom' ? item.period : 'monthly',
+    startDate: text(item.startDate, new Date().toISOString()), endDate: text(item.endDate, new Date().toISOString()),
+    limit: Math.max(0, number(item.limit)), rollover: false, rolloverAmount: 0,
+  } satisfies FinanceState['budgets'][number])).filter((item) => {
+    const isAutomaticLegacyLimit = sourceSchemaVersion < 6
+      && item.limit === LEGACY_DEFAULT_LIMIT
+      && item.category === 'all'
+      && item.id.startsWith('budget-')
+      && item.id.endsWith('-total');
+    return accountIds.has(item.accountId) && item.limit > 0 && !isAutomaticLegacyLimit;
+  }));
+  state.recurring = uniqueById(recordArray(value.recurring).map((item, index) => ({
+    id: text(item.id, `recurring-${index}`), accountId: text(item.accountId), kind: item.kind === 'income' ? 'income' : 'expense',
+    amount: Math.max(0, number(item.amount)), currency: text(item.currency, 'USD'), payee: text(item.payee), category: text(item.category, 'other'),
+    paymentMethod: ['cash', 'card', 'bank', 'transfer', 'other'].includes(text(item.paymentMethod)) ? item.paymentMethod as PaymentMethod : 'cash',
+    frequency: ['daily', 'weekly', 'monthly', 'yearly'].includes(text(item.frequency)) ? item.frequency as FinanceState['recurring'][number]['frequency'] : 'monthly',
+    nextDate: text(item.nextDate, new Date().toISOString()), dayOfMonth: Math.min(31, Math.max(1, number(item.dayOfMonth, new Date(text(item.nextDate, new Date().toISOString())).getDate()))), description: text(item.description), active: item.active !== false,
+    lastGeneratedDate: text(item.lastGeneratedDate) || undefined,
+  } satisfies FinanceState['recurring'][number])).filter((item) => accountIds.has(item.accountId) && item.amount > 0));
+  state.debts = uniqueById(recordArray(value.debts).map((item, index) => {
+    const originalAmount = Math.max(0, number(item.originalAmount));
+    return {
+      id: text(item.id, `debt-${index}`), name: text(item.name, `Debt ${index + 1}`), creditor: text(item.creditor), accountId: accountIds.has(text(item.accountId)) ? text(item.accountId) : undefined,
+      currency: text(item.currency, 'USD'), originalAmount, balance: Math.min(originalAmount, Math.max(0, number(item.balance, originalAmount))), interestRate: Math.max(0, number(item.interestRate)),
+      dueDate: text(item.dueDate, new Date().toISOString()), active: item.active !== false,
+      payments: uniqueById(recordArray(item.payments).map((payment, paymentIndex) => ({ id: text(payment.id, `debt-payment-${index}-${paymentIndex}`), amount: Math.max(0, number(payment.amount)), date: text(payment.date, new Date().toISOString()), note: text(payment.note), accountId: accountIds.has(text(payment.accountId)) ? text(payment.accountId) : undefined, transactionId: text(payment.transactionId) || undefined })).filter((payment) => payment.amount > 0)),
+    };
+  }).filter((item) => item.originalAmount > 0));
+  state.savingsGoals = uniqueById(recordArray(value.savingsGoals).map((item, index) => ({
+    id: text(item.id, `savings-${index}`), name: text(item.name, `Goal ${index + 1}`), currency: text(item.currency, 'USD'), targetAmount: Math.max(0, number(item.targetAmount)), balance: Math.max(0, number(item.balance)), deadline: text(item.deadline, new Date().toISOString()), accountId: accountIds.has(text(item.accountId)) ? text(item.accountId) : undefined, active: item.active !== false,
+    contributions: uniqueById(recordArray(item.contributions).map((contribution, contributionIndex) => ({ id: text(contribution.id, `contribution-${index}-${contributionIndex}`), amount: Math.max(0, number(contribution.amount)), date: text(contribution.date, new Date().toISOString()), note: text(contribution.note), fromAccountId: accountIds.has(text(contribution.fromAccountId)) ? text(contribution.fromAccountId) : undefined, transferId: text(contribution.transferId) || undefined })).filter((contribution) => contribution.amount > 0)),
+  })).filter((item) => item.targetAmount > 0));
+  state.reminders = uniqueById(recordArray(value.reminders).map((item, index) => ({ id: text(item.id, `reminder-${index}`), title: text(item.title, `Reminder ${index + 1}`), date: text(item.date, new Date().toISOString()), note: text(item.note), completed: Boolean(item.completed), linkedAccountId: accountIds.has(text(item.linkedAccountId)) ? text(item.linkedAccountId) : undefined, linkedTransactionId: text(item.linkedTransactionId) || undefined })));
+  state.notes = uniqueById(recordArray(value.notes).map((item, index) => ({ id: text(item.id, `note-${index}`), title: text(item.title), body: text(item.body), tags: Array.isArray(item.tags) ? item.tags.map((tag) => text(tag)).filter(Boolean) : [], folderId: text(item.folderId) || undefined, createdAt: text(item.createdAt, new Date().toISOString()), updatedAt: text(item.updatedAt, new Date().toISOString()), linkedAccountId: accountIds.has(text(item.linkedAccountId)) ? text(item.linkedAccountId) : undefined, linkedTransactionId: text(item.linkedTransactionId) || undefined, pinned: Boolean(item.pinned) })));
+  state.noteFolders = uniqueById(recordArray(value.noteFolders).filter((folder) => Boolean(text(folder.id).trim()) && Boolean(text(folder.name).trim())).map((folder) => ({ id: text(folder.id), name: text(folder.name), createdAt: text(folder.createdAt, new Date().toISOString()), updatedAt: text(folder.updatedAt, new Date().toISOString()) } satisfies NoteFolder)));
+  const folderIds = new Set(state.noteFolders.map((folder) => folder.id));
+  state.notes = state.notes.map((note) => note.folderId && !folderIds.has(note.folderId) ? { ...note, folderId: undefined } : note);
   state.categories = {
     expense: normalizeCategories(value.categories?.expense, DEFAULT_CATEGORIES.expense),
     income: normalizeCategories(value.categories?.income, DEFAULT_CATEGORIES.income),
@@ -300,6 +418,7 @@ export function normalizeFinanceState(value: Partial<FinanceState>): FinanceStat
     activeWorkspace: value.settings?.activeWorkspace === 'store' ? 'store' : 'personal',
   };
   if (!value.store?.currency) state.store.currency = state.settings.preferredCurrency;
+  state.schemaVersion = 6;
   return state;
 }
 
@@ -366,17 +485,19 @@ function migrateLegacy(
   for (const account of state.accounts) {
     const budget = parsedBudgets.find((item) => text(item.id) === account.id);
     const limit = number(budget?.limit, number(legacyLimit));
-    state.budgets.push({
-      id: `budget-${account.id}-total`,
-      accountId: account.id,
-      category: 'all',
-      period: 'monthly',
-      startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString(),
-      endDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString(),
-      limit,
-      rollover: false,
-      rolloverAmount: 0,
-    });
+    if (limit > 0 && limit !== LEGACY_DEFAULT_LIMIT) {
+      state.budgets.push({
+        id: `budget-${account.id}-total`,
+        accountId: account.id,
+        category: 'all',
+        period: 'monthly',
+        startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString(),
+        endDate: new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).toISOString(),
+        limit,
+        rollover: false,
+        rolloverAmount: 0,
+      });
+    }
   }
   state.settings.preferredCurrency = state.accounts[0]?.currency ?? 'USD';
   state.settings.activeAccountId = state.accounts.some((account) => account.id === legacyActiveId)
@@ -391,8 +512,10 @@ function mergeById<T extends { id: string }>(preferred: T[], fallback: T[]) {
 }
 
 export async function loadFinanceState() {
-  const [savedV3, savedV2, budgets, activeId, transactions, limit] = await Promise.all([
+  const [savedV6, savedV5, savedV3, savedV2, budgets, activeId, transactions, limit] = await Promise.all([
     AsyncStorage.getItem(FINANCE_STATE_KEY),
+    AsyncStorage.getItem(FINANCE_STATE_V5_KEY),
+    AsyncStorage.getItem(FINANCE_STATE_V3_KEY),
     AsyncStorage.getItem(FINANCE_STATE_V2_KEY),
     AsyncStorage.getItem(LEGACY_BUDGETS_KEY),
     AsyncStorage.getItem(LEGACY_ACTIVE_KEY),
@@ -407,15 +530,17 @@ export async function loadFinanceState() {
       return null;
     }
   };
+  const v6State = parseSaved(savedV6);
+  const v5State = parseSaved(savedV5);
   const v3State = parseSaved(savedV3);
   const v2State = parseSaved(savedV2);
   const legacyState = migrateLegacy(budgets, activeId, transactions, limit);
-  const savedState = v3State ?? v2State;
+  const savedState = v6State ?? v5State ?? v3State ?? v2State;
   if (!savedState) return legacyState;
-  const olderState = v3State && v2State ? v2State : legacyState;
+  const olderState = savedState === v6State ? v5State ?? v3State ?? v2State ?? legacyState : savedState === v5State ? v3State ?? v2State ?? legacyState : savedState === v3State ? v2State ?? legacyState : legacyState;
   const merged = {
     ...savedState,
-    schemaVersion: 4 as const,
+    schemaVersion: 6 as const,
     accounts: mergeById(savedState.accounts, mergeById(olderState.accounts, legacyState.accounts)),
     transactions: mergeById(savedState.transactions, mergeById(olderState.transactions, legacyState.transactions)),
     transfers: mergeById(savedState.transfers, olderState.transfers),
@@ -433,8 +558,11 @@ export async function loadFinanceState() {
 }
 
 export async function saveFinanceState(state: FinanceState) {
-  await AsyncStorage.setItem(FINANCE_STATE_KEY, JSON.stringify(state));
-  await AsyncStorage.multiRemove([FINANCE_STATE_V2_KEY, LEGACY_BUDGETS_KEY, LEGACY_ACTIVE_KEY, LEGACY_TRANSACTIONS_KEY, LEGACY_BUDGET_KEY]);
+  const serialized = JSON.stringify(normalizeFinanceState(state));
+  await AsyncStorage.setItem(FINANCE_STATE_KEY, serialized);
+  const verified = await AsyncStorage.getItem(FINANCE_STATE_KEY);
+  if (verified !== serialized) throw new Error('Local data verification failed.');
+  await AsyncStorage.multiRemove([FINANCE_STATE_V5_KEY, FINANCE_STATE_V3_KEY, FINANCE_STATE_V2_KEY, LEGACY_BUDGETS_KEY, LEGACY_ACTIVE_KEY, LEGACY_TRANSACTIONS_KEY, LEGACY_BUDGET_KEY]);
 }
 
 export function exportJson(state: FinanceState) {
@@ -481,7 +609,7 @@ function parseCsvLine(line: string) {
 
 export function importCsv(csv: string, accountId: string, fallbackCurrency: string) {
   const lines = csv.split(/\r?\n/).filter(Boolean);
-  if (lines.length < 2) return { items: [] as Transaction[], errors: ['CSV must contain a header and at least one row.'] };
+  if (lines.length < 2) return { items: [] as Transaction[], errors: ['header'] };
   const headers = parseCsvLine(lines[0]);
   const index = (name: string) => headers.indexOf(name);
   const errors: string[] = [];
@@ -490,7 +618,7 @@ export function importCsv(csv: string, accountId: string, fallbackCurrency: stri
     const cells = parseCsvLine(line);
     const amount = number(cells[index('amount')]);
     if (!amount) {
-      errors.push(`Row ${rowIndex + 2}: amount is invalid.`);
+      errors.push(`row:${rowIndex + 2}:amount`);
       continue;
     }
     const kind = cells[index('kind')] === 'income' ? 'income' : 'expense';

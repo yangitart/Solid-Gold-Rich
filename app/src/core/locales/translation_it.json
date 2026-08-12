@@ -75,8 +75,8 @@
     "nextEvolution": "EVOLUZIONE",
     "brandName": "SOLID GOLD",
     "wealthManager": "GESTIONE DEL PATRIMONIO",
-    "addExpense": "AGGIUNGI USCITA",
-    "addIncome": "AGGIUNGI ENTRATA",
+    "addExpense": "Aggiungi uscita",
+    "addIncome": "Aggiungi entrata",
     "income": "Entrate",
     "expenses": "Uscite",
     "cashFlow": "FLUSSO DI CASSA",
@@ -98,11 +98,11 @@
     "comingSoon": "PRESTO DISPONIBILE",
     "privacyTitle": "I TUOI NUMERI, LA TUA CASSAFORTE",
     "privacyCopy": "Le tue operazioni restano su questo dispositivo mentre il diamante cresce con il saldo.",
-    "newEntry": "NUOVA OPERAZIONE",
-    "amount": "IMPORTO",
-    "description": "DESCRIZIONE",
+    "newEntry": "Nuova operazione",
+    "amount": "Importo",
+    "description": "Descrizione",
     "descriptionPlaceholder": "es. Spesa alimentare",
-    "category": "CATEGORIA",
+    "category": "Categoria",
     "categoryType": "TIPO DI CATEGORIA",
     "addCategory": "AGGIUNGI CATEGORIA",
     "newCategory": "NUOVA CATEGORIA",
@@ -110,11 +110,11 @@
     "categoryPlaceholder": "es. abbonamenti",
     "categoryExists": "Questa categoria esiste gia.",
     "deleteCategory": "Elimina categoria",
-    "saveEntry": "SALVA OPERAZIONE",
-    "editEntry": "MODIFICA OPERAZIONE",
-    "operationDetails": "DETTAGLI OPERAZIONE",
-    "date": "DATA",
-    "updateEntry": "AGGIORNA OPERAZIONE",
+    "saveEntry": "Salva operazione",
+    "editEntry": "Modifica operazione",
+    "operationDetails": "Dettagli operazione",
+    "date": "Data",
+    "updateEntry": "Aggiorna operazione",
     "deleteEntry": "Elimina operazione",
     "deleteEntryConfirm": "Eliminare questa operazione?",
     "deleteAction": "Elimina",
@@ -131,6 +131,13 @@
     "noteCount": "{{count}} note",
     "chooseFolder": "CARTELLA",
     "newNote": "NUOVA NOTA",
+    "noteTitle": "Titolo",
+    "noteBody": "Scrivi la tua nota...",
+    "noNotesInFolders": "Scegli una cartella o crea una nota.",
+    "tags": "Tag",
+    "pinInvalid4": "Usa esattamente 4 cifre.",
+    "unitOptions": { "unit": "Unita", "piece": "Pezzo", "kg": "Chilogrammo", "g": "Grammo", "liter": "Litro", "hour": "Ora", "box": "Scatola" },
+    "exit": { "title": "Chiudere l'app?", "copy": "Vuoi uscire da Solid Gold Rich?", "confirm": "Chiudi app" },
     "noActivity": "Nessuna attivita",
     "noActivityCopy": "Aggiungi la prima entrata o uscita per iniziare.",
     "tabs": { "summary": "RIEPILOGO", "activity": "ATTIVITA", "budget": "BUDGET", "more": "ALTRO" },
@@ -145,8 +152,8 @@
     "added": "AGGIUNTO",
     "spent": "SPESO",
     "thisBudget": "QUESTO CONTO",
-    "operations": "OPERAZIONI",
-    "budgetLimit": "LIMITE DI SPESA",
+    "operations": "Operazioni",
+    "budgetLimit": "LIMITE DI SPESA", "budgetNotSet": "NON IMPOSTATO",
     "totalAcrossBudgets": "TOTALE DEI CONTI",
     "portfolio": "PORTAFOGLIO",
     "allActivity": "Tutta l’attività",
@@ -210,5 +217,10 @@
     ,"storeAccount": { "name": "Attività" }
     ,"storePurchase": { "purchaseFrom": "Acquisto pagato da", "none": "Nessun conto", "insufficientBusiness": "Il conto Attività non ha saldo sufficiente.", "insufficientAccount": "Il conto selezionato non ha saldo sufficiente.", "sourceRequired": "Seleziona una fonte di acquisto valida.", "inventoryPurchase": "Acquisto inventario" }
     ,"storeFunding": { "addMenuTitle": "Aggiungi al negozio", "productTab": "Prodotto", "tab": "Finanzia", "productCopy": "Crea un prodotto, imposta la scorta e scegli come pagare l’acquisto.", "title": "Finanzia attività", "copy": "Sposta denaro da un conto personale al saldo dell’attività oppure aggiungilo senza collegare un conto.", "account": "Finanzia da", "amount": "Importo da aggiungere", "note": "Nota (facoltativa)", "save": "Aggiungi fondi", "insufficient": "Il conto selezionato non ha saldo sufficiente.", "missingRate": "Configura un tasso di cambio valido per queste valute.", "invalid": "Inserisci un importo valido." }
+    ,"activity": { "eyebrow": "FILTRI ATTIVITÀ", "filterTitle": "Filtra attività", "filterA11y": "Filtra attività. {{count}} filtri attivi", "closeFilters": "Chiudi filtri", "clearFilters": "Cancella filtri", "operationType": "Tipo di operazione", "categorySearch": "Cerca categorie", "allCategories": "Tutte le categorie", "today": "Oggi", "yesterday": "Ieri", "emptyTitle": "Nessuna attività", "emptyBody": "Le entrate e le spese completate appariranno qui." }
+    ,"storeCompletion": { "common": { "save": "Salva", "close": "Chiudi", "search": "Cerca", "name": "Nome", "phone": "Telefono", "email": "E-mail", "editAction": "Modifica", "negativeBalance": { "title": "Il saldo diventerà negativo", "body": "Il denaro disponibile non è sufficiente. Continuare con un saldo negativo?", "confirm": "Continua" } }, "filters": { "low": "Scorte basse", "out": "Esauriti", "expired": "Scaduti", "expiring": "In scadenza", "noResults": "Nessun articolo corrisponde a questi filtri." }, "store": { "saleIncome": "Entrata della vendita", "business": "Attività", "viewMovements": "Vedi movimenti di denaro", "noneSelected": "Non selezionato", "searchSales": "Cerca vendite, prodotti o clienti", "salePeriod": { "all": "Tutto", "today": "Oggi", "week": "Settimana", "month": "Mese" }, "inactiveClient": "Cliente inattivo", "sectionIdentity": "Identità", "sectionPrices": "Prezzi", "additionalSalePrice": "Prezzo aggiuntivo", "addSalePrice": "Aggiungi un altro prezzo di vendita", "sectionInventory": "Scorte", "moreDetails": "Altri dettagli", "manageCategories": "Gestisci categorie", "deleteCategory": "Elimina categoria", "deleteCategoryConfirm": "I prodotti di questa categoria verranno spostati in Generale.", "renameCategory": "Rinomina categoria", "picturePickerCopy": "Scegli un’immagine salvata su questo dispositivo", "removePicture": "Rimuovi immagine", "currentStock": "Scorte attuali", "newQuantity": "Nuova quantità", "stockReason": "Motivo", "stockHistory": "Cronologia scorte", "stockAction": { "entry": "Entrata", "exit": "Uscita", "adjustment": "Correzione" }, "client": "Cliente", "employee": "Dipendente", "saleNote": "Nota vendita (opzionale)", "changePrice": "Cambia prezzo", "businessName": "Nome attività", "currencyLocked": "La valuta viene bloccata dopo il primo movimento di denaro o scorte.", "businessMovements": "Movimenti di denaro dell’attività", "noBusinessMovements": "Nessun movimento", "noBusinessMovementsCopy": "Finanziamenti, acquisti e vendite appariranno qui.", "cashMovement": { "opening": "Saldo iniziale", "funding": "Finanziamento", "withdrawal": "Prelievo", "sale": "Vendita", "saleReversal": "Storno vendita", "purchase": "Acquisto", "purchaseReversal": "Storno acquisto" }, "errors": { "picture": "Impossibile salvare l’immagine.", "category": "Scegli una categoria.", "stockReason": "Inserisci il motivo di questa modifica delle scorte.", "duplicate": "Questa vendita è già stata registrata.", "missing-product": "Un prodotto di questa vendita non è più disponibile.", "insufficient-stock": "Le scorte non sono sufficienti per completare la vendita.", "already-void": "Questa vendita era già annullata." } } }
+    ,"financeCompletion": { "common": { "linkedOperationTitle": "Operazione collegata", "linkedOperationCopy": "Gestisci questo movimento dal debito, risparmio o trasferimento associato.", "missingRatesWarning": "Alcuni totali sono nascosti perché manca un tasso di cambio. Configuralo nelle Impostazioni.", "accountCurrencyLocked": "La valuta non può essere modificata dopo i primi movimenti del conto.", "paymentExceedsDebt": "Il pagamento non può superare il debito residuo.", "contributionExceedsGoal": "Il versamento non può superare l’importo restante dell’obiettivo.", "interestReference": "Interesse (%) · solo come riferimento", "editRecurring": "Modifica operazione ricorrente", "editReminder": "Modifica data", "weekStartsOn": "La settimana inizia di", "monday": "Lunedì", "sunday": "Domenica", "deleteFolder": "Elimina cartella", "deleteFolderCopy": "Le note verranno spostate nell’elenco principale.", "deleteNote": "Elimina nota", "deleteNoteCopy": "Questa nota non potrà essere recuperata.", "unpinNote": "Rimuovi nota fissata", "pinNote": "Fissa nota", "renameFolder": "Rinomina cartella", "rootFolder": "Note principali" }, "pin": { "backspace": "Cancella l’ultima cifra", "submit": "Sblocca" }, "releaseImport": { "exportFailed": "Esportazione non riuscita", "exportFailedCopy": "Non è stato possibile creare il file di backup.", "csvHeaderError": "Il CSV deve contenere un’intestazione e almeno un’operazione.", "csvAmountError": "La riga {{row}} contiene un importo non valido.", "csvUnknownError": "Non è stato possibile importare una riga del CSV." } }
+    ,"privacyPolicy": { "title": "Informativa sulla privacy locale", "copy": "Solid Gold Rich non raccoglie, trasmette o vende dati personali. Conti, operazioni, dati del Negozio e immagini dei prodotti restano su questo dispositivo. I dati escono dall’app solo quando scegli di esportare o condividere un backup. Il PIN opzionale è un blocco locale e non cifra i dati salvati. Puoi cancellare i dati locali dalle Impostazioni." }
+    ,"storeMessages": { "saleStock": "Scorte utilizzate nella vendita", "saleReversal": "Scorte ripristinate dopo l’annullamento della vendita" }
   }
 }

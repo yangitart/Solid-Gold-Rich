@@ -75,8 +75,8 @@
     "nextEvolution": "EVOLUTION",
     "brandName": "SOLID GOLD",
     "wealthManager": "WEALTH MANAGER",
-    "addExpense": "ADD EXPENSE",
-    "addIncome": "ADD INCOME",
+    "addExpense": "Add spending",
+    "addIncome": "Add income",
     "income": "Income",
     "expenses": "Expenses",
     "cashFlow": "CASH FLOW",
@@ -98,11 +98,11 @@
     "comingSoon": "COMING SOON",
     "privacyTitle": "YOUR NUMBERS, YOUR VAULT",
     "privacyCopy": "Your entries stay on this device while your diamond grows with your balance.",
-    "newEntry": "NEW ENTRY",
-    "amount": "AMOUNT",
-    "description": "DESCRIPTION",
+    "newEntry": "New operation",
+    "amount": "Amount",
+    "description": "Description",
     "descriptionPlaceholder": "e.g. Groceries",
-    "category": "CATEGORY",
+    "category": "Category",
     "categoryType": "CATEGORY TYPE",
     "addCategory": "ADD CATEGORY",
     "newCategory": "NEW CATEGORY",
@@ -110,11 +110,11 @@
     "categoryPlaceholder": "e.g. subscriptions",
     "categoryExists": "This category already exists.",
     "deleteCategory": "Delete category",
-    "saveEntry": "SAVE ENTRY",
-    "editEntry": "EDIT OPERATION",
-    "operationDetails": "OPERATION DETAILS",
-    "date": "DATE",
-    "updateEntry": "UPDATE OPERATION",
+    "saveEntry": "Save operation",
+    "editEntry": "Edit operation",
+    "operationDetails": "Operation details",
+    "date": "Date",
+    "updateEntry": "Update operation",
     "deleteEntry": "Delete operation",
     "deleteEntryConfirm": "Delete this operation?",
     "deleteAction": "Delete",
@@ -127,10 +127,17 @@
     "noFolders": "No folders yet",
     "folderExists": "This folder already exists.",
     "noNotes": "No notes yet",
+    "noNotesInFolders": "Choose a folder or create a note.",
     "uncategorized": "UNCATEGORIZED",
     "noteCount": "{{count}} notes",
     "chooseFolder": "FOLDER",
     "newNote": "NEW NOTE",
+    "noteTitle": "Title",
+    "noteBody": "Write your note...",
+    "tags": "Tags",
+    "pinInvalid4": "Use exactly 4 digits.",
+    "unitOptions": { "unit": "Unit", "piece": "Piece", "kg": "Kilogram", "g": "Gram", "liter": "Liter", "hour": "Hour", "box": "Box" },
+    "exit": { "title": "Close the app?", "copy": "Do you want to leave Solid Gold Rich?", "confirm": "Close app" },
     "noActivity": "No activity yet",
     "noActivityCopy": "Add your first income or expense to begin.",
     "tabs": { "summary": "SUMMARY", "activity": "ACTIVITY", "budget": "BUDGET", "more": "MORE" },
@@ -145,8 +152,8 @@
     "added": "ADDED",
     "spent": "SPENT",
     "thisBudget": "THIS BUDGET",
-    "operations": "OPERATIONS",
-    "budgetLimit": "SPENDING LIMIT",
+    "operations": "Operations",
+    "budgetLimit": "SPENDING LIMIT", "budgetNotSet": "NOT SET",
     "totalAcrossBudgets": "TOTAL ACROSS BUDGETS",
     "portfolio": "PORTFOLIO",
     "allActivity": "All activity",
@@ -210,5 +217,10 @@
     ,"storeAccount": { "name": "Business" }
     ,"storePurchase": { "purchaseFrom": "Purchase paid from", "none": "No account", "insufficientBusiness": "The Business account does not have enough balance.", "insufficientAccount": "The selected account does not have enough balance.", "sourceRequired": "Select a valid purchase source.", "inventoryPurchase": "Inventory purchase" }
     ,"storeFunding": { "addMenuTitle": "Add to store", "productTab": "Product", "tab": "Funding", "productCopy": "Create a product, set its stock and choose how the purchase is paid.", "title": "Fund business", "copy": "Move money from a personal account to the business balance, or add it without linking an account.", "account": "Fund from", "amount": "Amount to add", "note": "Note (optional)", "save": "Add funds", "insufficient": "The selected account does not have enough balance.", "missingRate": "Configure a valid exchange rate for these currencies.", "invalid": "Enter a valid amount." }
+    ,"activity": { "eyebrow": "ACTIVITY FILTERS", "filterTitle": "Filter activity", "filterA11y": "Filter activity. {{count}} active filters", "closeFilters": "Close filters", "clearFilters": "Clear filters", "operationType": "Operation type", "categorySearch": "Search categories", "allCategories": "All categories", "today": "Today", "yesterday": "Yesterday", "emptyTitle": "No activity yet", "emptyBody": "Your completed income and expenses will appear here." }
+    ,"storeCompletion": { "common": { "save": "Save", "close": "Close", "search": "Search", "name": "Name", "phone": "Phone", "email": "Email", "editAction": "Edit", "negativeBalance": { "title": "Balance will go below zero", "body": "There is not enough money available. Do you want to continue and allow a negative balance?", "confirm": "Continue" } }, "filters": { "low": "Low stock", "out": "Out of stock", "expired": "Expired", "expiring": "Expires soon", "noResults": "No items match these filters." }, "store": { "saleIncome": "Sale income", "business": "Business", "viewMovements": "View money movements", "noneSelected": "Not selected", "searchSales": "Search sales, products or clients", "salePeriod": { "all": "All", "today": "Today", "week": "Week", "month": "Month" }, "inactiveClient": "Inactive client", "sectionIdentity": "Identity", "sectionPrices": "Prices", "additionalSalePrice": "Additional price", "addSalePrice": "Add another sale price", "sectionInventory": "Inventory", "moreDetails": "More details", "manageCategories": "Manage categories", "deleteCategory": "Delete category", "deleteCategoryConfirm": "Products in this category will move to General.", "renameCategory": "Rename category", "picturePickerCopy": "Choose an image stored on this device", "removePicture": "Remove picture", "currentStock": "Current stock", "newQuantity": "New quantity", "stockReason": "Reason", "stockHistory": "Stock history", "stockAction": { "entry": "Entry", "exit": "Exit", "adjustment": "Correction" }, "client": "Client", "employee": "Employee", "saleNote": "Sale note (optional)", "changePrice": "Change price", "businessName": "Business name", "currencyLocked": "Currency is locked after the first monetary or inventory movement.", "businessMovements": "Business money movements", "noBusinessMovements": "No money movements", "noBusinessMovementsCopy": "Funding, purchases and sales will appear here.", "cashMovement": { "opening": "Opening balance", "funding": "Funding", "withdrawal": "Withdrawal", "sale": "Sale", "saleReversal": "Sale reversal", "purchase": "Purchase", "purchaseReversal": "Purchase reversal" }, "errors": { "picture": "The image could not be saved.", "category": "Choose a category.", "stockReason": "Enter a reason for this stock change.", "duplicate": "This sale was already recorded.", "missing-product": "A product in this sale is no longer available.", "insufficient-stock": "There is not enough stock to complete this sale.", "already-void": "This sale was already voided." } } }
+    ,"financeCompletion": { "common": { "linkedOperationTitle": "Linked operation", "linkedOperationCopy": "Manage this movement from its debt, savings or transfer record.", "missingRatesWarning": "Some totals are hidden because an exchange rate is missing. Open Settings to configure it.", "accountCurrencyLocked": "The currency cannot be changed after an account has movements.", "paymentExceedsDebt": "The payment cannot exceed the remaining debt.", "contributionExceedsGoal": "The contribution cannot exceed the amount remaining in the goal.", "interestReference": "Interest rate (%) · reference only", "editRecurring": "Edit recurring operation", "editReminder": "Edit date", "weekStartsOn": "Week starts on", "monday": "Monday", "sunday": "Sunday", "deleteFolder": "Delete folder", "deleteFolderCopy": "Its notes will be moved to the main list.", "deleteNote": "Delete note", "deleteNoteCopy": "This note cannot be recovered.", "unpinNote": "Unpin note", "pinNote": "Pin note", "renameFolder": "Rename folder", "rootFolder": "Main notes" }, "pin": { "backspace": "Delete last digit", "submit": "Unlock" }, "releaseImport": { "exportFailed": "Export failed", "exportFailedCopy": "The backup file could not be created.", "csvHeaderError": "The CSV needs a header and at least one operation.", "csvAmountError": "Row {{row}} has an invalid amount.", "csvUnknownError": "One CSV row could not be imported." } }
+    ,"privacyPolicy": { "title": "Local privacy policy", "copy": "Solid Gold Rich does not collect, transmit or sell personal data. Accounts, operations, store records and product images remain on this device. Data leaves the app only when you choose to export or share a backup. The optional PIN is a local access lock and does not encrypt stored data. You can erase local data from Settings." }
+    ,"storeMessages": { "saleStock": "Stock used in sale", "saleReversal": "Stock restored after voiding sale" }
   }
 }

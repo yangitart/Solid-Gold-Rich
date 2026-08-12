@@ -1,6 +1,6 @@
 import React from 'react';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTranslation } from 'react-i18next';
 import { C, SANS, SERIF } from '../theme/luxury';
 import { hashPin } from '../core/pin';
@@ -28,7 +28,7 @@ export default function PinScreen({ pinHash, onUnlock }: { pinHash: string; onUn
       }
       return;
     }
-    if (pin.length < 6) setPin((current) => `${current}${key}`);
+    if (pin.length < 4) setPin((current) => `${current}${key}`);
   };
 
   return (
@@ -38,12 +38,12 @@ export default function PinScreen({ pinHash, onUnlock }: { pinHash: string; onUn
         <Text style={styles.title}>{t('finance.pin.enter')}</Text>
         <Text style={styles.subtitle}>{t('finance.pin.subtitle')}</Text>
         <View style={styles.dots}>
-          {Array.from({ length: 6 }).map((_, index) => <View key={index} style={[styles.dot, index < pin.length && styles.dotFilled]} />)}
+          {Array.from({ length: 4 }).map((_, index) => <View key={index} style={[styles.dot, index < pin.length && styles.dotFilled]} />)}
         </View>
         {error && <Text style={styles.error}>{t('finance.pin.incorrect')}</Text>}
         <View style={styles.keypad}>
           {KEYS.map((key) => (
-            <Pressable key={key} style={styles.key} onPress={() => pressKey(key)}>
+            <Pressable key={key} style={styles.key} onPress={() => pressKey(key)} accessibilityRole="button" accessibilityLabel={key === 'back' ? t('finance.pin.backspace') : key === 'submit' ? t('finance.pin.submit') : key}>
               {key === 'back' ? <Ionicons name="backspace-outline" size={22} color={C.goldLight} /> : key === 'submit' ? <Ionicons name="checkmark-outline" size={25} color={C.goldLight} /> : <Text style={styles.keyText}>{key}</Text>}
             </Pressable>
           ))}

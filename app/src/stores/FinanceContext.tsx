@@ -13,6 +13,7 @@ import type {
   Transfer,
 } from '../core/finance/types';
 import { emptyFinanceState, importCsv, loadFinanceState, normalizeFinanceState, saveFinanceState } from './financeStorage';
+import { generateDueRecurring, removeTransaction, removeTransfer, withStoreBalance } from '../domain/finance/financeDomain';
 
 export type PersistenceStatus = 'loading' | 'ready' | 'saving' | 'error';
 export type PersistenceErrorPhase = 'load' | 'save' | null;
@@ -64,30 +65,6 @@ function replaceById<T extends { id: string }>(items: T[], value: T) {
     ? items.map((item) => item.id === value.id ? value : item)
     : [...items, value];
 }
-function nextRecurringDate(date: string, frequency: RecurringTransaction['frequency']) {
-  const next = new Date(date);
-  if (frequency === 'daily') next.setDate(next.getDate() + 1);
-  if (frequency === 'weekly') next.setDate(next.getDate() + 7);
-  if (frequency === 'monthly') {
-    const intendedDay = next.getDate();
-    const wasLastDay = intendedDay === new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
-    next.setDate(1);
-    next.setMonth(next.getMonth() + 1);
-    const lastDay = new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate();
-    next.setDate(wasLastDay ? lastDay : Math.min(intendedDay, lastDay));
-  }
-  if (frequency === 'yearly') {
-    const intendedMonth = next.getMonth();
-    const intendedDay = next.getDate();
-    next.setDate(1);
-    next.setFullYear(next.getFullYear() + 1);
-    next.setMonth(intendedMonth);
-    const lastDay = new Date(next.getFullYear(), intendedMonth + 1, 0).getDate();
-    next.setDate(Math.min(intendedDay, lastDay));
-  }
-  return next.toISOString();
-}
-
 function newId(prefix: string) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -156,31 +133,8 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     const due = state.recurring.filter((item) => item.active && new Date(item.nextDate).getTime() <= Date.now());
     if (!due.length) return;
     setState((current) => {
-      const generated: Transaction[] = [];
-      const existingOccurrences = new Set(current.transactions.filter((item) => item.recurringId).map((item) => `${item.recurringId}|${item.date}`));
-      const recurring = current.recurring.map((item) => {
-        const rule = due.find((candidate) => candidate.id === item.id);
-        if (!rule) return item;
-        let occurrence = item.nextDate;
-        let lastGeneratedDate = item.lastGeneratedDate;
-        let safety = 0;
-        while (new Date(occurrence).getTime() <= Date.now() && safety < 3660) {
-          const occurrenceKey = `${item.id}|${occurrence}`;
-          if (!existingOccurrences.has(occurrenceKey)) {
-            generated.push({
-              id: newId('recurring'), accountId: item.accountId, kind: item.kind, amount: item.amount, currency: item.currency,
-              date: occurrence, payee: item.payee, category: item.category, paymentMethod: item.paymentMethod, status: 'cleared',
-              reference: item.id, description: item.description, recurringId: item.id,
-            });
-            existingOccurrences.add(occurrenceKey);
-          }
-          lastGeneratedDate = occurrence;
-          occurrence = nextRecurringDate(occurrence, item.frequency);
-          safety += 1;
-        }
-        return { ...item, lastGeneratedDate, nextDate: occurrence };
-      });
-      return { ...current, recurring, transactions: [...generated, ...current.transactions] };
+      const generated = generateDueRecurring(current.recurring, current.transactions, new Date(), () => newId('recurring'));
+      return { ...current, recurring: generated.recurring, transactions: generated.transactions };
     });
   }, [loaded, state.recurring]);
 
@@ -188,48 +142,48 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     setState((current) => updater(current));
   }, []);
 
-  const addAccount = React.useCallback((account: Account) => updateState((current) => ({ ...current, accounts: [...current.accounts, account] })), [updateState]);
+  const addAccount = React.useCallback((account: Account) => updateState((current) => ({ ...current, accounts: [...current.accounts, account], settings: { ...current.settings, activeAccountId: current.settings.activeAccountId ?? account.id } })), [updateState]);
   const updateAccount = React.useCallback((account: Account) => updateState((current) => ({ ...current, accounts: replaceById(current.accounts, account) })), [updateState]);
   const archiveAccount = React.useCallback((id: string) => updateState((current) => {
     const accounts = current.accounts.map((item) => item.id === id ? { ...item, archived: true } : item);
     const nextActive = current.settings.activeAccountId === id ? accounts.find((item) => !item.archived)?.id : current.settings.activeAccountId;
     return { ...current, accounts, settings: { ...current.settings, activeAccountId: nextActive } };
   }), [updateState]);
-  const restoreAccount = React.useCallback((id: string) => updateState((current) => ({ ...current, accounts: current.accounts.map((item) => item.id === id ? { ...item, archived: false } : item) })), [updateState]);
+  const restoreAccount = React.useCallback((id: string) => updateState((current) => ({ ...current, accounts: current.accounts.map((item) => item.id === id ? { ...item, archived: false } : item), settings: { ...current.settings, activeAccountId: current.accounts.some((item) => item.id === current.settings.activeAccountId && !item.archived) ? current.settings.activeAccountId : id } })), [updateState]);
   const addTransaction = React.useCallback((transaction: Transaction) => updateState((current) => ({ ...current, transactions: [transaction, ...current.transactions] })), [updateState]);
   const updateTransaction = React.useCallback((transaction: Transaction) => updateState((current) => ({ ...current, transactions: replaceById(current.transactions, transaction) })), [updateState]);
-  const deleteTransaction = React.useCallback((id: string) => updateState((current) => ({ ...current, transactions: current.transactions.filter((item) => item.id !== id) })), [updateState]);
+  const deleteTransaction = React.useCallback((id: string) => updateState((current) => removeTransaction(current, id)), [updateState]);
   const addTransfer = React.useCallback((transfer: Transfer) => {
     updateState((current) => {
       const isStoreSource = transfer.fromAccountId === 'store-business';
       const isStoreTarget = transfer.toAccountId === 'store-business';
       const fromTransaction: Transaction | null = isStoreSource ? null : {
         id: `${transfer.id}-out`, accountId: transfer.fromAccountId, kind: 'transfer', amount: transfer.fromAmount + transfer.fee,
-        currency: transfer.fromCurrency, date: transfer.date, payee: 'Transfer', category: 'transfer',
+        currency: transfer.fromCurrency, date: transfer.date, payee: '', category: 'transfer',
         paymentMethod: 'transfer', status: transfer.status, reference: transfer.id, description: transfer.note, transferId: transfer.id,
       };
       const toTransaction: Transaction | null = isStoreTarget ? null : {
         id: `${transfer.id}-in`, accountId: transfer.toAccountId, kind: 'income', amount: transfer.toAmount,
-        currency: transfer.toCurrency, date: transfer.date, payee: 'Transfer', category: 'transfer',
+        currency: transfer.toCurrency, date: transfer.date, payee: '', category: 'transfer',
         paymentMethod: 'transfer', status: transfer.status, reference: transfer.id, description: transfer.note, transferId: transfer.id,
       };
-      const businessBalance = current.store.businessAccount.balance + (isStoreTarget ? transfer.toAmount : 0) - (isStoreSource ? transfer.fromAmount + transfer.fee : 0);
-      return {
+      const cashMovement = isStoreTarget || isStoreSource ? {
+        id: `${transfer.id}-store-cash`,
+        type: isStoreTarget ? 'funding' as const : 'withdrawal' as const,
+        amount: isStoreTarget ? transfer.toAmount : -(transfer.fromAmount + transfer.fee),
+        date: transfer.date,
+        note: transfer.note,
+        transferId: transfer.id,
+      } : null;
+      return withStoreBalance({
         ...current,
         transfers: [...current.transfers, transfer],
         transactions: [toTransaction, fromTransaction, ...current.transactions].filter((item): item is Transaction => Boolean(item)),
-        store: { ...current.store, businessAccount: { ...current.store.businessAccount, balance: businessBalance } },
-      };
+        store: { ...current.store, cashMovements: cashMovement ? [...current.store.cashMovements, cashMovement] : current.store.cashMovements },
+      });
     });
   }, [updateState]);
-  const deleteTransfer = React.useCallback((id: string) => updateState((current) => {
-    const transfer = current.transfers.find((item) => item.id === id);
-    if (!transfer) return current;
-    const businessBalance = current.store.businessAccount.balance
-      - (transfer.toAccountId === 'store-business' ? transfer.toAmount : 0)
-      + (transfer.fromAccountId === 'store-business' ? transfer.fromAmount + transfer.fee : 0);
-    return { ...current, transfers: current.transfers.filter((item) => item.id !== id), transactions: current.transactions.filter((item) => item.transferId !== id), store: { ...current.store, businessAccount: { ...current.store.businessAccount, balance: businessBalance } } };
-  }), [updateState]);
+  const deleteTransfer = React.useCallback((id: string) => updateState((current) => removeTransfer(current, id)), [updateState]);
   const addBudget = React.useCallback((budget: Budget) => updateState((current) => ({ ...current, budgets: [...current.budgets, budget] })), [updateState]);
   const updateBudget = React.useCallback((budget: Budget) => updateState((current) => ({ ...current, budgets: replaceById(current.budgets, budget) })), [updateState]);
   const deleteBudget = React.useCallback((id: string) => updateState((current) => ({ ...current, budgets: current.budgets.filter((item) => item.id !== id) })), [updateState]);
@@ -270,7 +224,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   const importJson = React.useCallback((json: string) => {
     try {
       const parsed = JSON.parse(json) as FinanceState;
-      if (!parsed || ![2, 3, 4].includes(Number(parsed.schemaVersion)) || !Array.isArray(parsed.accounts) || !Array.isArray(parsed.transactions)) return false;
+      if (!parsed || ![2, 3, 4, 5].includes(Number(parsed.schemaVersion)) || !Array.isArray(parsed.accounts) || !Array.isArray(parsed.transactions)) return false;
       setState(normalizeFinanceState(parsed));
       return true;
     } catch {

@@ -1,8 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTranslation } from 'react-i18next';
-import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
-import Animated, { Easing, FadeIn, FadeOut, SlideInRight } from 'react-native-reanimated';
+import { Alert, AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import Animated, { Easing, FadeIn, FadeOut, SlideInRight, useReducedMotion } from 'react-native-reanimated';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
 import { useFinance } from '../stores/FinanceContext';
 import i18n, { getPhoneLanguage } from '../core/locales/i18next';
 import { C } from '../theme/luxury';
@@ -19,6 +21,7 @@ const ONBOARDING_KEY = "@solid-gold/onboarding-v1";
 
 export function AppContent() {
   const { t } = useTranslation();
+  const reduceMotion = useReducedMotion();
   const {
     state,
     loaded,
@@ -39,6 +42,18 @@ export function AppContent() {
   const onDone = useCallback(() => setBooted(true), []);
   const hasPin = Boolean(state.settings.pinHash);
   const preferredLanguage = state.settings.language;
+  const requiresAccount = state.accounts.every((account) => account.archived);
+
+  const exportEmergencyBackup = useCallback(async () => {
+    try {
+      const file = new File(Paths.cache, `solid-gold-rich-backup-${new Date().toISOString().slice(0, 10)}.json`);
+      file.create({ overwrite: true });
+      file.write(JSON.stringify(state, null, 2));
+      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: t('finance.releaseImport.exportJson') });
+    } catch {
+      Alert.alert(t('finance.releaseImport.exportFailed'), t('finance.releaseImport.exportFailedCopy'));
+    }
+  }, [state, t]);
 
   useEffect(() => {
     let active = true;
@@ -129,12 +144,14 @@ export function AppContent() {
           pinHash={state.settings.pinHash ?? ""}
           onUnlock={() => setUnlocked(true)}
         />
+      ) : requiresAccount ? (
+        <FinanceModulesScreen module="accounts" onBack={() => undefined} />
       ) : (
         <>
           <Animated.View
             key={state.settings.activeWorkspace}
-            entering={FadeIn.duration(260).easing(Easing.out(Easing.cubic))}
-            exiting={FadeOut.duration(170).easing(Easing.in(Easing.cubic))}
+            entering={FadeIn.duration(reduceMotion ? 0 : 260).easing(Easing.out(Easing.cubic))}
+            exiting={FadeOut.duration(reduceMotion ? 0 : 170).easing(Easing.in(Easing.cubic))}
             style={styles.mainLayer}
             pointerEvents={moduleScreen ? "none" : "auto"}
             importantForAccessibility={
@@ -153,10 +170,10 @@ export function AppContent() {
           {moduleScreen && (
             <Animated.View
               key={moduleScreen}
-              entering={SlideInRight.duration(280).easing(
+              entering={SlideInRight.duration(reduceMotion ? 0 : 280).easing(
                 Easing.out(Easing.cubic),
               )}
-              exiting={FadeOut.duration(170).easing(Easing.in(Easing.cubic))}
+              exiting={FadeOut.duration(reduceMotion ? 0 : 170).easing(Easing.in(Easing.cubic))}
               style={styles.moduleLayer}
             >
               {moduleScreen === "notes" ? (
@@ -188,6 +205,13 @@ export function AppContent() {
                   <Text style={styles.bannerRetryText}>
                     {t("finance.releaseErrors.retry")}
                   </Text>
+                </Pressable>
+                <Pressable
+                  style={styles.bannerExport}
+                  onPress={() => void exportEmergencyBackup()}
+                  accessibilityLabel={t('finance.releaseImport.exportJson')}
+                >
+                  <Text style={styles.bannerExportText}>{t('finance.releaseImport.exportJson')}</Text>
                 </Pressable>
               </View>
             )}
@@ -286,4 +310,11 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     letterSpacing: 0.7,
   },
+  bannerExport: {
+    minHeight: 44,
+    paddingHorizontal: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bannerExportText: { color: C.goldLight, fontSize: 10, fontWeight: '700' },
 });

@@ -84,6 +84,7 @@ export type RecurringTransaction = {
   paymentMethod: PaymentMethod;
   frequency: RecurringFrequency;
   nextDate: string;
+  dayOfMonth?: number;
   description: string;
   active: boolean;
   lastGeneratedDate?: string;
@@ -179,6 +180,7 @@ export type AppLanguage = 'en' | 'es' | 'pt' | 'fr' | 'de' | 'it';
 export type FinanceCategory = {
   id: string;
   icon: string;
+  name?: string;
 };
 
 export type FinanceCategories = {
@@ -190,6 +192,13 @@ export type FinanceCategories = {
 export type StoreProductType = 'product' | 'service';
 export type StoreStockMovementType = 'initial' | 'entry' | 'exit' | 'adjustment' | 'sale' | 'saleReversal';
 export type StoreSaleStatus = 'completed' | 'void';
+export type StoreCashMovementType = 'opening' | 'funding' | 'withdrawal' | 'sale' | 'saleReversal' | 'purchase' | 'purchaseReversal';
+
+export type StoreCategory = {
+  id: string;
+  name: string;
+  builtIn?: boolean;
+};
 
 export type StoreProduct = {
   id: string;
@@ -197,7 +206,7 @@ export type StoreProduct = {
   name: string;
   type: StoreProductType;
   unit: string;
-  category: string;
+  categoryId: string;
   sku?: string;
   salePrice: number;
   purchasePrice: number;
@@ -219,6 +228,8 @@ export type StoreStockMovement = {
   date: string;
   note: string;
   saleId?: string;
+  cashMovementId?: string;
+  personalTransactionId?: string;
 };
 
 export type StoreSaleItem = {
@@ -238,6 +249,20 @@ export type StoreSale = {
   paymentMethod?: PaymentMethod;
   status: StoreSaleStatus;
   note: string;
+  clientId?: string;
+  employeeId?: string;
+};
+
+export type StoreCashMovement = {
+  id: string;
+  type: StoreCashMovementType;
+  amount: number;
+  date: string;
+  note: string;
+  transferId?: string;
+  saleId?: string;
+  productId?: string;
+  personalTransactionId?: string;
 };
 
 export type StoreAccount = {
@@ -267,11 +292,11 @@ export type StoreClient = {
 };
 
 export type StoreState = {
-  setupCompleted: boolean;
   name: string;
   currency: Currency;
-  categories: string[];
+  categories: StoreCategory[];
   businessAccount: StoreAccount;
+  cashMovements: StoreCashMovement[];
   employees: StoreEmployee[];
   clients: StoreClient[];
   products: StoreProduct[];
@@ -280,7 +305,7 @@ export type StoreState = {
 };
 
 export type FinanceState = {
-  schemaVersion: 4;
+  schemaVersion: 6;
   accounts: Account[];
   transactions: Transaction[];
   transfers: Transfer[];

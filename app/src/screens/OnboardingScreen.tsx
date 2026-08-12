@@ -1,6 +1,6 @@
 import React from 'react';
 import { KeyboardAvoidingView, Modal, NativeScrollEvent, NativeSyntheticEvent, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -36,7 +36,14 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
   const filteredCurrencies = CURRENCY_OPTIONS.filter((item) => !currencyQuery.trim() || item.includes(currencyQuery.trim().toUpperCase()));
 
   const completeOnboarding = () => {
-    updateState((current) => ({ ...current, settings: { ...current.settings, preferredCurrency: currency, exchangeRates: { ...(current.settings.exchangeRates ?? {}), USD: 1 } } }));
+    updateState((current) => {
+      const storeHasHistory = current.store.products.length > 0 || current.store.sales.length > 0 || current.store.stockMovements.length > 0 || current.store.cashMovements.length > 0;
+      return {
+        ...current,
+        settings: { ...current.settings, preferredCurrency: currency, exchangeRates: { ...(current.settings.exchangeRates ?? {}), USD: 1 } },
+        store: storeHasHistory ? current.store : { ...current.store, currency, businessAccount: { ...current.store.businessAccount, currency } },
+      };
+    });
     onComplete();
   };
 
@@ -53,12 +60,18 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
     setPage((current) => Math.min(PAGES.length - 1, current + 1));
   };
 
+  const skipToCurrency = () => {
+    const target = PAGES.length - 1;
+    scrollRef.current?.scrollTo({ x: width * target, animated: true });
+    setPage(target);
+  };
+
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <View style={styles.topBar}>
         <View style={styles.brandMark}><View style={styles.brandDiamond} /></View>
         <Text style={styles.brand}>SOLID GOLD RICH</Text>
-        {!lastPage ? <Pressable onPress={completeOnboarding} hitSlop={10}><Text style={styles.skip}>{t('app.onboarding.skip')}</Text></Pressable> : <View style={styles.topSpacer} />}
+        {!lastPage ? <Pressable onPress={skipToCurrency} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('app.onboarding.skip')}><Text style={styles.skip}>{t('app.onboarding.skip')}</Text></Pressable> : <View style={styles.topSpacer} />}
       </View>
 
       <ScrollView
@@ -90,7 +103,7 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
 
       <View style={styles.footer}>
         <View style={styles.dots}>{PAGES.map((item, index) => <View key={item.key} style={[styles.dot, index === page && styles.dotActive]} />)}</View>
-        <Pressable style={styles.continueButton} onPress={continueFlow} accessibilityRole="button">
+        <Pressable style={styles.continueButton} onPress={continueFlow} accessibilityRole="button" accessibilityLabel={lastPage ? t('app.onboarding.start') : t('app.onboarding.next')}>
           <Text style={styles.continueText}>{lastPage ? t('app.onboarding.start') : t('app.onboarding.next')}</Text>
           <Ionicons name={lastPage ? 'checkmark' : 'arrow-forward'} size={18} color={C.void} />
         </Pressable>

@@ -13,24 +13,45 @@ export type SupportedLanguage = (typeof supportedLanguages)[number];
 
 const i18n = createInstance();
 
+function completeTranslation(source: unknown) {
+  const root = source as Record<string, unknown>;
+  const finance = root.finance as Record<string, unknown>;
+  const completion = finance.storeCompletion as Record<string, Record<string, unknown>> | undefined;
+  const financeCompletion = finance.financeCompletion as Record<string, Record<string, unknown>> | undefined;
+  const storeMessages = finance.storeMessages as Record<string, unknown> | undefined;
+  if (!completion && !financeCompletion) return root;
+  return {
+    ...root,
+    finance: {
+      ...finance,
+      ...(completion?.common ?? {}),
+      ...(financeCompletion?.common ?? {}),
+      pin: { ...(finance.pin as Record<string, unknown>), ...(financeCompletion?.pin ?? {}) },
+      releaseImport: { ...(finance.releaseImport as Record<string, unknown>), ...(financeCompletion?.releaseImport ?? {}) },
+      store: { ...(finance.store as Record<string, unknown>), ...(completion?.store ?? {}), ...(storeMessages ?? {}) },
+      storeFilters: { ...(finance.storeFilters as Record<string, unknown>), ...(completion?.filters ?? {}) },
+    },
+  };
+}
+
 const resources = {
   en: {
-    translation: enTranslation,
+    translation: completeTranslation(enTranslation),
   },
   es: {
-    translation: esTranslation,
+    translation: completeTranslation(esTranslation),
   },
   pt: {
-    translation: ptTranslation,
+    translation: completeTranslation(ptTranslation),
   },
   fr: {
-    translation: frTranslation,
+    translation: completeTranslation(frTranslation),
   },
   de: {
-    translation: deTranslation,
+    translation: completeTranslation(deTranslation),
   },
   it: {
-    translation: itTranslation,
+    translation: completeTranslation(itTranslation),
   },
 };
 
