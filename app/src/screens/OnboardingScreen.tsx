@@ -12,11 +12,12 @@ type IconName = React.ComponentProps<typeof Ionicons>['name'];
 const CURRENCY_OPTIONS = [
   'AED', 'ARS', 'AUD', 'BRL', 'CAD', 'CHF', 'CLP', 'CNY', 'COP', 'CRC', 'CUP', 'CZK', 'DKK', 'DOP', 'EGP', 'EUR', 'GBP', 'GTQ', 'HKD', 'HNL', 'HUF', 'IDR', 'ILS', 'INR', 'ISK', 'JPY', 'KRW', 'MXN', 'NIO', 'NOK', 'NZD', 'PAB', 'PEN', 'PHP', 'PLN', 'PYG', 'RON', 'RUB', 'SEK', 'SGD', 'THB', 'TRY', 'UAH', 'USD', 'UYU', 'VES', 'VND', 'ZAR',
 ] as const;
-const PAGES: { key: 'accounts' | 'operations' | 'statistics' | 'organize' | 'privacy' | 'currency'; icon: IconName }[] = [
+const PAGES: { key: 'accounts' | 'operations' | 'statistics' | 'organize' | 'store' | 'privacy' | 'currency'; icon: IconName }[] = [
   { key: 'accounts', icon: 'wallet-outline' },
   { key: 'operations', icon: 'receipt-outline' },
   { key: 'statistics', icon: 'analytics-outline' },
   { key: 'organize', icon: 'folder-open-outline' },
+  { key: 'store', icon: 'storefront-outline' },
   { key: 'privacy', icon: 'shield-checkmark-outline' },
   { key: 'currency', icon: 'cash-outline' },
 ];
@@ -84,18 +85,17 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
         onMomentumScrollEnd={updatePage}
         scrollEventThrottle={16}
       >
-        {PAGES.map((item, index) => (
+        {PAGES.map((item) => (
           <View key={item.key} style={[styles.page, { width }, compact && styles.pageCompact]}>
             <View style={[styles.visualStage, compact && styles.visualStageCompact, veryCompact && styles.visualStageVeryCompact]}>
               <LinearGradient colors={['rgba(233,200,119,0.17)', 'rgba(233,200,119,0.025)']} style={styles.visualGlow} />
               <View style={styles.orbitOuter} />
               <View style={styles.orbitInner} />
               <View style={[styles.iconShell, veryCompact && styles.iconShellVeryCompact]}><Ionicons name={item.icon} size={veryCompact ? 31 : compact ? 38 : 44} color={C.goldLight} /></View>
-              <View style={[styles.visualTag, index === 1 && styles.visualTagRight]}><View style={styles.visualTagDot} /><Text style={styles.visualTagText}>0{index + 1}</Text></View>
             </View>
-            <Text style={styles.eyebrow}>{item.key === 'currency' ? t('app.onboarding.currency.eyebrow') : t(`app.onboarding.pages.${item.key}.eyebrow`)}</Text>
-            <Text style={[styles.title, compact && styles.titleCompact, veryCompact && styles.titleVeryCompact]}>{item.key === 'currency' ? t('app.onboarding.currency.title') : t(`app.onboarding.pages.${item.key}.title`)}</Text>
-            <Text style={[styles.body, veryCompact && styles.bodyVeryCompact]}>{item.key === 'currency' ? t('app.onboarding.currency.body') : t(`app.onboarding.pages.${item.key}.body`)}</Text>
+            <Text style={styles.eyebrow}>{item.key === 'currency' ? t('app.onboarding.currency.eyebrow') : item.key === 'store' ? t('app.onboardingStore.eyebrow') : t(`app.onboarding.pages.${item.key}.eyebrow`)}</Text>
+            <Text style={[styles.title, compact && styles.titleCompact, veryCompact && styles.titleVeryCompact]}>{item.key === 'currency' ? t('app.onboarding.currency.title') : item.key === 'store' ? t('app.onboardingStore.title') : t(`app.onboarding.pages.${item.key}.title`)}</Text>
+            <Text style={[styles.body, veryCompact && styles.bodyVeryCompact]}>{item.key === 'currency' ? t('app.onboarding.currency.body') : item.key === 'store' ? t('app.onboardingStore.body') : t(`app.onboarding.pages.${item.key}.body`)}</Text>
             {item.key === 'currency' && <Pressable style={styles.currencySelect} onPress={() => { setCurrencyQuery(''); setCurrencyPickerOpen(true); }} accessibilityRole="button" accessibilityLabel={t('app.onboarding.currency.select')}><View><Text style={styles.currencyCode}>{currency}</Text><Text style={styles.currencyHint}>{t('app.onboarding.currency.select')}</Text></View><Ionicons name="chevron-down-outline" size={18} color={C.gold} /></Pressable>}
           </View>
         ))}
@@ -140,10 +140,6 @@ const styles = StyleSheet.create({
   orbitInner: { position: 'absolute', width: '60%', height: '60%', borderRadius: 999, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,244,208,0.12)' },
   iconShell: { width: 92, height: 92, borderRadius: 30, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.34)', backgroundColor: 'rgba(10,12,20,0.76)', alignItems: 'center', justifyContent: 'center', shadowColor: C.gold, shadowOpacity: 0.18, shadowRadius: 20, shadowOffset: { width: 0, height: 9 }, elevation: 8 },
   iconShellVeryCompact: { width: 68, height: 68, borderRadius: 23 },
-  visualTag: { position: 'absolute', left: 12, bottom: 45, height: 28, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.88)', paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  visualTagRight: { left: undefined, right: 12, top: 45, bottom: undefined },
-  visualTagDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: C.gold },
-  visualTagText: { color: C.goldLight, fontFamily: SANS, fontSize: 8, letterSpacing: 1 },
   eyebrow: { color: 'rgba(233,200,119,0.64)', fontFamily: SANS, fontSize: 8, fontWeight: '700', letterSpacing: 2.1, textAlign: 'center' },
   title: { maxWidth: 330, color: C.goldLight, fontFamily: SERIF, fontSize: 34, lineHeight: 40, textAlign: 'center', marginTop: 11 },
   titleCompact: { fontSize: 29, lineHeight: 34 },

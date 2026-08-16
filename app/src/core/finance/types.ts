@@ -192,7 +192,9 @@ export type FinanceCategories = {
 export type StoreProductType = 'product' | 'service';
 export type StoreStockMovementType = 'initial' | 'entry' | 'exit' | 'adjustment' | 'sale' | 'saleReversal';
 export type StoreSaleStatus = 'completed' | 'void';
-export type StoreCashMovementType = 'opening' | 'funding' | 'withdrawal' | 'sale' | 'saleReversal' | 'purchase' | 'purchaseReversal';
+export type StoreCashMovementType = 'opening' | 'funding' | 'withdrawal' | 'sale' | 'saleReversal' | 'purchase' | 'purchaseReversal' | 'salary';
+export type StorePayFrequency = 'weekly' | 'biweekly' | 'monthly';
+export type StorePayMode = 'manual' | 'automatic';
 
 export type StoreCategory = {
   id: string;
@@ -277,6 +279,11 @@ export type StoreEmployee = {
   name: string;
   role?: string;
   phone?: string;
+  salary: number;
+  payFrequency: StorePayFrequency;
+  payMode: StorePayMode;
+  nextPayDate?: string;
+  lastPaidDate?: string;
   active: boolean;
   createdAt: string;
 };

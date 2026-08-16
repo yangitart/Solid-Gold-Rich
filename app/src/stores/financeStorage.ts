@@ -273,6 +273,11 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       name: text(item.name, `Employee ${index + 1}`),
       role: text(item.role) || undefined,
       phone: text(item.phone) || undefined,
+      salary: Math.max(0, number(item.salary)),
+      payFrequency: ['weekly', 'biweekly', 'monthly'].includes(item.payFrequency ?? '') ? item.payFrequency as StoreEmployee['payFrequency'] : 'monthly',
+      payMode: item.payMode === 'automatic' ? 'automatic' : 'manual',
+      nextPayDate: text(item.nextPayDate) || undefined,
+      lastPaidDate: text(item.lastPaidDate) || undefined,
       active: item.active !== false,
       createdAt: text(item.createdAt, new Date().toISOString()),
     } satisfies StoreEmployee;
@@ -292,7 +297,7 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
   const rawBalance = number(source.businessAccount?.balance);
   const cashMovements: StoreCashMovement[] = recordArray(source.cashMovements).map((movement, index) => {
     const item = movement as Partial<StoreCashMovement>;
-    const type = ['opening', 'funding', 'withdrawal', 'sale', 'saleReversal', 'purchase', 'purchaseReversal'].includes(item.type ?? '')
+    const type = ['opening', 'funding', 'withdrawal', 'sale', 'saleReversal', 'purchase', 'purchaseReversal', 'salary'].includes(item.type ?? '')
       ? item.type as StoreCashMovement['type'] : 'opening';
     return {
       id: text(item.id, `store-cash-${index}`),

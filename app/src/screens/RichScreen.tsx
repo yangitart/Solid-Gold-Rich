@@ -34,6 +34,15 @@ type StatsView = 'charts' | 'calendar';
 
 type Category = string;
 
+function amountFontSize(value: string) {
+  const length = value.replace(/[^0-9]/g, '').length;
+  if (length <= 9) return 27;
+  if (length <= 12) return 23;
+  if (length <= 15) return 19;
+  if (length <= 19) return 16;
+  return 14;
+}
+
 type Transaction = {
   id: string;
   title: string;
@@ -1384,12 +1393,12 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                 </ScrollView>
                 <Text style={styles.inputLabel}>{t('finance.amount')}</Text>
                 <View style={styles.amountInputShell}>
-                  <TextInput value={entryAmount} onChangeText={(value) => setEntryAmount(value.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" autoFocus placeholder="0" placeholderTextColor="rgba(255,244,208,0.25)" style={styles.amountInput} />
+                  <TextInput value={entryAmount} onChangeText={(value) => setEntryAmount(value.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" autoFocus placeholder="0" placeholderTextColor="rgba(255,244,208,0.25)" numberOfLines={1} style={[styles.amountInput, { fontSize: amountFontSize(entryAmount) }]} />
                   <Text style={styles.amountCurrency}>{transferSource?.currency ?? baseCurrency}</Text>
                 </View>
                 <Text style={styles.inputLabel}>{t('finance.receivedAmount')}</Text>
                 <View style={styles.amountInputShell}>
-                  <TextInput value={transferReceivedAmount} onChangeText={(value) => { setTransferReceivedAmount(value.replace(/[^0-9.]/g, '')); setTransferError(''); }} keyboardType="decimal-pad" placeholder={t('finance.releaseExtra.automaticByRate')} placeholderTextColor="rgba(255,244,208,0.25)" style={styles.amountInput} />
+                  <TextInput value={transferReceivedAmount} onChangeText={(value) => { setTransferReceivedAmount(value.replace(/[^0-9.]/g, '')); setTransferError(''); }} keyboardType="decimal-pad" placeholder={t('finance.releaseExtra.automaticByRate')} placeholderTextColor="rgba(255,244,208,0.25)" numberOfLines={1} style={[styles.amountInput, { fontSize: amountFontSize(transferReceivedAmount) }]} />
                   <Text style={styles.amountCurrency}>{transferTarget?.currency ?? baseCurrency}</Text>
                 </View>
                 <Text style={styles.inputLabel}>{t('finance.exchangeRate')}</Text>
@@ -1402,7 +1411,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
               <>
                 <Text style={styles.inputLabel}>{t('finance.amount')}</Text>
                 <View style={styles.amountInputShell}>
-                  <TextInput value={entryAmount} onChangeText={(value) => setEntryAmount(value.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" autoFocus placeholder="0" placeholderTextColor="rgba(255,244,208,0.25)" style={styles.amountInput} />
+                  <TextInput value={entryAmount} onChangeText={(value) => setEntryAmount(value.replace(/[^0-9.]/g, ''))} keyboardType="decimal-pad" autoFocus placeholder="0" placeholderTextColor="rgba(255,244,208,0.25)" numberOfLines={1} style={[styles.amountInput, { fontSize: amountFontSize(entryAmount) }]} />
                   <Text style={styles.amountCurrency}>{entryBudget?.currency ?? baseCurrency}</Text>
                 </View>
                 <Text style={styles.inputLabel}>{t('finance.description')}</Text>
@@ -1485,7 +1494,7 @@ const styles = StyleSheet.create({
   quickMenuItemText: { color: C.goldLight, fontFamily: SANS, fontSize: 13, letterSpacing: 0.25 },
   quickMenuItemSubtitle: { color: 'rgba(255,244,208,0.48)', fontFamily: SANS, fontSize: 11, marginTop: 4 },
   safe: { flex: 1 },
-  root: { flex: 1 },
+  root: { flex: 1, minHeight: 0 },
   header: { height: 78, paddingTop: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' },
   headerButton: { width: 44, height: 44, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.055)', alignItems: 'center', justifyContent: 'center' },
   headerCenter: { flex: 1, alignItems: 'center', paddingHorizontal: 8 },
@@ -1505,8 +1514,8 @@ const styles = StyleSheet.create({
   budgetTabText: { flexShrink: 1, color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 10, letterSpacing: 0.5 },
   budgetTabTextActive: { color: C.goldLight, fontWeight: '600' },
   content: { paddingHorizontal: 18, paddingTop: 13, paddingBottom: 13 },
-  fixedContent: { flex: 1, paddingHorizontal: 18, paddingTop: 13, paddingBottom: 0 },
-  fixedBudgetView: { flex: 1 },
+  fixedContent: { flex: 1, minHeight: 0, paddingHorizontal: 18, paddingTop: 13, paddingBottom: 0 },
+  fixedBudgetView: { flex: 1, minHeight: 0 },
   compactHero: { height: 146, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, flexDirection: 'row', overflow: 'hidden', backgroundColor: 'rgba(10,12,20,0.66)' },
   compactHeroInfo: { flex: 1, minWidth: 0, paddingLeft: 16, paddingTop: 14, paddingBottom: 14, justifyContent: 'space-between' },
   compactBalance: { maxWidth: 205, color: C.goldLight, fontFamily: SERIF, fontSize: 30, letterSpacing: 0.3, marginTop: 5 },
@@ -1548,7 +1557,7 @@ const styles = StyleSheet.create({
   sectionHeading: { paddingLeft: 3 },
   fixedOperationsPanel: { flex: 1, minHeight: 0, paddingBottom: 0 },
   operationsScroll: { flex: 1 },
-  operationsScrollContent: { flexGrow: 1, paddingBottom: 52 },
+  operationsScrollContent: { flexGrow: 1, paddingBottom: 76 },
   floatingAdd: { position: 'absolute', right: 13, bottom: 12, width: 46, height: 46, borderRadius: 23, borderWidth: StyleSheet.hairlineWidth, borderColor: C.goldLight, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center', shadowColor: C.gold, shadowOpacity: 0.2, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 9 },
   floatingWorkspace: { position: 'absolute', right: 14, bottom: 68, width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.34)', backgroundColor: '#11141D', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.24, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 7 },
   hero: { borderRadius: 26, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, padding: 18, overflow: 'hidden', backgroundColor: 'rgba(10,12,20,0.66)' },

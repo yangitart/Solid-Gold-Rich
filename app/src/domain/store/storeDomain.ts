@@ -31,7 +31,7 @@ export function storeReportData(state: Pick<FinanceState, 'store'>) {
       map.set(item.productId, { name: value.name, quantity: value.quantity + item.quantity, total: value.total + item.total });
     });
     return map;
-  }, new Map<string, { name: string; quantity: number; total: number }>())).sort(([, left], [, right]) => right.total - left.total).slice(0, 10);
+  }, new Map<string, { name: string; quantity: number; total: number }>())).sort(([, left], [, right]) => right.quantity - left.quantity || right.total - left.total).slice(0, 10);
   const topClients = Array.from(sales.reduce((map, sale) => {
     if (!sale.clientId) return map;
     const value = map.get(sale.clientId) ?? { count: 0, total: 0 };

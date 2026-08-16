@@ -13,14 +13,26 @@ require.extensions['.ts'] = (module, filename) => {
 };
 
 const storage = new Map();
+const fileContents = new Map();
 const asyncStorage = {
   getItem: async (key) => storage.get(key) ?? null,
   setItem: async (key, value) => storage.set(key, value),
   multiRemove: async (keys) => keys.forEach((key) => storage.delete(key)),
 };
+class MockFile {
+  constructor(uri) {
+    this.uri = String(uri);
+  }
+
+  async base64() {
+    if (!fileContents.has(this.uri)) throw new Error('file-not-found');
+    return fileContents.get(this.uri);
+  }
+}
 const originalLoad = Module._load;
 Module._load = function load(request, parent, isMain) {
   if (request === '@react-native-async-storage/async-storage') return asyncStorage;
+  if (request === 'expo-file-system') return { File: MockFile };
   return originalLoad.call(this, request, parent, isMain);
 };
 
@@ -40,6 +52,11 @@ const {
   voidSale,
 } = require('../src/domain/store/storeDomain.ts');
 const { currencyRate } = require('../src/core/finance/currency.ts');
+const {
+  createStoreBackup,
+  parseStoreBackup,
+  restoreStoreBackup,
+} = require('../src/domain/store/storeBackup.ts');
 const {
   emptyFinanceState,
   loadFinanceState,
@@ -127,6 +144,33 @@ async function run() {
   const report = storeReportData(sold.state);
   assert.equal(report.topProducts[0][1].quantity, 2);
   assert.equal(report.topClients[0][0], 'client');
+
+  const emptyStoreBackup = await createStoreBackup(emptyFinanceState().store);
+  assert.equal(emptyStoreBackup.kind, 'solid-gold-rich-store');
+  assert.deepEqual(emptyStoreBackup.store.products, []);
+
+  const productTemplate = { id: 'photo-product', key: 'PHOTO', name: 'Photo product', type: 'product', unit: 'unit', categoryId: 'general', salePrice: 10, purchasePrice: 4, additionalSalePrices: [], initialStock: 0, reservedQuantity: 0, stockMinimum: 0, active: true };
+  fileContents.set('file:///product.jpg', 'aW1hZ2U=');
+  const storeWithPictures = emptyFinanceState().store;
+  storeWithPictures.products = [
+    { ...productTemplate, picture: 'file:///product.jpg' },
+    { ...productTemplate, id: 'embedded-product', key: 'EMBEDDED', picture: 'data:image/png;base64,cG5n' },
+    { ...productTemplate, id: 'no-picture-product', key: 'PLAIN', picture: undefined },
+  ];
+  const pictureBackup = await createStoreBackup(storeWithPictures);
+  assert.deepEqual(pictureBackup.store.products.map((product) => product.picture), [
+    { mimeType: 'image/jpeg', data: 'aW1hZ2U=' },
+    { mimeType: 'image/png', data: 'cG5n' },
+    undefined,
+  ]);
+  const restoredStore = restoreStoreBackup(parseStoreBackup(JSON.stringify(pictureBackup)));
+  assert.deepEqual(restoredStore.products.map((product) => product.picture), [
+    'data:image/jpeg;base64,aW1hZ2U=',
+    'data:image/png;base64,cG5n',
+    undefined,
+  ]);
+  assert.throws(() => parseStoreBackup('{"kind":"wrong"}'), /invalid-store-backup/);
+  await assert.rejects(() => createStoreBackup({ ...storeWithPictures, products: [{ ...productTemplate, picture: 'file:///missing.jpg' }] }), /file-not-found/);
 
   const normalized = normalizeFinanceState({
     schemaVersion: 5,

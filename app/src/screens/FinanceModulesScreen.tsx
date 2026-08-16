@@ -891,19 +891,23 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
             <View style={styles.activityFilterHeader}><View style={styles.activityFilterHeaderCopy}><Text style={styles.activityFilterEyebrow}>{t('finance.activity.eyebrow')}</Text><Text style={styles.activityFilterTitle}>{t('finance.activity.filterTitle')}</Text></View><Pressable style={styles.activityFilterClose} onPress={closeActivityFilters} accessibilityRole="button" accessibilityLabel={t('finance.activity.closeFilters')}><Ionicons name="close" size={19} color={C.goldLight} /></Pressable></View>
             <ScrollView style={styles.activityFilterScroll} contentContainerStyle={styles.activityFilterContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
               <Text style={styles.activityFilterSectionTitle}>{t('finance.activity.operationType')}</Text>
-              {(['all', 'expense', 'income', 'transfer'] as ActivityFilter[]).map((value) => {
-                const selected = activityFilter === value;
-                const icon: IconName = value === 'expense' ? 'arrow-up-outline' : value === 'income' ? 'arrow-down-outline' : value === 'transfer' ? 'swap-horizontal-outline' : 'layers-outline';
-                return <Pressable key={value} style={[styles.activityFilterRow, selected && styles.activityFilterRowSelected]} onPress={() => { setActivityFilter(value); setActivityCategoryQuery(''); }} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={activityFilterName(value)}><View style={[styles.activityFilterRowIcon, selected && styles.activityFilterRowIconSelected]}><Ionicons name={icon} size={18} color={selected ? C.void : C.gold} /></View><Text style={[styles.activityFilterRowText, selected && styles.activityFilterRowTextSelected]}>{activityFilterName(value)}</Text><View style={[styles.activityFilterCheck, selected && styles.activityFilterCheckSelected]}>{selected && <Ionicons name="checkmark" size={14} color={C.void} />}</View></Pressable>;
-              })}
+              <View style={styles.activityFilterChoices}>
+                {(['all', 'expense', 'income', 'transfer'] as ActivityFilter[]).map((value) => {
+                  const selected = activityFilter === value;
+                  const icon: IconName = value === 'expense' ? 'arrow-up-outline' : value === 'income' ? 'arrow-down-outline' : value === 'transfer' ? 'swap-horizontal-outline' : 'layers-outline';
+                  return <Pressable key={value} style={[styles.activityFilterChoice, selected && styles.activityFilterChoiceSelected]} onPress={() => { setActivityFilter(value); setActivityCategoryQuery(''); }} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={activityFilterName(value)}><Ionicons name={icon} size={16} color={selected ? C.void : C.gold} /><Text style={[styles.activityFilterChoiceText, selected && styles.activityFilterChoiceTextSelected]} numberOfLines={1}>{activityFilterName(value)}</Text></Pressable>;
+                })}
+              </View>
               <View style={styles.activityFilterDivider} />
               <Text style={styles.activityFilterSectionTitle}>{t('finance.category')}</Text>
               <View style={styles.activityCategorySearch}><Ionicons name="search-outline" size={17} color="rgba(255,244,208,0.42)" /><TextInput value={activityCategoryQuery} onChangeText={setActivityCategoryQuery} placeholder={t('finance.activity.categorySearch')} placeholderTextColor="rgba(255,244,208,0.3)" style={styles.activityCategorySearchInput} accessibilityLabel={t('finance.activity.categorySearch')} returnKeyType="search" /></View>
-              <Pressable style={[styles.activityFilterRow, activityCategory === 'all' && styles.activityFilterRowSelected]} onPress={() => setActivityCategory('all')} accessibilityRole="radio" accessibilityState={{ selected: activityCategory === 'all' }} accessibilityLabel={t('finance.activity.allCategories')}><View style={[styles.activityFilterRowIcon, activityCategory === 'all' && styles.activityFilterRowIconSelected]}><Ionicons name="apps-outline" size={18} color={activityCategory === 'all' ? C.void : C.gold} /></View><Text style={[styles.activityFilterRowText, activityCategory === 'all' && styles.activityFilterRowTextSelected]}>{t('finance.activity.allCategories')}</Text><View style={[styles.activityFilterCheck, activityCategory === 'all' && styles.activityFilterCheckSelected]}>{activityCategory === 'all' && <Ionicons name="checkmark" size={14} color={C.void} />}</View></Pressable>
+              <View style={styles.activityFilterChoices}>
+              <Pressable style={[styles.activityFilterChoice, activityCategory === 'all' && styles.activityFilterChoiceSelected]} onPress={() => setActivityCategory('all')} accessibilityRole="radio" accessibilityState={{ selected: activityCategory === 'all' }} accessibilityLabel={t('finance.activity.allCategories')}><Ionicons name="apps-outline" size={16} color={activityCategory === 'all' ? C.void : C.gold} /><Text style={[styles.activityFilterChoiceText, activityCategory === 'all' && styles.activityFilterChoiceTextSelected]}>{t('finance.activity.allCategories')}</Text></Pressable>
               {visibleActivityCategoryOptions.map((item) => {
                 const selected = activityCategory === item.id;
-                return <Pressable key={item.id} style={[styles.activityFilterRow, selected && styles.activityFilterRowSelected]} onPress={() => setActivityCategory(item.id)} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={item.label}><View style={[styles.activityFilterRowIcon, selected && styles.activityFilterRowIconSelected]}><Ionicons name={item.icon} size={18} color={selected ? C.void : C.gold} /></View><Text style={[styles.activityFilterRowText, selected && styles.activityFilterRowTextSelected]}>{item.label}</Text><View style={[styles.activityFilterCheck, selected && styles.activityFilterCheckSelected]}>{selected && <Ionicons name="checkmark" size={14} color={C.void} />}</View></Pressable>;
+                return <Pressable key={item.id} style={[styles.activityFilterChoice, selected && styles.activityFilterChoiceSelected]} onPress={() => setActivityCategory(item.id)} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={item.label}><Ionicons name={item.icon} size={16} color={selected ? C.void : C.gold} /><Text style={[styles.activityFilterChoiceText, selected && styles.activityFilterChoiceTextSelected]} numberOfLines={1}>{item.label}</Text></Pressable>;
               })}
+              </View>
               {!visibleActivityCategoryOptions.length && <View style={styles.activityFilterNoResults}><Text style={styles.activityFilterNoResultsText}>{t('finance.modules.noResults')}</Text></View>}
               <Pressable style={styles.activityClearFilters} onPress={() => { setActivityFilter('all'); setActivityCategory('all'); setActivityCategoryQuery(''); }} accessibilityRole="button" accessibilityLabel={t('finance.activity.clearFilters')}><Ionicons name="refresh-outline" size={16} color={C.gold} /><Text style={styles.activityClearFiltersText}>{t('finance.activity.clearFilters')}</Text></Pressable>
             </ScrollView>
@@ -1073,14 +1077,11 @@ const styles = StyleSheet.create({
   activityFilterScroll: { flex: 1 },
   activityFilterContent: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 30 },
   activityFilterSectionTitle: { color: 'rgba(233,200,119,0.66)', fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 1, marginBottom: 5 },
-  activityFilterRow: { minHeight: 54, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.09)', paddingHorizontal: 4 },
-  activityFilterRowSelected: { backgroundColor: 'rgba(233,200,119,0.045)' },
-  activityFilterRowIcon: { width: 34, height: 34, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.18)', backgroundColor: 'rgba(233,200,119,0.055)', alignItems: 'center', justifyContent: 'center' },
-  activityFilterRowIconSelected: { backgroundColor: C.gold, borderColor: C.gold },
-  activityFilterRowText: { flex: 1, minWidth: 0, color: 'rgba(255,244,208,0.58)', fontFamily: SANS, fontSize: 11 },
-  activityFilterRowTextSelected: { color: C.goldLight, fontWeight: '600' },
-  activityFilterCheck: { width: 22, height: 22, borderRadius: 11, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.24)', alignItems: 'center', justifyContent: 'center' },
-  activityFilterCheckSelected: { backgroundColor: C.gold, borderColor: C.gold },
+  activityFilterChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 4 },
+  activityFilterChoice: { minHeight: 40, maxWidth: '100%', flexGrow: 1, flexBasis: '46%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.035)', paddingHorizontal: 10 },
+  activityFilterChoiceSelected: { backgroundColor: C.gold, borderColor: C.gold },
+  activityFilterChoiceText: { color: 'rgba(255,244,208,0.62)', fontFamily: SANS, fontSize: 10, fontWeight: '600' },
+  activityFilterChoiceTextSelected: { color: C.void },
   activityFilterDivider: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(233,200,119,0.2)', marginVertical: 17 },
   activityCategorySearch: { height: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.16)', backgroundColor: 'rgba(4,5,10,0.32)', paddingHorizontal: 12, marginBottom: 5 },
   activityCategorySearchInput: { flex: 1, minWidth: 0, height: 42, color: C.goldLight, fontFamily: SANS, fontSize: 11, paddingVertical: 0 },

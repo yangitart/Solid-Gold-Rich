@@ -63,32 +63,32 @@ export function SearchableSelect({ label, value, options, onChange, placeholder,
       <View style={styles.search}><Ionicons name="search-outline" size={18} color="rgba(255,244,208,0.42)" /><TextInput value={query} onChangeText={setQuery} placeholder={searchPlaceholder} placeholderTextColor="rgba(255,244,208,0.28)" style={styles.searchInput} accessibilityLabel={searchPlaceholder} autoFocus /></View>
       <View style={styles.options}>{visible.map((option) => {
         const active = value === option.value;
-        return <Pressable key={option.value} style={[styles.option, active && styles.optionActive]} onPress={() => { onChange(option.value); close(); }} accessibilityRole="radio" accessibilityState={{ selected: active }}><View style={styles.optionIcon}><Ionicons name={option.icon ?? 'ellipse-outline'} size={18} color={active ? C.goldLight : C.gold} /></View><View style={styles.optionCopy}><Text style={styles.optionLabel}>{option.label}</Text>{option.description ? <Text style={styles.optionDescription}>{option.description}</Text> : null}</View><View style={[styles.check, active && styles.checkActive]}>{active ? <Ionicons name="checkmark" size={14} color={C.void} /> : null}</View></Pressable>;
+        return <Pressable key={option.value} style={[styles.option, active && styles.optionActive]} onPress={() => { onChange(option.value); close(); }} accessibilityRole="radio" accessibilityState={{ selected: active }}>{option.icon ? <View style={styles.optionIcon}><Ionicons name={option.icon} size={18} color={active ? C.goldLight : C.gold} /></View> : null}<View style={styles.optionCopy}><Text style={styles.optionLabel}>{option.label}</Text>{option.description ? <Text style={styles.optionDescription}>{option.description}</Text> : null}</View><View style={[styles.check, active && styles.checkActive]}>{active ? <Ionicons name="checkmark" size={14} color={C.void} /> : null}</View></Pressable>;
       })}{!visible.length ? <Text style={styles.empty}>{emptyLabel}</Text> : null}</View>
     </ResponsiveSheet>
   </View>;
 }
 
-export function FormActions({ cancelLabel, saveLabel, onCancel, onSave, disabled, destructiveLabel, onDestructive }: { cancelLabel: string; saveLabel: string; onCancel: () => void; onSave: () => void; disabled?: boolean; destructiveLabel?: string; onDestructive?: () => void }) {
-  return <View style={styles.actions}>{destructiveLabel && onDestructive ? <Pressable style={styles.destructive} onPress={onDestructive} accessibilityRole="button"><Text style={styles.destructiveText}>{destructiveLabel}</Text></Pressable> : null}<View style={styles.actionRow}><Pressable style={styles.cancel} onPress={onCancel} accessibilityRole="button"><Text style={styles.cancelText}>{cancelLabel}</Text></Pressable><Pressable style={[styles.save, disabled && styles.saveDisabled]} onPress={onSave} disabled={disabled} accessibilityRole="button" accessibilityState={{ disabled }}><Text style={styles.saveText}>{saveLabel}</Text></Pressable></View></View>;
+export function FormActions({ cancelLabel, saveLabel, onCancel, onSave, disabled, compact, destructiveLabel, onDestructive }: { cancelLabel?: string; saveLabel: string; onCancel?: () => void; onSave: () => void; disabled?: boolean; compact?: boolean; destructiveLabel?: string; onDestructive?: () => void }) {
+  return <View style={styles.actions}>{destructiveLabel && onDestructive ? <Pressable style={styles.destructive} onPress={onDestructive} accessibilityRole="button"><Text style={styles.destructiveText}>{destructiveLabel}</Text></Pressable> : null}<View style={styles.actionRow}>{cancelLabel && onCancel ? <Pressable style={styles.cancel} onPress={onCancel} accessibilityRole="button"><Text style={styles.cancelText}>{cancelLabel}</Text></Pressable> : null}<Pressable style={[styles.save, compact && styles.saveCompact, !cancelLabel && styles.saveFull, disabled && styles.saveDisabled]} onPress={onSave} disabled={disabled} accessibilityRole="button" accessibilityState={{ disabled }}><Text style={styles.saveText}>{saveLabel}</Text></Pressable></View></View>;
 }
 
 const styles = StyleSheet.create({
   backdrop: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.72)' },
   tabletBackdrop: { justifyContent: 'center', padding: 28 },
-  sheet: { width: '100%', maxWidth: 620, maxHeight: '92%', backgroundColor: '#0A0C14', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, overflow: 'hidden' },
+  sheet: { width: '100%', maxWidth: 620, maxHeight: '94%', backgroundColor: '#0A0C14', borderTopLeftRadius: 20, borderTopRightRadius: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.16)', overflow: 'hidden' },
   tabletSheet: { borderRadius: 24, maxHeight: '84%' },
   handle: { width: 38, height: 4, borderRadius: 2, backgroundColor: 'rgba(255,244,208,0.24)', alignSelf: 'center', marginTop: 9 },
-  header: { minHeight: 60, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 18, gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line },
-  title: { flex: 1, color: C.goldLight, fontFamily: SERIF, fontSize: 21 },
+  header: { minHeight: 54, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)' },
+  title: { flex: 1, color: C.goldLight, fontFamily: SERIF, fontSize: 20 },
   close: { width: 44, height: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, alignItems: 'center', justifyContent: 'center' },
   scroll: { flexShrink: 1 },
-  content: { padding: 18, paddingBottom: 28 },
+  content: { paddingHorizontal: 16, paddingTop: 10, paddingBottom: 24 },
   footer: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 12, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, backgroundColor: '#0A0C14' },
-  field: { marginTop: 12 },
-  label: { color: 'rgba(233,200,119,0.72)', fontFamily: SANS, fontSize: 11, lineHeight: 16, marginBottom: 6 },
+  field: { marginTop: 9 },
+  label: { color: 'rgba(233,200,119,0.62)', fontFamily: SANS, fontSize: 10, lineHeight: 15, marginBottom: 4, letterSpacing: 0.35 },
   required: { color: '#F08B88' },
-  input: { minHeight: 48, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', color: C.goldLight, fontFamily: SANS, fontSize: 14, paddingHorizontal: 13, paddingVertical: 10 },
+  input: { minHeight: 44, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.14)', backgroundColor: 'rgba(255,255,255,0.025)', color: C.goldLight, fontFamily: SANS, fontSize: 13, paddingHorizontal: 12, paddingVertical: 8 },
   multiline: { minHeight: 96, textAlignVertical: 'top' },
   disabledInput: { opacity: 0.48 },
   inputError: { borderColor: 'rgba(240,139,136,0.8)' },
@@ -98,16 +98,16 @@ const styles = StyleSheet.create({
   segmentSelected: { backgroundColor: C.gold, borderColor: C.gold },
   segmentText: { color: 'rgba(255,244,208,0.62)', fontFamily: SANS, fontSize: 11 },
   segmentTextSelected: { color: C.void, fontWeight: '700' },
-  select: { minHeight: 48, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 13 },
+  select: { minHeight: 44, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.14)', backgroundColor: 'rgba(255,255,255,0.025)', flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12 },
   selectCopy: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9 },
   selectText: { flex: 1, minWidth: 0, color: C.goldLight, fontFamily: SANS, fontSize: 13 },
   placeholder: { color: 'rgba(255,244,208,0.3)' },
   search: { height: 48, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, marginBottom: 8 },
   searchInput: { flex: 1, minWidth: 0, height: 46, color: C.goldLight, fontFamily: SANS, fontSize: 13 },
   options: { paddingBottom: 10 },
-  option: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 11, paddingHorizontal: 4, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)' },
-  optionActive: { backgroundColor: 'rgba(233,200,119,0.045)' },
-  optionIcon: { width: 36, height: 36, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, alignItems: 'center', justifyContent: 'center' },
+  option: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 9, borderRadius: 11, marginBottom: 3 },
+  optionActive: { backgroundColor: 'rgba(233,200,119,0.1)' },
+  optionIcon: { width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
   optionCopy: { flex: 1, minWidth: 0 },
   optionLabel: { color: C.goldLight, fontFamily: SANS, fontSize: 13 },
   optionDescription: { color: 'rgba(255,244,208,0.43)', fontFamily: SANS, fontSize: 10, marginTop: 3 },
@@ -119,6 +119,8 @@ const styles = StyleSheet.create({
   cancel: { flex: 1, minHeight: 48, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, alignItems: 'center', justifyContent: 'center' },
   cancelText: { color: C.gold, fontFamily: SANS, fontSize: 11, fontWeight: '700' },
   save: { flex: 1.35, minHeight: 48, borderRadius: 13, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center' },
+  saveCompact: { flex: 0, alignSelf: 'flex-end', minHeight: 40, paddingHorizontal: 18, borderRadius: 11 },
+  saveFull: { flex: 1 },
   saveDisabled: { opacity: 0.38 },
   saveText: { color: C.void, fontFamily: SANS, fontSize: 11, fontWeight: '800' },
   destructive: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
