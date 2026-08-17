@@ -25,7 +25,7 @@ export function ResponsiveSheet({ visible, title, onClose, children, closeLabel,
 
 export function FormField({ label, value, onChangeText, placeholder, error, required, numeric, multiline, editable = true }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; error?: string; required?: boolean; numeric?: boolean; multiline?: boolean; editable?: boolean }) {
   return <View style={styles.field}>
-    <Text style={styles.label}>{label}{required ? <Text style={styles.required}> *</Text> : null}</Text>
+    <Text style={styles.label} numberOfLines={2}>{label}{required ? <Text style={styles.required}> *</Text> : null}</Text>
     <TextInput
       value={value}
       onChangeText={onChangeText}
@@ -37,12 +37,12 @@ export function FormField({ label, value, onChangeText, placeholder, error, requ
       accessibilityLabel={label}
       style={[styles.input, multiline && styles.multiline, !editable && styles.disabledInput, Boolean(error) && styles.inputError]}
     />
-    {error ? <Text style={styles.error}>{error}</Text> : null}
+    {error ? <Text style={styles.error} numberOfLines={2}>{error}</Text> : null}
   </View>;
 }
 
 export function SegmentedControl({ options, value, onChange, label }: { options: SelectOption[]; value: string; onChange: (value: string) => void; label?: string }) {
-  return <View style={styles.field}>{label ? <Text style={styles.label}>{label}</Text> : null}<View style={styles.segments}>{options.map((option) => {
+  return <View style={styles.field}>{label ? <Text style={styles.label} numberOfLines={2}>{label}</Text> : null}<View style={styles.segments}>{options.map((option) => {
     const selected = value === option.value;
     return <Pressable key={option.value} style={[styles.segment, selected && styles.segmentSelected]} onPress={() => onChange(option.value)} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={option.label}>{option.icon ? <Ionicons name={option.icon} size={17} color={selected ? C.void : C.gold} /> : null}<Text style={[styles.segmentText, selected && styles.segmentTextSelected]} numberOfLines={1}>{option.label}</Text></Pressable>;
   })}</View></View>;
@@ -56,21 +56,21 @@ export function SearchableSelect({ label, value, options, onChange, placeholder,
   const visible = options.filter((option) => !normalizedQuery || `${option.label} ${option.description ?? ''}`.toLocaleLowerCase().includes(normalizedQuery));
   const close = () => { setOpen(false); setQuery(''); };
   return <View style={styles.field}>
-    <Text style={styles.label}>{label}{required ? <Text style={styles.required}> *</Text> : null}</Text>
+    <Text style={styles.label} numberOfLines={2}>{label}{required ? <Text style={styles.required}> *</Text> : null}</Text>
     <Pressable style={[styles.select, disabled && styles.disabledInput, Boolean(error) && styles.inputError]} onPress={() => !disabled && setOpen(true)} disabled={disabled} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }}><View style={styles.selectCopy}>{selected?.icon ? <Ionicons name={selected.icon} size={18} color={C.gold} /> : null}<Text style={[styles.selectText, !selected && styles.placeholder]} numberOfLines={1}>{selected?.label ?? placeholder}</Text></View><Ionicons name="chevron-down" size={17} color="rgba(255,244,208,0.42)" /></Pressable>
-    {error ? <Text style={styles.error}>{error}</Text> : null}
+    {error ? <Text style={styles.error} numberOfLines={2}>{error}</Text> : null}
     <ResponsiveSheet visible={open} title={label} onClose={close} closeLabel={closeLabel}>
       <View style={styles.search}><Ionicons name="search-outline" size={18} color="rgba(255,244,208,0.42)" /><TextInput value={query} onChangeText={setQuery} placeholder={searchPlaceholder} placeholderTextColor="rgba(255,244,208,0.28)" style={styles.searchInput} accessibilityLabel={searchPlaceholder} autoFocus /></View>
       <View style={styles.options}>{visible.map((option) => {
         const active = value === option.value;
-        return <Pressable key={option.value} style={[styles.option, active && styles.optionActive]} onPress={() => { onChange(option.value); close(); }} accessibilityRole="radio" accessibilityState={{ selected: active }}>{option.icon ? <View style={styles.optionIcon}><Ionicons name={option.icon} size={18} color={active ? C.goldLight : C.gold} /></View> : null}<View style={styles.optionCopy}><Text style={styles.optionLabel}>{option.label}</Text>{option.description ? <Text style={styles.optionDescription}>{option.description}</Text> : null}</View><View style={[styles.check, active && styles.checkActive]}>{active ? <Ionicons name="checkmark" size={14} color={C.void} /> : null}</View></Pressable>;
-      })}{!visible.length ? <Text style={styles.empty}>{emptyLabel}</Text> : null}</View>
+        return <Pressable key={option.value} style={[styles.option, active && styles.optionActive]} onPress={() => { onChange(option.value); close(); }} accessibilityRole="radio" accessibilityState={{ selected: active }}>{option.icon ? <View style={styles.optionIcon}><Ionicons name={option.icon} size={18} color={active ? C.goldLight : C.gold} /></View> : null}<View style={styles.optionCopy}><Text style={styles.optionLabel} numberOfLines={2}>{option.label}</Text>{option.description ? <Text style={styles.optionDescription} numberOfLines={2}>{option.description}</Text> : null}</View><View style={[styles.check, active && styles.checkActive]}>{active ? <Ionicons name="checkmark" size={14} color={C.void} /> : null}</View></Pressable>;
+      })}{!visible.length ? <Text style={styles.empty} numberOfLines={3}>{emptyLabel}</Text> : null}</View>
     </ResponsiveSheet>
   </View>;
 }
 
 export function FormActions({ cancelLabel, saveLabel, onCancel, onSave, disabled, compact, destructiveLabel, onDestructive }: { cancelLabel?: string; saveLabel: string; onCancel?: () => void; onSave: () => void; disabled?: boolean; compact?: boolean; destructiveLabel?: string; onDestructive?: () => void }) {
-  return <View style={styles.actions}>{destructiveLabel && onDestructive ? <Pressable style={styles.destructive} onPress={onDestructive} accessibilityRole="button"><Text style={styles.destructiveText}>{destructiveLabel}</Text></Pressable> : null}<View style={styles.actionRow}>{cancelLabel && onCancel ? <Pressable style={styles.cancel} onPress={onCancel} accessibilityRole="button"><Text style={styles.cancelText}>{cancelLabel}</Text></Pressable> : null}<Pressable style={[styles.save, compact && styles.saveCompact, !cancelLabel && styles.saveFull, disabled && styles.saveDisabled]} onPress={onSave} disabled={disabled} accessibilityRole="button" accessibilityState={{ disabled }}><Text style={styles.saveText}>{saveLabel}</Text></Pressable></View></View>;
+  return <View style={styles.actions}>{destructiveLabel && onDestructive ? <Pressable style={styles.destructive} onPress={onDestructive} accessibilityRole="button"><Text style={styles.destructiveText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{destructiveLabel}</Text></Pressable> : null}<View style={styles.actionRow}>{cancelLabel && onCancel ? <Pressable style={styles.cancel} onPress={onCancel} accessibilityRole="button"><Text style={styles.cancelText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{cancelLabel}</Text></Pressable> : null}<Pressable style={[styles.save, compact && styles.saveCompact, !cancelLabel && styles.saveFull, disabled && styles.saveDisabled]} onPress={onSave} disabled={disabled} accessibilityRole="button" accessibilityState={{ disabled }}><Text style={styles.saveText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{saveLabel}</Text></Pressable></View></View>;
 }
 
 const styles = StyleSheet.create({

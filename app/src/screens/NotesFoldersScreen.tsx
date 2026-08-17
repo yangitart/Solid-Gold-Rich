@@ -10,7 +10,7 @@ const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toStrin
 
 function BackButton({ onPress }: { onPress: () => void }) {
   const { t } = useTranslation();
-  return <Pressable onPress={onPress} style={styles.backButton} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('finance.cancel')}><Ionicons name="arrow-back-outline" size={19} color={C.goldLight} /></Pressable>;
+  return <Pressable onPress={onPress} style={styles.backButton} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('finance.back')}><Ionicons name="arrow-back-outline" size={19} color={C.goldLight} /></Pressable>;
 }
 
 function Field({ title, value, onChangeText, placeholder, multiline = false }: { title: string; value: string; onChangeText: (value: string) => void; placeholder?: string; multiline?: boolean }) {

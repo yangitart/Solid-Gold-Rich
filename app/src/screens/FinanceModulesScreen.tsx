@@ -74,24 +74,24 @@ const ACCOUNT_CURRENCIES = [
 ] as const;
 
 function Field({ title, value, onChangeText, placeholder, multiline = false, numeric = false, secureTextEntry = false, maxLength }: { title: string; value: string; onChangeText: (value: string) => void; placeholder?: string; multiline?: boolean; numeric?: boolean; secureTextEntry?: boolean; maxLength?: number }) {
-  return <View style={styles.field}><Text style={styles.fieldLabel}>{title}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="rgba(255,244,208,0.3)" keyboardType={numeric ? 'decimal-pad' : 'default'} multiline={multiline} secureTextEntry={secureTextEntry} maxLength={maxLength} style={[styles.input, multiline && styles.multiline]} accessibilityLabel={title} /></View>;
+  return <View style={styles.field}><Text style={styles.fieldLabel} numberOfLines={2}>{title}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="rgba(255,244,208,0.3)" keyboardType={numeric ? 'decimal-pad' : 'default'} multiline={multiline} secureTextEntry={secureTextEntry} maxLength={maxLength} style={[styles.input, multiline && styles.multiline]} accessibilityLabel={title} /></View>;
 }
 
 function Choice({ values, value, onChange, labels }: { values: string[]; value: string; onChange: (value: string) => void; labels?: Record<string, string> }) {
-  return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choices}>{values.map((item) => <Pressable key={item} onPress={() => onChange(item)} hitSlop={4} style={[styles.choice, { minHeight: 36, borderRadius: 9, paddingHorizontal: 10 }, item === value && styles.choiceActive]} accessibilityRole="radio" accessibilityState={{ selected: item === value }} accessibilityLabel={labels?.[item] ?? item}><Text style={[styles.choiceText, { fontSize: 10 }, item === value && styles.choiceTextActive]}>{labels?.[item] ?? item}</Text></Pressable>)}</ScrollView>;
+  return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choices}>{values.map((item) => <Pressable key={item} onPress={() => onChange(item)} hitSlop={4} style={[styles.choice, { minHeight: 36, borderRadius: 9, paddingHorizontal: 10 }, item === value && styles.choiceActive]} accessibilityRole="radio" accessibilityState={{ selected: item === value }} accessibilityLabel={labels?.[item] ?? item}><Text style={[styles.choiceText, { fontSize: 10 }, item === value && styles.choiceTextActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{labels?.[item] ?? item}</Text></Pressable>)}</ScrollView>;
 }
 
 function Empty({ title, body }: { title: string; body: string }) {
-  return <View style={styles.empty}><View style={styles.diamond} /><Text style={styles.emptyTitle}>{title}</Text><Text style={styles.emptyBody}>{body}</Text></View>;
+  return <View style={styles.empty}><View style={styles.diamond} /><Text style={styles.emptyTitle} numberOfLines={2}>{title}</Text><Text style={styles.emptyBody} numberOfLines={3}>{body}</Text></View>;
 }
 
 function BackButton({ onPress }: { onPress: () => void }) {
   const { t } = useTranslation();
-  return <Pressable onPress={onPress} style={styles.backButton} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('finance.cancel')}><Ionicons name="arrow-back-outline" size={19} color={C.goldLight} /></Pressable>;
+  return <Pressable onPress={onPress} style={styles.backButton} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('finance.back')}><Ionicons name="arrow-back-outline" size={19} color={C.goldLight} /></Pressable>;
 }
 
 function AddAction({ label, onPress }: { label: string; onPress: () => void }) {
-  return <Pressable style={styles.addAction} onPress={onPress} accessibilityRole="button" accessibilityLabel={label.replace(/^\+\s*/, '')}><View style={styles.addActionIcon}><Ionicons name="add" size={17} color={C.gold} /></View><Text style={styles.addActionText}>{label.replace(/^\+\s*/, '')}</Text></Pressable>;
+  return <Pressable style={styles.addAction} onPress={onPress} accessibilityRole="button" accessibilityLabel={label.replace(/^\+\s*/, '')}><View style={styles.addActionIcon}><Ionicons name="add" size={17} color={C.gold} /></View><Text style={styles.addActionText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{label.replace(/^\+\s*/, '')}</Text></Pressable>;
 }
 
 function Sheet({ children }: { children: React.ReactNode }) {
@@ -100,7 +100,8 @@ function Sheet({ children }: { children: React.ReactNode }) {
 
 function ResponsiveModal({ visible, onClose, children }: { visible: boolean; onClose: () => void; children: React.ReactNode }) {
   const tablet = useWindowDimensions().width >= 700;
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><KeyboardAvoidingView style={[styles.modalBackdrop, tablet && styles.modalBackdropTablet]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><Sheet>{children}</Sheet></KeyboardAvoidingView></Modal>;
+  const { t } = useTranslation();
+  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}><KeyboardAvoidingView style={[styles.modalBackdrop, tablet && styles.modalBackdropTablet]} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}><Sheet><View style={styles.responsiveModalHeader}><Pressable style={styles.sheetClose} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('finance.close')}><Ionicons name="close" size={18} color={C.goldLight} /></Pressable></View>{children}</Sheet></KeyboardAvoidingView></Modal>;
 }
 
 export default function FinanceModulesScreen({ module: initialModule, onBack }: { module: FinanceModuleName; onBack: () => void }) {
@@ -797,8 +798,6 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
           {settingRow('week', 'calendar-outline', t('finance.weekStartsOn'), state.settings.firstDayOfWeek === 1 ? t('finance.monday') : t('finance.sunday'))}
           {settingRow('pin', 'lock-closed-outline', t('finance.pin.title'), state.settings.pinHash ? t('finance.pin.enabled') : t('finance.pin.disabled'))}
           {settingRow('data', 'archive-outline', t('finance.releaseExtra.dataBackups'), t('finance.releaseExtra.dataBackupsCopy'))}
-          <View style={styles.settingsDivider} />
-          <View style={styles.aboutCompact}><Text style={styles.aboutTitle}>Solid Gold Rich</Text><Text style={styles.body}>{t('finance.releaseExtra.aboutCopy')}</Text><Text style={styles.settingsRowTitle}>{t('finance.privacyPolicy.title')}</Text><Text style={styles.cardMeta}>{t('finance.privacyPolicy.copy')}</Text></View>
         </View>
       );
     }
@@ -882,7 +881,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
   const normalizedActivityCategoryQuery = activityCategoryQuery.trim().toLowerCase();
   const visibleActivityCategoryOptions = activityCategoryOptions.filter((item) => !normalizedActivityCategoryQuery || `${item.label} ${item.id}`.toLowerCase().includes(normalizedActivityCategoryQuery));
 
-  return <SafeAreaView style={styles.root} edges={['top', 'bottom']}><View style={styles.header}>{module === 'accounts' && !accounts.length ? <View style={styles.back} /> : <BackButton onPress={onBack} />}<Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{titles[module]}</Text><View style={styles.headerSpace} /></View>{module === 'activity' ? <View style={[styles.content, styles.moduleContent, styles.moduleActivityContent]}>{content}</View> : <ScrollView contentContainerStyle={[styles.content, styles.moduleContent]} keyboardShouldPersistTaps="handled">{content}</ScrollView>}
+  return <SafeAreaView style={styles.root} edges={['top', 'bottom']}><View style={styles.header}><BackButton onPress={onBack} /><Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{titles[module]}</Text><View style={styles.headerSpace} /></View>{module === 'activity' ? <View style={[styles.content, styles.moduleContent, styles.moduleActivityContent]}>{content}</View> : <ScrollView contentContainerStyle={[styles.content, styles.moduleContent]} keyboardShouldPersistTaps="handled">{content}</ScrollView>}
     <Modal visible={activityFilterOpen} transparent animationType="slide" onRequestClose={closeActivityFilters} statusBarTranslucent>
       <KeyboardAvoidingView style={styles.activityFilterBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <Pressable style={StyleSheet.absoluteFill} onPress={closeActivityFilters} accessibilityLabel={t('finance.activity.closeFilters')} />
@@ -938,7 +937,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
         <View style={styles.iconPickerSheet}>
           <View style={styles.iconPickerHeader}>
             <Text style={styles.sheetTitle}>{t('finance.chooseIcon')}</Text>
-            <Pressable onPress={() => setIconPickerOpen(false)} accessibilityLabel={t('finance.cancel')}><Ionicons name="close-outline" size={24} color={C.goldLight} /></Pressable>
+            <Pressable onPress={() => setIconPickerOpen(false)} accessibilityLabel={t('finance.close')}><Ionicons name="close-outline" size={24} color={C.goldLight} /></Pressable>
           </View>
           <ScrollView contentContainerStyle={styles.iconPickerGrid} showsVerticalScrollIndicator={false}>
             {CATEGORY_ICON_OPTIONS.map((item) => <Pressable key={item.name} onPress={() => { setCategoryIcon(item.name); setIconPickerOpen(false); }} style={[styles.iconPickerChoice, categoryIcon === item.name && styles.iconChoiceActive]} accessibilityLabel={t('finance.chooseIcon')}><Ionicons name={item.name} size={22} color={categoryIcon === item.name ? C.void : C.goldLight} /></Pressable>)}
@@ -969,7 +968,6 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
           </>}
           <Pressable style={[styles.primary, (!account.name.trim() || (account.currency !== baseCurrency && (!Number.isFinite(Number(account.exchangeRate)) || Number(account.exchangeRate) <= 0))) && styles.buttonDisabled]} disabled={!account.name.trim() || (account.currency !== baseCurrency && (!Number.isFinite(Number(account.exchangeRate)) || Number(account.exchangeRate) <= 0))} onPress={saveAccount}><Text style={styles.primaryText}>{editingAccount ? t('finance.release.saveChanges') : t('finance.release.save')}</Text></Pressable>
           {editingAccount && <Pressable style={styles.dangerButton} onPress={() => confirmArchive(editingAccount)}><Text style={styles.dangerButtonText}>{t('finance.release.archiveAccount')}</Text></Pressable>}
-          <Pressable style={styles.secondary} onPress={closeAccountEditor}><Text style={styles.secondaryText}>{t('finance.cancel')}</Text></Pressable>
         </Sheet>
       </KeyboardAvoidingView>
     </Modal>
@@ -977,7 +975,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
       <View style={styles.currencyPickerBackdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={() => setCurrencyPickerOpen(false)} />
         <View style={styles.currencyPickerSheet}>
-          <View style={styles.currencyPickerHeader}><Text style={styles.sheetTitle}>{t('finance.selectCurrency')}</Text><Pressable style={styles.sheetClose} onPress={() => setCurrencyPickerOpen(false)} accessibilityLabel={t('finance.cancel')}><Ionicons name="close" size={18} color={C.goldLight} /></Pressable></View>
+          <View style={styles.currencyPickerHeader}><Text style={styles.sheetTitle}>{t('finance.selectCurrency')}</Text><Pressable style={styles.sheetClose} onPress={() => setCurrencyPickerOpen(false)} accessibilityLabel={t('finance.close')}><Ionicons name="close" size={18} color={C.goldLight} /></Pressable></View>
           <View style={styles.currencySearch}><Ionicons name="search-outline" size={17} color="rgba(255,244,208,0.38)" /><TextInput value={currencyQuery} onChangeText={setCurrencyQuery} autoCapitalize="characters" autoCorrect={false} placeholder={t('finance.searchCurrency')} placeholderTextColor="rgba(255,244,208,0.3)" style={styles.currencySearchInput} /></View>
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             {filteredAccountCurrencies.map((currency) => { const selectedCurrency = currencyPickerMode === 'account' ? account.currency : currencyPickerMode === 'debt' ? debt.currency : currencyPickerMode === 'rate' ? currencyRateCurrency : currencyBaseDraft; return <Pressable key={currency} style={[styles.currencyOption, selectedCurrency === currency && styles.currencyOptionActive]} onPress={() => { if (currencyPickerMode === 'account') { const configuredRate = rateBetweenCurrencies(currency, baseCurrency); setAccount((current) => ({ ...current, currency, exchangeRate: currency === baseCurrency ? '1' : current.currency === currency ? current.exchangeRate : configuredRate ? String(configuredRate) : '' })); setAccountError(''); } else if (currencyPickerMode === 'debt') setDebt((current) => ({ ...current, currency })); else if (currencyPickerMode === 'rate') chooseRateCurrency(currency); else choosePrimaryCurrency(currency); setCurrencyPickerOpen(false); }}><View style={styles.currencyOptionMark}><Text style={styles.currencyOptionMarkText}>{currency.slice(0, 1)}</Text></View><Text style={styles.currencyOptionCode}>{currency}</Text>{selectedCurrency === currency && <Ionicons name="checkmark" size={18} color={C.gold} />}</Pressable>; })}
@@ -1101,6 +1099,7 @@ const styles = StyleSheet.create({
   inlineButtonText: { color: C.gold, fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 0.5 },
   toggleRow: { minHeight: 46, flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 12 },
   sheetHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  responsiveModalHeader: { height: 44, alignItems: 'flex-end', justifyContent: 'center' },
   sheetClose: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.07)', alignItems: 'center', justifyContent: 'center' },
   reminderCheck: { width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.gold, alignItems: 'center', justifyContent: 'center' },
   reminderCheckDone: { backgroundColor: C.green, borderColor: C.green },

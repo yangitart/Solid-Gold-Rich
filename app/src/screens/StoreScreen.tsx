@@ -35,6 +35,7 @@ type ProductDraft = {
   salePrice: string;
   additionalSalePrices: string[];
   picture?: string;
+  icon: IconName;
   stock: string;
   reservedQuantity: string;
   stockMinimum: string;
@@ -46,6 +47,7 @@ const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toStrin
 const numeric = (value: string) => Number(value.trim().replace(',', '.'));
 const COMMON_CURRENCIES = ['USD', 'EUR', 'CUP', 'MXN', 'CAD', 'GBP', 'BRL', 'ARS', 'CLP', 'COP', 'JPY', 'CHF'];
 const UNIT_OPTIONS = ['unit', 'piece', 'kg', 'g', 'liter', 'hour', 'box'] as const;
+const PRODUCT_ICON_OPTIONS: IconName[] = ['cube-outline', 'restaurant-outline', 'cafe-outline', 'cart-outline', 'shirt-outline', 'home-outline', 'construct-outline', 'phone-portrait-outline', 'laptop-outline', 'book-outline', 'gift-outline', 'pricetag-outline'];
 
 function money(value: number, currency: string) {
   return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`;
@@ -57,7 +59,7 @@ function localDay(value: string | Date) {
 }
 
 function defaultDraft(type: StoreProductType, categoryId: string): ProductDraft {
-  return { key: '', name: '', type, unit: 'unit', categoryId, purchasePrice: '', salePrice: '', additionalSalePrices: [], stock: '', reservedQuantity: '0', stockMinimum: '0', expirationDate: '', additionalInfo: '' };
+  return { key: '', name: '', type, unit: 'unit', categoryId, purchasePrice: '', salePrice: '', additionalSalePrices: [], picture: undefined, icon: type === 'service' ? 'construct-outline' : 'cube-outline', stock: '', reservedQuantity: '0', stockMinimum: '0', expirationDate: '', additionalInfo: '' };
 }
 
 function MenuGlyph() {
@@ -67,7 +69,7 @@ function MenuGlyph() {
 function ProductPicture({ product }: { product: StoreProduct }) {
   const [failed, setFailed] = React.useState(false);
   React.useEffect(() => setFailed(false), [product.picture]);
-  if (!product.picture || failed) return <Ionicons name={product.type === 'service' ? 'construct-outline' : 'cube-outline'} size={20} color={C.gold} />;
+  if (!product.picture || failed) return <Ionicons name={(product.icon || (product.type === 'service' ? 'construct-outline' : 'cube-outline')) as IconName} size={20} color={C.gold} />;
   return <Image source={{ uri: product.picture }} style={styles.productImage} onError={() => setFailed(true)} />;
 }
 
@@ -164,7 +166,12 @@ export default function StoreScreen() {
     due.forEach((employee) => payEmployee(employee.id));
   }, [payEmployee, state.store.employees]);
 
-  const categoryNameFor = React.useCallback((id: string) => id === 'general' ? t('finance.store.generalCategory') : store.categories.find((item) => item.id === id)?.name ?? t('finance.store.generalCategory'), [store.categories, t]);
+  const categoryNameFor = React.useCallback((id: string) => {
+    const category = store.categories.find((item) => item.id === id);
+    return category?.builtIn
+      ? t(`finance.storeCategories.${id}`, { defaultValue: category.name })
+      : category?.name ?? t('finance.store.generalCategory');
+  }, [store.categories, t]);
   const stockFor = React.useCallback((productId: string) => productStock(state, productId), [state]);
   const inventoryValue = React.useMemo(() => store.products.reduce((total, product) => total + (product.type === 'product' ? stockFor(product.id) * product.purchasePrice : 0), 0), [store.products, stockFor]);
   const availableFor = React.useCallback((product: StoreProduct) => availableStock(state, product), [state]);
@@ -261,7 +268,7 @@ export default function StoreScreen() {
     setProductDraft(product ? {
       key: product.key, name: product.name, type: product.type, unit: product.unit, categoryId: product.categoryId,
       purchasePrice: product.purchasePrice ? String(product.purchasePrice) : '', salePrice: String(product.salePrice),
-      additionalSalePrices: product.additionalSalePrices.map(String), picture: product.picture, stock: '', reservedQuantity: String(product.reservedQuantity),
+      additionalSalePrices: product.additionalSalePrices.map(String), picture: product.picture, icon: (product.icon as IconName | undefined) ?? (product.type === 'service' ? 'construct-outline' : 'cube-outline'), stock: '', reservedQuantity: String(product.reservedQuantity),
       stockMinimum: String(product.stockMinimum), expirationDate: product.expirationDate ?? '', additionalInfo: product.additionalInfo ?? '',
     } : defaultDraft(view === 'services' ? 'service' : 'product', store.categories[0]?.id ?? 'general'));
     setProductOpen(true);
@@ -333,6 +340,7 @@ export default function StoreScreen() {
       purchasePrice,
       additionalSalePrices: productDraft.additionalSalePrices.filter((value) => value.trim()).map(numeric),
       picture: productDraft.picture,
+      icon: productDraft.icon,
       initialStock: editingProduct?.initialStock ?? 0,
       reservedQuantity: productDraft.type === 'service' ? 0 : numeric(productDraft.reservedQuantity || '0'),
       stockMinimum: productDraft.type === 'service' ? 0 : numeric(productDraft.stockMinimum || '0'),
@@ -528,9 +536,9 @@ export default function StoreScreen() {
       const backup = await createStoreBackup(store);
       const file = new File(Paths.cache, `solid-gold-rich-store-${new Date().toISOString().slice(0, 10)}.json`);
       file.write(JSON.stringify(backup, null, 2));
-      await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: t('finance.store.backupExport') });
+      await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: t('finance.storeBackup.exportStore') });
     } catch {
-      Alert.alert(t('finance.store.backupFailed'), t('finance.store.backupFailedCopy'));
+      Alert.alert(t('finance.storeBackup.backupFailed'), t('finance.storeBackup.backupFailedCopy'));
     } finally {
       setBackupBusy(false);
     }
@@ -548,12 +556,12 @@ export default function StoreScreen() {
         { text: t('finance.cancel'), style: 'cancel' },
         { text: t('finance.storeBackup.importStore'), style: 'destructive', onPress: () => {
           finance.updateState((current) => ({ ...current, store: normalizeFinanceState({ ...current, store: restoredStore }).store }));
-          Alert.alert(t('finance.store.backupImported'), t('finance.store.backupImportedCopy'));
+          Alert.alert(t('finance.storeBackup.backupImported'), t('finance.storeBackup.backupImportedCopy'));
           setSettingsOpen(false);
         } },
       ]);
     } catch {
-      Alert.alert(t('finance.store.backupFailed'), t('finance.store.backupInvalid'));
+      Alert.alert(t('finance.storeBackup.backupFailed'), t('finance.storeBackup.backupInvalid'));
     } finally {
       setBackupBusy(false);
     }
@@ -562,7 +570,7 @@ export default function StoreScreen() {
   const renderProduct = ({ item }: { item: StoreProduct }) => {
     const stock = stockFor(item.id); const available = availableFor(item); const low = item.type === 'product' && stock <= item.stockMinimum;
     const expired = Boolean(item.expirationDate && localDay(item.expirationDate) < today);
-    return <View style={[styles.productRow, !item.active && styles.inactive]}><Pressable style={styles.productMain} onPress={() => openProduct(item)} accessibilityRole="button"><View style={styles.productIcon}><ProductPicture product={item} /></View><View style={styles.rowMain}><Text style={styles.rowTitle} numberOfLines={1}>{item.name}</Text><Text style={styles.rowMeta} numberOfLines={1}>{item.key} · {categoryNameFor(item.categoryId)} · {money(item.salePrice, currency)}</Text>{expired ? <Text style={styles.dangerMeta}>{t('finance.storeFilters.expired')}</Text> : null}</View></Pressable>{item.type === 'product' ? <View style={styles.stockSide}><Text style={[styles.stockValue, low && styles.dangerMeta]}>{available}/{stock}</Text><Pressable style={styles.iconButton} onPress={() => { setStockProduct(item); setStockAction('entry'); setStockQuantity(''); setStockNote(''); setStockError(''); }} accessibilityRole="button" accessibilityLabel={t('finance.store.adjustStock')}><Ionicons name="swap-vertical-outline" size={18} color={C.gold} /></Pressable></View> : <Text style={styles.rowMeta}>{t('finance.store.service')}</Text>}</View>;
+    return <View style={[styles.productRow, !item.active && styles.inactive]}><Pressable style={styles.productMain} onPress={() => openProduct(item)} accessibilityRole="button"><View style={styles.productIcon}><ProductPicture product={item} /></View><View style={styles.rowMain}><Text style={styles.rowTitle} numberOfLines={1}>{item.name}</Text><Text style={styles.rowMeta} numberOfLines={1}>{item.key} · {categoryNameFor(item.categoryId)} · {money(item.salePrice, currency)}</Text>{expired ? <Text style={styles.dangerMeta} numberOfLines={1}>{t('finance.storeFilters.expired')}</Text> : null}</View></Pressable>{item.type === 'product' ? <View style={styles.stockSide}><Text style={[styles.stockValue, low && styles.dangerMeta]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{available}/{stock}</Text><Pressable style={styles.iconButton} onPress={() => { setStockProduct(item); setStockAction('entry'); setStockQuantity(''); setStockNote(''); setStockError(''); }} accessibilityRole="button" accessibilityLabel={t('finance.store.adjustStock')}><Ionicons name="swap-vertical-outline" size={18} color={C.gold} /></Pressable></View> : <Text style={styles.rowMeta} numberOfLines={1}>{t('finance.store.service')}</Text>}</View>;
   };
 
   const renderProducts = () => <View style={styles.flex}><View style={styles.toolbar}><View style={styles.search}><Ionicons name="search-outline" size={18} color="rgba(255,244,208,0.42)" /><TextInput value={productQuery} onChangeText={setProductQuery} placeholder={t('finance.storeFilters.search')} placeholderTextColor="rgba(255,244,208,0.3)" style={styles.searchInput} accessibilityLabel={t('finance.storeFilters.search')} /><Pressable style={[styles.filterButton, filtersActive && styles.filterButtonActive]} onPress={() => setFilterOpen(true)} accessibilityRole="button" accessibilityLabel={t('finance.storeFilters.filters')}><Ionicons name="options-outline" size={19} color={filtersActive ? C.void : C.gold} /></Pressable>{view === 'inventory' ? <Pressable style={styles.filterButton} onPress={() => { setFundingAccountId('none'); setFundingAmount(''); setFundingNote(''); setFundingError(''); setAddOpen(true); }} accessibilityRole="button" accessibilityLabel={t('finance.storeFunding.tab')}><Ionicons name="add-circle-outline" size={19} color={C.gold} /></Pressable> : null}</View></View><FlatList data={visibleProducts} keyExtractor={(item) => item.id} renderItem={renderProduct} contentContainerStyle={[styles.list, !visibleProducts.length && styles.listEmpty]} keyboardShouldPersistTaps="handled" ListEmptyComponent={<Empty title={t('finance.store.noProducts')} copy={filtersActive || productQuery ? t('finance.storeFilters.noResults') : t('finance.store.noProductsCopy')} icon="cube-outline" />} /></View>;
@@ -604,7 +612,8 @@ export default function StoreScreen() {
           <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
             <ScrollView style={styles.drawerScroll} contentContainerStyle={styles.drawerContent} showsVerticalScrollIndicator={false}>
               <Text style={styles.drawerTitle} numberOfLines={1}>{store.name || t('finance.store.business')}</Text>
-              <Pressable style={styles.balanceCard} onPress={() => { setDrawerOpen(false); setLedgerOpen(true); }} accessibilityRole="button"><Text style={styles.eyebrow}>{t('finance.storeDrawer.inventoryValue')}</Text><Text style={styles.balance} numberOfLines={1} adjustsFontSizeToFit>{money(inventoryValue, currency)}</Text><Text style={styles.rowMeta}>{t('finance.store.viewMovements')}</Text><Text style={styles.rowMeta}>{t('finance.storeBackup.businessBalance')}: {money(store.businessAccount.balance, currency)}</Text></Pressable>
+              <View style={styles.balanceCard}><Text style={styles.eyebrow}>{t('finance.storeDrawer.inventoryValue')}</Text><Text style={styles.balance} numberOfLines={1} adjustsFontSizeToFit>{money(inventoryValue, currency)}</Text><Text style={styles.rowMeta}>{t('finance.storeBackup.businessBalance')}: {money(store.businessAccount.balance, currency)}</Text></View>
+              <Pressable style={[styles.drawerItem, ledgerOpen && styles.drawerItemActive]} onPress={() => { setDrawerOpen(false); setLedgerOpen(true); }} accessibilityRole="button" accessibilityLabel={t('finance.store.viewMovements')}><Ionicons name="wallet-outline" size={20} color={ledgerOpen ? C.goldLight : C.gold} /><Text style={styles.drawerText}>{t('finance.store.viewMovements')}</Text><Ionicons name="chevron-forward" size={16} color="rgba(255,244,208,0.26)" /></Pressable>
               {([['inventory', 'cube-outline'], ['employees', 'people-outline'], ['clients', 'person-outline'], ['services', 'construct-outline'], ['sales', 'cart-outline'], ['reports', 'bar-chart-outline']] as [StoreView, IconName][]).map(([item, icon]) => <Pressable key={item} style={[styles.drawerItem, view === item && styles.drawerItemActive]} onPress={() => switchView(item)}><Ionicons name={icon} size={20} color={view === item ? C.goldLight : C.gold} /><Text style={styles.drawerText}>{t(`finance.store.${item}`)}</Text><Ionicons name="chevron-forward" size={16} color="rgba(255,244,208,0.26)" /></Pressable>)}
               <Pressable style={styles.drawerItem} onPress={() => { setStoreName(store.name); setStoreCurrency(currency); setDrawerOpen(false); setSettingsOpen(true); }}><Ionicons name="settings-outline" size={20} color={C.gold} /><Text style={styles.drawerText}>{t('finance.store.settings')}</Text><Ionicons name="chevron-forward" size={16} color="rgba(255,244,208,0.26)" /></Pressable>
             </ScrollView>
@@ -632,6 +641,10 @@ export default function StoreScreen() {
       {customUnitOpen ? <FormField label={t('finance.storeUnits.customLabel')} value={productDraft.unit} onChangeText={(value) => setProductDraft((current) => ({ ...current, unit: value }))} placeholder={t('finance.storeUnits.customPlaceholder')} required error={productErrors.unit} /> : null}
       <SearchableSelect label={t('finance.store.category')} value={productDraft.categoryId} options={categoryOptions} onChange={(value) => setProductDraft((current) => ({ ...current, categoryId: value }))} placeholder={t('finance.store.generalCategory')} searchPlaceholder={t('finance.search')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} required error={productErrors.category} />
       <Pressable style={styles.textAction} onPress={() => setCategoryManagerOpen(true)}><Ionicons name="settings-outline" size={16} color={C.gold} /><Text style={styles.link}>{t('finance.store.manageCategories')}</Text></Pressable>
+      <Text style={styles.sectionTitle}>{t('finance.chooseIcon')}</Text>
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.productIconChoices} accessibilityLabel={t('finance.chooseIcon')}>
+        {PRODUCT_ICON_OPTIONS.map((icon) => <Pressable key={icon} style={[styles.productIconChoice, productDraft.icon === icon && styles.productIconChoiceActive]} onPress={() => setProductDraft((current) => ({ ...current, icon }))} accessibilityRole="radio" accessibilityState={{ selected: productDraft.icon === icon }} accessibilityLabel={t('finance.chooseIcon')}><Ionicons name={icon} size={20} color={productDraft.icon === icon ? C.void : C.gold} /></Pressable>)}
+      </ScrollView>
       <Text style={styles.sectionTitle}>{t('finance.store.sectionPrices')}</Text>
       <View style={styles.priceRow}>
         <View style={styles.priceColumn}><FormField label={t('finance.store.purchasePrice')} value={productDraft.purchasePrice} onChangeText={(value) => setProductDraft((current) => ({ ...current, purchasePrice: value }))} numeric error={productErrors.numbers} /></View>
@@ -646,7 +659,7 @@ export default function StoreScreen() {
 
     <ResponsiveSheet visible={categoryManagerOpen} title={t('finance.store.manageCategories')} onClose={() => { setCategoryManagerOpen(false); setEditingCategoryId(null); setCategoryName(''); setCategoryError(''); }} closeLabel={t('finance.close')} footer={<FormActions cancelLabel={t('finance.cancel')} saveLabel={t('finance.save')} onCancel={() => { setCategoryManagerOpen(false); setEditingCategoryId(null); setCategoryName(''); setCategoryError(''); }} onSave={saveCategory} disabled={!categoryName.trim()} />}>
       <View style={styles.inline}><View style={styles.inlineMain}><FormField label={editingCategoryId ? t('finance.store.renameCategory') : t('finance.store.newCategoryPlaceholder')} value={categoryName} onChangeText={(value) => { setCategoryName(value); setCategoryError(''); }} error={categoryError} /></View></View>
-      {store.categories.map((category) => <View key={category.id} style={styles.categoryRow}><Text style={styles.rowTitle}>{categoryNameFor(category.id)}</Text>{category.id !== 'general' ? <><Pressable style={styles.iconButton} onPress={() => { setEditingCategoryId(category.id); setCategoryName(category.name); }} accessibilityLabel={t('finance.editAction')}><Ionicons name="pencil-outline" size={17} color={C.gold} /></Pressable><Pressable style={styles.iconButton} onPress={() => deleteCategory(category)} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color="#F08B88" /></Pressable></> : null}</View>)}
+      {store.categories.map((category) => <View key={category.id} style={styles.categoryRow}><Text style={styles.rowTitle} numberOfLines={1}>{categoryNameFor(category.id)}</Text>{!category.builtIn ? <><Pressable style={styles.iconButton} onPress={() => { setEditingCategoryId(category.id); setCategoryName(category.name); }} accessibilityLabel={t('finance.editAction')}><Ionicons name="pencil-outline" size={17} color={C.gold} /></Pressable><Pressable style={styles.iconButton} onPress={() => deleteCategory(category)} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color="#F08B88" /></Pressable></> : null}</View>)}
     </ResponsiveSheet>
 
     <ResponsiveSheet visible={Boolean(stockProduct)} title={stockProduct?.name ?? t('finance.store.adjustStock')} onClose={() => setStockProduct(null)} closeLabel={t('finance.close')} footer={<FormActions cancelLabel={t('finance.cancel')} saveLabel={t('finance.save')} onCancel={() => setStockProduct(null)} onSave={saveStock} disabled={!stockNote.trim() || !(numeric(stockQuantity) >= 0)} />}>
@@ -680,7 +693,7 @@ export default function StoreScreen() {
       {directoryKind === 'employees' ? <FormField label={t('finance.store.employeeRole')} value={directoryRole} onChangeText={setDirectoryRole} /> : null}
       {directoryKind === 'employees' ? <><FormField label={t('finance.payroll.salary')} value={directorySalary} onChangeText={setDirectorySalary} numeric /><SegmentedControl label={t('finance.payroll.frequencyLabel')} options={(['weekly', 'biweekly', 'monthly'] as StorePayFrequency[]).map((value) => ({ value, label: t(`finance.payroll.frequency.${value}`) }))} value={directoryPayFrequency} onChange={(value) => setDirectoryPayFrequency(value as StorePayFrequency)} /><SegmentedControl label={t('finance.payroll.modeLabel')} options={[{ value: 'manual', label: t('finance.payroll.manual') }, { value: 'automatic', label: t('finance.payroll.automatic') }]} value={directoryPayMode} onChange={(value) => setDirectoryPayMode(value as StorePayMode)} /><DateSelect label={t('finance.payroll.nextDate')} value={directoryNextPayDate} emptyLabel={t('finance.payroll.nextDateEmpty')} onChange={setDirectoryNextPayDate} /><Text style={styles.helper}>{t('finance.payroll.accountHint')}</Text></> : null}
       <FormField label={t('finance.phone')} value={directoryPhone} onChangeText={setDirectoryPhone} />
-      {directoryKind === 'clients' ? <><FormField label={t('finance.email')} value={directoryEmail} onChangeText={setDirectoryEmail} /><FormField label={t('finance.notes.title')} value={directoryNote} onChangeText={setDirectoryNote} multiline /></> : null}
+      {directoryKind === 'clients' ? <><FormField label={t('finance.email')} value={directoryEmail} onChangeText={setDirectoryEmail} /><FormField label={t('finance.notes')} value={directoryNote} onChangeText={setDirectoryNote} multiline /></> : null}
       <SegmentedControl label={t('finance.storeFilters.status')} options={[{ value: 'active', label: t('finance.storeFilters.active') }, { value: 'inactive', label: t('finance.storeFilters.inactive') }]} value={directoryActive ? 'active' : 'inactive'} onChange={(value) => setDirectoryActive(value === 'active')} />
     </ResponsiveSheet>
 
@@ -688,8 +701,8 @@ export default function StoreScreen() {
       <FormField label={t('finance.store.businessName')} value={storeName} onChangeText={setStoreName} required />
       <SearchableSelect label={t('finance.store.currency')} value={storeCurrency} options={currencyOptions} onChange={setStoreCurrency} placeholder={currency} searchPlaceholder={t('finance.searchCurrency')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} disabled={hasStoreHistory} />
       {hasStoreHistory ? <Text style={styles.helper}>{t('finance.store.currencyLocked')}</Text> : null}
-      <Text style={styles.sectionTitle}>{t('finance.store.backupTitle')}</Text>
-      <Text style={styles.helper}>{t('finance.store.backupCopy')}</Text>
+      <Text style={styles.sectionTitle}>{t('finance.storeBackup.backupTitle')}</Text>
+      <Text style={styles.helper}>{t('finance.storeBackup.backupCopy')}</Text>
       <Pressable style={styles.secondaryButton} onPress={() => void exportStore()} disabled={backupBusy}><Text style={styles.link}>{t('finance.storeBackup.exportStore')}</Text></Pressable>
       <Pressable style={styles.secondaryButton} onPress={() => void importStore()} disabled={backupBusy}><Text style={styles.link}>{t('finance.storeBackup.importStore')}</Text></Pressable>
     </ResponsiveSheet>
@@ -703,15 +716,15 @@ export default function StoreScreen() {
 }
 
 function Empty({ title, copy, icon }: { title: string; copy: string; icon: IconName }) {
-  return <View style={styles.empty}><View style={styles.emptyIcon}><Ionicons name={icon} size={25} color={C.gold} /></View><Text style={styles.emptyTitle}>{title}</Text><Text style={styles.emptyCopy}>{copy}</Text></View>;
+  return <View style={styles.empty}><View style={styles.emptyIcon}><Ionicons name={icon} size={25} color={C.gold} /></View><Text style={styles.emptyTitle} numberOfLines={2}>{title}</Text><Text style={styles.emptyCopy} numberOfLines={4}>{copy}</Text></View>;
 }
 
 function ReportRow({ title, copy, amount }: { title: string; copy: string; amount: string }) {
-  return <View style={styles.reportRow}><View style={styles.rowMain}><Text style={styles.rowTitle}>{title}</Text><Text style={styles.rowMeta}>{copy}</Text></View><Text style={styles.amount}>{amount}</Text></View>;
+  return <View style={styles.reportRow}><View style={styles.rowMain}><Text style={styles.rowTitle} numberOfLines={2}>{title}</Text><Text style={styles.rowMeta} numberOfLines={2}>{copy}</Text></View><Text style={styles.amount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{amount}</Text></View>;
 }
 
 function Detail({ label, value }: { label: string; value: string }) {
-  return <View style={styles.detail}><Text style={styles.rowMeta}>{label}</Text><Text style={styles.rowTitle}>{value}</Text></View>;
+  return <View style={styles.detail}><Text style={styles.rowMeta} numberOfLines={1}>{label}</Text><Text style={styles.rowTitle} numberOfLines={3}>{value}</Text></View>;
 }
 
 const styles = StyleSheet.create({
@@ -723,7 +736,7 @@ const styles = StyleSheet.create({
   toolbar: { paddingHorizontal: 16, paddingTop: 12, paddingBottom: 5 }, search: { minHeight: 48, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12 },
   searchInput: { flex: 1, minWidth: 0, minHeight: 46, color: C.goldLight, fontFamily: SANS, fontSize: 13 }, filterButton: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, filterButtonActive: { backgroundColor: C.gold }, addSmall: { width: 44, height: 44, borderRadius: 12, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center' },
   list: { paddingHorizontal: 16, paddingTop: 4, paddingBottom: 136 }, listEmpty: { flexGrow: 1 }, content: { padding: 16, paddingBottom: 136 },
-  productRow: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 8 }, productMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 }, productIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, productImage: { width: '100%', height: '100%' }, rowMain: { flex: 1, minWidth: 0 }, rowTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13 }, rowMeta: { color: 'rgba(255,244,208,0.46)', fontFamily: SANS, fontSize: 10, lineHeight: 15, marginTop: 3 }, dangerMeta: { color: '#F08B88', fontFamily: SANS, fontSize: 10, marginTop: 3 }, stockSide: { flexDirection: 'row', alignItems: 'center' }, stockValue: { minWidth: 34, textAlign: 'right', color: C.goldLight, fontFamily: SERIF, fontSize: 15 }, iconButton: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, inactive: { opacity: 0.48 }, inactiveText: { color: 'rgba(255,244,208,0.28)' },
+  productRow: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 8 }, productMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 }, productIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, productImage: { width: '100%', height: '100%' }, productIconChoices: { gap: 8, paddingVertical: 7 }, productIconChoice: { width: 44, height: 44, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.035)', alignItems: 'center', justifyContent: 'center' }, productIconChoiceActive: { backgroundColor: C.gold, borderColor: C.gold }, rowMain: { flex: 1, minWidth: 0 }, rowTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13 }, rowMeta: { color: 'rgba(255,244,208,0.46)', fontFamily: SANS, fontSize: 10, lineHeight: 15, marginTop: 3 }, dangerMeta: { color: '#F08B88', fontFamily: SANS, fontSize: 10, marginTop: 3 }, stockSide: { flexDirection: 'row', alignItems: 'center' }, stockValue: { minWidth: 34, textAlign: 'right', color: C.goldLight, fontFamily: SERIF, fontSize: 15 }, iconButton: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, inactive: { opacity: 0.48 }, inactiveText: { color: 'rgba(255,244,208,0.28)' },
   saleRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 8 }, saleIcon: { width: 40, height: 40, borderRadius: 13, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center' }, amount: { color: C.goldLight, fontFamily: SERIF, fontSize: 14, maxWidth: '38%' },
   directoryRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 8 }, directoryMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 }, payButton: { minHeight: 32, borderRadius: 10, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.gold }, payButtonText: { color: C.void, fontFamily: SANS, fontSize: 9, fontWeight: '700' }, avatar: { width: 40, height: 40, borderRadius: 13, backgroundColor: 'rgba(233,200,119,0.1)', alignItems: 'center', justifyContent: 'center' }, avatarText: { color: C.goldLight, fontFamily: SERIF, fontSize: 17 },
   drawerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.68)' },

@@ -74,7 +74,7 @@ type PortfolioTransaction = Transaction & { budgetId: string; budgetName: string
 
 function HeaderBackButton({ onPress }: { onPress: () => void }) {
   const { t } = useTranslation();
-  return <Pressable onPress={onPress} style={styles.screenBackButton} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('finance.cancel')}><Ionicons name="arrow-back-outline" size={19} color={C.goldLight} /></Pressable>;
+  return <Pressable onPress={onPress} style={styles.screenBackButton} hitSlop={8} accessibilityRole="button" accessibilityLabel={t('finance.back')}><Ionicons name="arrow-back-outline" size={19} color={C.goldLight} /></Pressable>;
 }
 
 const ACCOUNT_COLORS = ['#E9C877', '#B7AD84', '#80B9FF', '#D99BEF', '#F08B88'];
@@ -236,6 +236,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
   const [selectedStatsDate, setSelectedStatsDate] = React.useState(() => new Date().toDateString());
   const [quickMenuOpen, setQuickMenuOpen] = React.useState(false);
   const [exitPromptOpen, setExitPromptOpen] = React.useState(false);
+  const [negativeBalancePrompt, setNegativeBalancePrompt] = React.useState<{ account: string; amount: string; onConfirm: () => void } | null>(null);
   const [entryOpen, setEntryOpen] = React.useState(false);
   const [entryKind, setEntryKind] = React.useState<TransactionKind>('expense');
   const [entryTitle, setEntryTitle] = React.useState('');
@@ -647,18 +648,11 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
     };
 
     if (projectedBalance !== undefined && projectedBalance < 0) {
-      Alert.alert(
-        t('finance.negativeBalanceTitle', { defaultValue: 'Balance will go below zero' }),
-        t('finance.negativeBalanceMessage', {
-          defaultValue: 'This operation will leave {{account}} at {{amount}}. Do you want to continue?',
-          account: projectedAccountName,
-          amount: formatMoney(projectedBalance, language, projectedCurrency),
-        }),
-        [
-          { text: t('finance.cancel'), style: 'cancel' },
-          { text: t('finance.continueAction', { defaultValue: 'Continue' }), onPress: commit },
-        ],
-      );
+      setNegativeBalancePrompt({
+        account: projectedAccountName,
+        amount: formatMoney(projectedBalance, language, projectedCurrency),
+        onConfirm: commit,
+      });
       return;
     }
 
@@ -1006,6 +1000,29 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
         </View>
       </Modal>
 
+      <Modal visible={Boolean(negativeBalancePrompt)} transparent animationType="fade" onRequestClose={() => setNegativeBalancePrompt(null)}>
+        <View style={styles.negativeBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setNegativeBalancePrompt(null)} />
+          <View style={styles.negativeCard}>
+            <View style={styles.negativeIcon}><Ionicons name="warning-outline" size={22} color={C.gold} /></View>
+            <Text style={styles.negativeEyebrow}>{t('finance.expense')}</Text>
+            <Text style={styles.negativeTitle}>{t('finance.negativeBalanceTitle', { defaultValue: 'Balance will go below zero' })}</Text>
+            <Text style={styles.negativeCopy}>
+              {negativeBalancePrompt && t('finance.negativeBalanceMessage', {
+                defaultValue: 'This operation will leave {{account}} at {{amount}}. Do you want to continue?',
+                account: negativeBalancePrompt.account,
+                amount: negativeBalancePrompt.amount,
+              })}
+            </Text>
+            {negativeBalancePrompt && <Text style={styles.negativeAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{negativeBalancePrompt.amount}</Text>}
+            <View style={styles.negativeActions}>
+              <Pressable style={styles.negativeCancel} onPress={() => setNegativeBalancePrompt(null)}><Text style={styles.negativeCancelText}>{t('finance.cancel')}</Text></Pressable>
+              <Pressable style={styles.negativeConfirm} onPress={() => { const prompt = negativeBalancePrompt; setNegativeBalancePrompt(null); prompt?.onConfirm(); }}><Text style={styles.negativeConfirmText}>{t('finance.continueAction', { defaultValue: 'Continue' })}</Text></Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
       <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}>
         <View style={styles.drawerBackdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setDrawerOpen(false)} />
@@ -1031,7 +1048,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
 
             </ScrollView>
 
-            <Text style={styles.drawerPrivacy}>{t('finance.privacyCopy')}</Text>
+            {/* <Text style={styles.drawerPrivacy}>{t('finance.privacyCopy')}</Text> */}
           </SafeAreaView>
         </View>
       </Modal>
@@ -1303,8 +1320,8 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                   <Text style={styles.createEyebrow}>{selectedBudget?.name ?? t('finance.budgetAccount')}</Text>
                   <Text style={styles.entryTitle}>{t('finance.operationDetails', { defaultValue: 'OPERATION DETAILS' })}</Text>
                 </View>
-                <Pressable style={styles.entryClose} onPress={() => setSelectedTransaction(null)} accessibilityLabel={t('finance.cancel')}>
-                  <Text style={styles.entryCloseText}>x</Text>
+                <Pressable style={styles.entryClose} onPress={() => setSelectedTransaction(null)} accessibilityLabel={t('finance.close')}>
+                  <Ionicons name="close" size={19} color={C.goldLight} />
                 </Pressable>
               </View>
 
@@ -1327,11 +1344,11 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
               <View style={styles.detailActions}>
                 {!selectedTransaction.transaction.transferId && <Pressable style={[styles.detailAction, styles.detailEditAction]} onPress={() => { const current = selectedTransaction; setSelectedTransaction(null); openTransactionEditor(current.budgetId, current.transaction); }}>
                   <Ionicons name="create-outline" size={18} color={C.gold} />
-                  <Text style={styles.detailEditText}>{t('finance.editEntry')}</Text>
+                  <Text style={styles.detailEditText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{t('finance.editEntry')}</Text>
                 </Pressable>}
                 <Pressable style={[styles.detailAction, styles.detailDeleteAction]} onPress={() => { const current = selectedTransaction; setSelectedTransaction(null); removeTransaction(current.budgetId, current.transaction); }}>
                   <Ionicons name="trash-outline" size={18} color={C.red} />
-                  <Text style={styles.detailDeleteText}>{t('finance.deleteAction')}</Text>
+                  <Text style={styles.detailDeleteText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8}>{t('finance.deleteAction')}</Text>
                 </Pressable>
               </View>
             </ScrollView>
@@ -1426,11 +1443,11 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                   <KeyboardAvoidingView style={styles.categoryPickerBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
                     <Pressable style={StyleSheet.absoluteFill} onPress={() => setCategoryPickerOpen(false)} />
                     <View style={styles.categoryPickerSheet}>
-                      <View style={styles.categoryPickerHeader}><Text style={styles.categoryPickerTitle}>{t('finance.category')}</Text><Pressable style={styles.categoryPickerClose} onPress={() => setCategoryPickerOpen(false)} accessibilityLabel={t('finance.cancel')}><Ionicons name="close" size={18} color={C.goldLight} /></Pressable></View>
+                      <View style={styles.categoryPickerHeader}><Text style={styles.categoryPickerTitle}>{t('finance.category')}</Text><Pressable style={styles.categoryPickerClose} onPress={() => setCategoryPickerOpen(false)} accessibilityLabel={t('finance.close')}><Ionicons name="close" size={18} color={C.goldLight} /></Pressable></View>
                       <View style={styles.categorySearch}><Ionicons name="search-outline" size={17} color="rgba(255,244,208,0.4)" /><TextInput value={categoryQuery} onChangeText={setCategoryQuery} placeholder={t('finance.search', { defaultValue: 'Search categories' })} placeholderTextColor="rgba(255,244,208,0.3)" style={styles.categorySearchInput} autoFocus /></View>
                       <ScrollView style={styles.categoryPickerList} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
                         {filteredOperationCategories.map((category) => <Pressable key={category.id} style={[styles.categoryPickerRow, entryCategory === category.id && styles.categoryPickerRowActive]} onPress={() => { setEntryCategory(category.id); setCategoryPickerOpen(false); }}><View style={styles.categoryPickerRowIcon}><Ionicons name={category.icon as React.ComponentProps<typeof Ionicons>['name']} size={17} color={entryCategory === category.id ? C.goldLight : C.gold} /></View><Text style={[styles.categoryPickerRowText, entryCategory === category.id && styles.categoryPickerRowTextActive]}>{category.name ?? t(`finance.categories.${category.id}`, { defaultValue: category.id })}</Text>{entryCategory === category.id && <Ionicons name="checkmark" size={18} color={C.gold} />}</Pressable>)}
-                        {!filteredOperationCategories.length && <Text style={styles.categoryPickerEmpty}>{t('finance.noResults', { defaultValue: 'No categories found' })}</Text>}
+                        {!filteredOperationCategories.length && <Text style={styles.categoryPickerEmpty}>{t('finance.modules.noResults', { defaultValue: 'No categories found' })}</Text>}
                         <Pressable style={styles.categoryPickerAdd} onPress={() => { setCategoryPickerOpen(false); onOpenModule?.('categories'); }} accessibilityRole="button" accessibilityLabel={t('finance.addCategory')}><Ionicons name="add-circle-outline" size={18} color={C.gold} /><Text style={styles.categoryPickerAddText}>{t('finance.addCategory')}</Text></Pressable>
                       </ScrollView>
                     </View>
@@ -1620,6 +1637,18 @@ const styles = StyleSheet.create({
   exitCancelText: { color: C.gold, fontFamily: SANS, fontSize: 10, fontWeight: '700' },
   exitConfirm: { flex: 1, minHeight: 46, borderRadius: 13, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center' },
   exitConfirmText: { color: C.void, fontFamily: SANS, fontSize: 10, fontWeight: '800' },
+  negativeBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.76)' },
+  negativeCard: { width: '100%', maxWidth: 360, borderRadius: 24, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.38)', backgroundColor: '#0A0C14', padding: 22, alignItems: 'center' },
+  negativeIcon: { width: 48, height: 48, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.4)', backgroundColor: 'rgba(233,200,119,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
+  negativeEyebrow: { color: 'rgba(233,200,119,0.55)', fontFamily: SANS, fontSize: 8, fontWeight: '700', letterSpacing: 1.6 },
+  negativeTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 24, textAlign: 'center', marginTop: 6 },
+  negativeCopy: { color: 'rgba(255,244,208,0.58)', fontFamily: SANS, fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 10 },
+  negativeAmount: { color: C.red, fontFamily: SERIF, fontSize: 25, marginTop: 14, maxWidth: '100%' },
+  negativeActions: { width: '100%', flexDirection: 'row', gap: 9, marginTop: 21 },
+  negativeCancel: { flex: 1, minHeight: 48, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, alignItems: 'center', justifyContent: 'center' },
+  negativeCancelText: { color: C.gold, fontFamily: SANS, fontSize: 10, fontWeight: '700' },
+  negativeConfirm: { flex: 1, minHeight: 48, borderRadius: 14, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center' },
+  negativeConfirmText: { color: C.void, fontFamily: SANS, fontSize: 10, fontWeight: '800' },
   drawer: { width: '84%', height: '100%', backgroundColor: '#090B12', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.line, paddingHorizontal: 18 },
   drawerMenuScroll: { flex: 1 },
   drawerMenuContent: { paddingTop: 6, paddingBottom: 12 },
@@ -1755,11 +1784,11 @@ const styles = StyleSheet.create({
   detailLabel: { color: 'rgba(233,200,119,0.52)', fontFamily: SANS, fontSize: 8, letterSpacing: 1 },
   detailValue: { flex: 1, color: C.goldLight, fontFamily: SANS, fontSize: 10, textAlign: 'right' },
   detailActions: { flexDirection: 'row', gap: 9, marginTop: 20 },
-  detailAction: { flex: 1, minHeight: 48, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
+  detailAction: { flex: 1, minWidth: 0, minHeight: 48, paddingHorizontal: 9, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7 },
   detailEditAction: { borderColor: C.gold, backgroundColor: 'rgba(233,200,119,0.08)' },
   detailDeleteAction: { borderColor: 'rgba(240,139,136,0.55)', backgroundColor: 'rgba(240,139,136,0.07)' },
-  detailEditText: { color: C.gold, fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 0.7 },
-  detailDeleteText: { color: C.red, fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 0.7 },
+  detailEditText: { flexShrink: 1, color: C.gold, fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 0.7, textAlign: 'center' },
+  detailDeleteText: { flexShrink: 1, color: C.red, fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 0.7, textAlign: 'center' },
   saveButton: { height: 54, borderRadius: 17, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center', marginTop: 21 },
   saveButtonText: { color: C.void, fontFamily: SANS, fontSize: 10, fontWeight: '700', letterSpacing: 1.5 },
 });

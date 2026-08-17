@@ -70,6 +70,7 @@ npx.cmd expo export --platform android
 - `src/screens/StoreScreen.tsx` is the single Store entry point. Its left menu stays limited to Inventory, Employees, Clients, Services, Sales, and Settings.
 - The workspace switch is an icon-only action at the bottom of the right quick menu. Do not re-add a large text toggle to the left drawer.
 - Inventory uses a fixed search field for product name, key, and SKU. The floating `+` opens the single responsive product form directly; there is no add-method chooser or scanner flow.
-- Product fields include key, name, type, unit, purchase price, sale price, optional additional sale prices, optional picture URI, category, quantity, reserved quantity, stock minimum, optional expiration, and optional additional information.
+- Built-in store product categories use stable IDs and must always resolve their visible names through i18n. Whenever a category is added or renamed, update all six `translation_*.json` files and run `npm run check:i18n`; never ship a new category with a hardcoded display name.
+- Product fields include key, name, type, unit, purchase price, sale price, optional additional sale prices, optional picture URI, fallback icon, category, quantity, reserved quantity, stock minimum, optional expiration, and optional additional information. When a picture exists, show it in the product icon slot; otherwise show the selected icon.
 - Keep product stock derived from stock movements. Reserved quantity reduces sellable stock, services do not consume inventory, and cancelled sales restore product stock.
 - Keep all Store strings in the six locale files. Never add visible English-only labels or scanner/menu copy without updating every `translation_*.json` file.

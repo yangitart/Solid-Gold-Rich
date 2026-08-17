@@ -28,7 +28,15 @@ function completeTranslation(source: unknown) {
       ...(financeCompletion?.common ?? {}),
       pin: { ...(finance.pin as Record<string, unknown>), ...(financeCompletion?.pin ?? {}) },
       releaseImport: { ...(finance.releaseImport as Record<string, unknown>), ...(financeCompletion?.releaseImport ?? {}) },
-      store: { ...(finance.store as Record<string, unknown>), ...(completion?.store ?? {}), ...(storeMessages ?? {}) },
+      store: {
+        ...(finance.store as Record<string, unknown>),
+        ...(completion?.store ?? {}),
+        ...(storeMessages ?? {}),
+        errors: {
+          ...((finance.store as Record<string, unknown>)?.errors as Record<string, unknown> | undefined),
+          ...((completion?.store?.errors as Record<string, unknown> | undefined) ?? {}),
+        },
+      },
       storeFilters: { ...(finance.storeFilters as Record<string, unknown>), ...(completion?.filters ?? {}) },
     },
   };

@@ -28,7 +28,7 @@ export default function DateSelect({ label, value, onChange, firstDayOfWeek = 1,
     <Text style={styles.label}>{label}</Text>
     <Pressable style={styles.select} onPress={() => { setMonth(new Date(selected.getFullYear(), selected.getMonth(), 1)); setOpen(true); }} accessibilityRole="button" accessibilityLabel={label}>
       <Ionicons name="calendar-outline" size={18} color={C.gold} />
-      <Text style={[styles.value, !value && styles.emptyValue]}>{value ? selected.toLocaleDateString(language, { year: 'numeric', month: 'long', day: 'numeric' }) : (emptyLabel ?? t('finance.selectDate'))}</Text>
+      <Text style={[styles.value, !value && styles.emptyValue]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{value ? selected.toLocaleDateString(language, { year: 'numeric', month: 'long', day: 'numeric' }) : (emptyLabel ?? t('finance.selectDate'))}</Text>
       <Ionicons name="chevron-down-outline" size={17} color="rgba(255,244,208,0.42)" />
     </Pressable>
     <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
@@ -38,7 +38,7 @@ export default function DateSelect({ label, value, onChange, firstDayOfWeek = 1,
           <View style={styles.sheet}>
             <View style={styles.header}>
               <Pressable style={styles.iconButton} onPress={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() - 1, 1))} accessibilityLabel={t('finance.release.previousMonth')}><Ionicons name="chevron-back" size={20} color={C.gold} /></Pressable>
-              <Text style={styles.month}>{month.toLocaleDateString(language, { month: 'long', year: 'numeric' })}</Text>
+              <Text style={styles.month} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{month.toLocaleDateString(language, { month: 'long', year: 'numeric' })}</Text>
               <Pressable style={styles.iconButton} onPress={() => setMonth((current) => new Date(current.getFullYear(), current.getMonth() + 1, 1))} accessibilityLabel={t('finance.release.nextMonth')}><Ionicons name="chevron-forward" size={20} color={C.gold} /></Pressable>
             </View>
             <View style={styles.week}>{(firstDayOfWeek === 1 ? ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] : ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat']).map((day) => <Text key={day} style={styles.weekday}>{t(`finance.weekdays.${day}`)}</Text>)}</View>

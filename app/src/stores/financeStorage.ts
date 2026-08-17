@@ -31,6 +31,18 @@ const LEGACY_BUDGET_KEY = '@solid-gold/monthly-budget';
 const LEGACY_DEFAULT_LIMIT = 2500;
 
 export const DEFAULT_COLORS = ['#E9C877', '#B7AD84', '#80B9FF', '#D99BEF', '#F08B88'];
+export const DEFAULT_STORE_CATEGORIES: StoreCategory[] = [
+  { id: 'general', name: 'General', builtIn: true },
+  { id: 'food', name: 'Food', builtIn: true },
+  { id: 'beverages', name: 'Beverages', builtIn: true },
+  { id: 'cleaning', name: 'Cleaning', builtIn: true },
+  { id: 'personal-care', name: 'Personal care', builtIn: true },
+  { id: 'electronics', name: 'Electronics', builtIn: true },
+  { id: 'clothing', name: 'Clothing', builtIn: true },
+  { id: 'home', name: 'Home', builtIn: true },
+  { id: 'office', name: 'Office', builtIn: true },
+  { id: 'services', name: 'Services', builtIn: true },
+];
 export const DEFAULT_CATEGORIES: FinanceCategories = {
   expense: [
     { id: 'food', icon: 'restaurant-outline' },
@@ -53,7 +65,7 @@ export const DEFAULT_CATEGORIES: FinanceCategories = {
 export const emptyStoreState = (): StoreState => ({
   name: '',
   currency: 'USD',
-  categories: [{ id: 'general', name: 'General', builtIn: true }],
+  categories: DEFAULT_STORE_CATEGORIES.map((category) => ({ ...category })),
   businessAccount: { id: 'store-business', name: 'Business', currency: 'USD', balance: 0 },
   cashMovements: [],
   employees: [],
@@ -176,8 +188,9 @@ function slug(value: string, fallback: string) {
 function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState {
   const source = value && typeof value === 'object' ? value as Partial<StoreState> & Record<string, unknown> : {};
   const rawCategories: unknown[] = Array.isArray(source.categories) ? source.categories as unknown[] : [];
-  const categories: StoreCategory[] = [];
+  const categories: StoreCategory[] = DEFAULT_STORE_CATEGORIES.map((category) => ({ ...category }));
   const usedCategoryIds = new Set<string>();
+  DEFAULT_STORE_CATEGORIES.forEach((category) => usedCategoryIds.add(category.id));
   const addCategory = (category: StoreCategory) => {
     let id = category.id || 'category';
     let suffix = 2;
@@ -185,12 +198,12 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
     usedCategoryIds.add(id);
     categories.push({ ...category, id });
   };
-  addCategory({ id: 'general', name: 'General', builtIn: true });
   rawCategories.forEach((raw, index) => {
     const record = raw && typeof raw === 'object' ? raw as Record<string, unknown> : null;
     const name = typeof raw === 'string' ? raw.trim() : text(record?.name).trim();
     if (!name || name.toLocaleLowerCase() === 'general') return;
     const requestedId = text(record?.id).trim() || slug(name, `category-${index + 1}`);
+    if (DEFAULT_STORE_CATEGORIES.some((category) => category.id === requestedId)) return;
     addCategory({ id: requestedId, name, builtIn: Boolean(record?.builtIn) });
   });
   const categoryIdFor = (rawId: unknown, rawName: unknown) => {
@@ -217,6 +230,7 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       purchasePrice: Math.max(0, purchasePrice),
       additionalSalePrices: Array.isArray(rawAdditionalPrices) ? rawAdditionalPrices.map((price) => number(price)).filter((price) => price >= 0) : [],
       picture: text(item.picture) || undefined,
+      icon: text(item.icon) || undefined,
       initialStock: Math.max(0, number(item.initialStock)),
       reservedQuantity: Math.max(0, number(item.reservedQuantity)),
       stockMinimum: Math.max(0, number(item.stockMinimum)),

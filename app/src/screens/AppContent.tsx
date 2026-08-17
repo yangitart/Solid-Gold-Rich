@@ -49,7 +49,7 @@ export function AppContent() {
       const file = new File(Paths.cache, `solid-gold-rich-backup-${new Date().toISOString().slice(0, 10)}.json`);
       file.create({ overwrite: true });
       file.write(JSON.stringify(state, null, 2));
-      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: t('finance.releaseImport.exportJson') });
+      if (await Sharing.isAvailableAsync()) await Sharing.shareAsync(file.uri, { mimeType: 'application/json', dialogTitle: t('finance.releaseExtra.exportJson') });
     } catch {
       Alert.alert(t('finance.releaseImport.exportFailed'), t('finance.releaseImport.exportFailedCopy'));
     }
@@ -209,9 +209,9 @@ export function AppContent() {
                 <Pressable
                   style={styles.bannerExport}
                   onPress={() => void exportEmergencyBackup()}
-                  accessibilityLabel={t('finance.releaseImport.exportJson')}
+                  accessibilityLabel={t('finance.releaseExtra.exportJson')}
                 >
-                  <Text style={styles.bannerExportText}>{t('finance.releaseImport.exportJson')}</Text>
+                  <Text style={styles.bannerExportText}>{t('finance.releaseExtra.exportJson')}</Text>
                 </Pressable>
               </View>
             )}

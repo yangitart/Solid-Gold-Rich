@@ -214,6 +214,7 @@ export type StoreProduct = {
   purchasePrice: number;
   additionalSalePrices: number[];
   picture?: string;
+  icon?: string;
   initialStock: number;
   reservedQuantity: number;
   stockMinimum: number;
