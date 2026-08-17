@@ -10,7 +10,7 @@
 ## Alcance y estructura
 
 - Esta carpeta contiene una app Expo/React Native con Expo Router, orientada principalmente a Android.
-- La entrada de la app es `app/index.tsx`; el layout raíz está en `app/_layout.tsx`.
+- La entrada nativa de la app es `index.js`, registrada con `registerRootComponent`; no usa Expo Router ni rutas web.
 - `src/screens/AppRoot.tsx` coordina la pantalla de carga (`BootScreen`) y el panel principal (`RichScreen`).
 - La composicion visual de `RichScreen` es estable y no debe redisenarse sin peticion explicita; las funciones nuevas se abren desde los accesos del encabezado en `src/screens/FinanceModulesScreen.tsx`.
 - `FinanceProvider` mantiene el modelo financiero versionado para cuentas, transferencias, presupuestos, recurrentes, deudas, ahorros, recordatorios, notas y respaldos locales.
@@ -45,7 +45,7 @@
 
 - La app debe mantenerse ligera; objetivo del usuario: APK menor de 20 MB.
 - No agregar una dependencia si React Native, Expo o el código actual pueden resolverlo razonablemente.
-- `expo-constants` y `expo-linking` parecen indirectas, pero deben permanecer porque son peer dependencies obligatorias de `expo-router`.
+- No agregar `react-dom`, `react-native-web`, Expo Router ni archivos/configuración web salvo petición explícita; la app de producción es Android nativa.
 - Evitar dependencias web, imágenes pesadas y fuentes empaquetadas innecesarias.
 - Después de cambiar dependencias, ejecutar Expo Doctor y comprobar el bundle Android.
 

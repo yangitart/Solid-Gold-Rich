@@ -36,13 +36,7 @@
       "backgroundColor": "#04050A",
       "barStyle": "light-content"
     },
-    "web": {
-      "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/iconapp-playstore-rounded-final.png"
-    },
     "plugins": [
-      "expo-router",
       [
         "expo-splash-screen",
         {
@@ -54,11 +48,7 @@
       ],
       "expo-localization"
     ],
-    "experiments": {
-      "typedRoutes": true
-    },
     "extra": {
-      "router": {},
       "eas": {
         "projectId": "6c97965e-d56f-420e-b83c-ecea6cf66ed7"
       }
