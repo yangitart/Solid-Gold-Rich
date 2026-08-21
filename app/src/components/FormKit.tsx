@@ -2,7 +2,7 @@ import React from 'react';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { C, SANS, SERIF } from '../theme/luxury';
+import { C, SANS, SERIF, createThemeStyles } from '../theme/luxury';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -10,8 +10,8 @@ export type SelectOption = { value: string; label: string; icon?: IconName; desc
 
 export function ResponsiveSheet({ visible, title, onClose, children, closeLabel, footer }: { visible: boolean; title: string; onClose: () => void; children: React.ReactNode; closeLabel: string; footer?: React.ReactNode }) {
   const tablet = useWindowDimensions().width >= 700;
-  return <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose} statusBarTranslucent>
-    <KeyboardAvoidingView style={[styles.backdrop, tablet && styles.tabletBackdrop]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+  return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
+    <KeyboardAvoidingView style={[styles.backdrop, tablet && styles.tabletBackdrop]} behavior="padding" enabled={Platform.OS === 'ios'}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel={closeLabel} />
       <SafeAreaView style={[styles.sheet, tablet && styles.tabletSheet]} edges={['bottom']}>
         <View style={styles.handle} />
@@ -24,11 +24,17 @@ export function ResponsiveSheet({ visible, title, onClose, children, closeLabel,
 }
 
 export function FormField({ label, value, onChangeText, placeholder, error, required, numeric, multiline, editable = true }: { label: string; value: string; onChangeText: (value: string) => void; placeholder?: string; error?: string; required?: boolean; numeric?: boolean; multiline?: boolean; editable?: boolean }) {
+  const handleChange = (raw: string) => {
+    if (!numeric) { onChangeText(raw); return; }
+    const cleaned = raw.replace(/,/g, '.').replace(/[^0-9.]/g, '');
+    const [whole, ...decimals] = cleaned.split('.');
+    onChangeText(decimals.length ? `${whole}.${decimals.join('')}` : cleaned);
+  };
   return <View style={styles.field}>
     <Text style={styles.label} numberOfLines={2}>{label}{required ? <Text style={styles.required}> *</Text> : null}</Text>
     <TextInput
       value={value}
-      onChangeText={onChangeText}
+      onChangeText={handleChange}
       placeholder={placeholder}
       placeholderTextColor="rgba(255,244,208,0.28)"
       keyboardType={numeric ? 'decimal-pad' : 'default'}
@@ -60,7 +66,7 @@ export function SearchableSelect({ label, value, options, onChange, placeholder,
     <Pressable style={[styles.select, disabled && styles.disabledInput, Boolean(error) && styles.inputError]} onPress={() => !disabled && setOpen(true)} disabled={disabled} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }}><View style={styles.selectCopy}>{selected?.icon ? <Ionicons name={selected.icon} size={18} color={C.gold} /> : null}<Text style={[styles.selectText, !selected && styles.placeholder]} numberOfLines={1}>{selected?.label ?? placeholder}</Text></View><Ionicons name="chevron-down" size={17} color="rgba(255,244,208,0.42)" /></Pressable>
     {error ? <Text style={styles.error} numberOfLines={2}>{error}</Text> : null}
     <ResponsiveSheet visible={open} title={label} onClose={close} closeLabel={closeLabel}>
-      <View style={styles.search}><Ionicons name="search-outline" size={18} color="rgba(255,244,208,0.42)" /><TextInput value={query} onChangeText={setQuery} placeholder={searchPlaceholder} placeholderTextColor="rgba(255,244,208,0.28)" style={styles.searchInput} accessibilityLabel={searchPlaceholder} autoFocus /></View>
+      <View style={styles.search}><Ionicons name="search-outline" size={18} color="rgba(255,244,208,0.42)" /><TextInput value={query} onChangeText={setQuery} placeholder={searchPlaceholder} placeholderTextColor="rgba(255,244,208,0.28)" style={styles.searchInput} accessibilityLabel={searchPlaceholder} /></View>
       <View style={styles.options}>{visible.map((option) => {
         const active = value === option.value;
         return <Pressable key={option.value} style={[styles.option, active && styles.optionActive]} onPress={() => { onChange(option.value); close(); }} accessibilityRole="radio" accessibilityState={{ selected: active }}>{option.icon ? <View style={styles.optionIcon}><Ionicons name={option.icon} size={18} color={active ? C.goldLight : C.gold} /></View> : null}<View style={styles.optionCopy}><Text style={styles.optionLabel} numberOfLines={2}>{option.label}</Text>{option.description ? <Text style={styles.optionDescription} numberOfLines={2}>{option.description}</Text> : null}</View><View style={[styles.check, active && styles.checkActive]}>{active ? <Ionicons name="checkmark" size={14} color={C.void} /> : null}</View></Pressable>;
@@ -73,7 +79,7 @@ export function FormActions({ cancelLabel, saveLabel, onCancel, onSave, disabled
   return <View style={styles.actions}>{destructiveLabel && onDestructive ? <Pressable style={styles.destructive} onPress={onDestructive} accessibilityRole="button"><Text style={styles.destructiveText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{destructiveLabel}</Text></Pressable> : null}<View style={styles.actionRow}>{cancelLabel && onCancel ? <Pressable style={styles.cancel} onPress={onCancel} accessibilityRole="button"><Text style={styles.cancelText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{cancelLabel}</Text></Pressable> : null}<Pressable style={[styles.save, compact && styles.saveCompact, !cancelLabel && styles.saveFull, disabled && styles.saveDisabled]} onPress={onSave} disabled={disabled} accessibilityRole="button" accessibilityState={{ disabled }}><Text style={styles.saveText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{saveLabel}</Text></Pressable></View></View>;
 }
 
-const styles = StyleSheet.create({
+const styles = createThemeStyles((C) => StyleSheet.create({
   backdrop: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.72)' },
   tabletBackdrop: { justifyContent: 'center', padding: 28 },
   sheet: { width: '100%', maxWidth: 620, maxHeight: '94%', backgroundColor: '#0A0C14', borderTopLeftRadius: 20, borderTopRightRadius: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.16)', overflow: 'hidden' },
@@ -125,4 +131,4 @@ const styles = StyleSheet.create({
   saveText: { color: C.void, fontFamily: SANS, fontSize: 11, fontWeight: '800' },
   destructive: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   destructiveText: { color: '#F08B88', fontFamily: SANS, fontSize: 10, fontWeight: '700' },
-});
+}));

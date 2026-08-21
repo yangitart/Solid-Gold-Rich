@@ -1,6 +1,12 @@
 import type { Account, Budget, FinanceState, RecurringFrequency, RecurringTransaction, Transaction, Transfer } from '../../core/finance/types';
+import { captureCurrencySnapshot, type CurrencyRates } from '../../core/finance/currency';
 
 export type DateRange = { start: Date; end: Date };
+export type FinanceActivityFilter = 'all' | 'expense' | 'income' | 'transfer';
+
+function normalizedSearch(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim();
+}
 
 export function accountBalance(state: Pick<FinanceState, 'accounts' | 'transactions'>, accountId: string) {
   const account = state.accounts.find((item) => item.id === accountId);
@@ -21,6 +27,25 @@ export function isTransferTransaction(item: Transaction) {
 
 export function isCashFlowTransaction(item: Transaction) {
   return item.status !== 'void' && !isTransferTransaction(item) && (item.kind === 'expense' || item.kind === 'income');
+}
+
+export function transactionMatchesActivityFilter(item: Transaction, filter: FinanceActivityFilter) {
+  if (filter === 'all') return true;
+  if (filter === 'transfer') return isTransferTransaction(item);
+  return !isTransferTransaction(item) && item.kind === filter;
+}
+
+export function filterActivityTransactions(
+  transactions: Transaction[],
+  options: { filter: FinanceActivityFilter; category: string; query: string; categoryLabels?: Record<string, string>; accountNames?: Record<string, string> },
+) {
+  const query = normalizedSearch(options.query);
+  return transactions.filter((item) => {
+    if (item.status === 'void' || !transactionMatchesActivityFilter(item, options.filter) || (options.category !== 'all' && item.category !== options.category)) return false;
+    if (!query) return true;
+    const searchable = normalizedSearch(`${item.payee} ${item.description} ${item.category} ${options.categoryLabels?.[item.category] ?? ''} ${options.accountNames?.[item.accountId] ?? ''} ${item.amount} ${item.currency} ${item.paymentMethod} ${item.reference} ${item.date}`);
+    return searchable.includes(query);
+  });
 }
 
 export function periodBounds(period: 'today' | 'week' | 'month' | 'year', reference = new Date(), firstDayOfWeek: 0 | 1 = 1): DateRange {
@@ -77,7 +102,7 @@ export function advanceRecurringDate(date: string, frequency: RecurringFrequency
   return next.toISOString();
 }
 
-function generatedTransaction(item: RecurringTransaction, occurrence: string, id: string): Transaction {
+function generatedTransaction(item: RecurringTransaction, occurrence: string, id: string, baseCurrency?: string, rates?: CurrencyRates): Transaction {
   return {
     id,
     accountId: item.accountId,
@@ -92,6 +117,7 @@ function generatedTransaction(item: RecurringTransaction, occurrence: string, id
     reference: item.id,
     description: item.description,
     recurringId: item.id,
+    ...(baseCurrency && rates ? captureCurrencySnapshot(item.amount, item.currency, baseCurrency, rates) : {}),
   };
 }
 
@@ -100,6 +126,8 @@ export function generateDueRecurring(
   transactions: Transaction[],
   now: Date,
   createId: () => string,
+  baseCurrency?: string,
+  rates?: CurrencyRates,
 ) {
   const existing = new Set(transactions.filter((item) => item.recurringId).map((item) => `${item.recurringId}|${item.date}`));
   const generated: Transaction[] = [];
@@ -112,7 +140,7 @@ export function generateDueRecurring(
     while (new Date(occurrence).getTime() <= now.getTime() && safety < 3660) {
       const key = `${item.id}|${occurrence}`;
       if (!existing.has(key)) {
-        generated.push(generatedTransaction(item, occurrence, createId()));
+        generated.push(generatedTransaction(item, occurrence, createId(), baseCurrency, rates));
         existing.add(key);
       }
       lastGeneratedDate = occurrence;
@@ -135,9 +163,11 @@ export function removeTransfer(state: FinanceState, transferId: string) {
   const goals = state.savingsGoals.map((goal) => {
     const removed = goal.contributions.filter((item) => item.transferId === transferId);
     if (!removed.length) return goal;
+    const balance = Math.max(0, goal.balance - removed.reduce((total, item) => total + item.amount, 0));
     return {
       ...goal,
-      balance: Math.max(0, goal.balance - removed.reduce((total, item) => total + item.amount, 0)),
+      balance,
+      active: balance < goal.targetAmount,
       contributions: goal.contributions.filter((item) => item.transferId !== transferId),
     };
   });
@@ -157,9 +187,11 @@ export function removeTransaction(state: FinanceState, transactionId: string) {
   const debts = state.debts.map((debt) => {
     const payment = debt.payments.find((item) => item.transactionId === transactionId);
     if (!payment) return debt;
+    const balance = Math.min(debt.originalAmount, debt.balance + payment.amount);
     return {
       ...debt,
-      balance: Math.min(debt.originalAmount, debt.balance + payment.amount),
+      balance,
+      active: balance > 0,
       payments: debt.payments.filter((item) => item.transactionId !== transactionId),
     };
   });
@@ -177,12 +209,13 @@ export function transferTouchesStore(transfer: Transfer) {
 export function recordDebtPayment(state: FinanceState, input: { debtId: string; accountId: string; amount: number; accountAmount: number; date: string; transactionId: string; paymentId: string }) {
   const debt = state.debts.find((item) => item.id === input.debtId);
   const account = state.accounts.find((item) => item.id === input.accountId && !item.archived);
-  if (!debt || !account || input.amount <= 0 || input.accountAmount <= 0 || input.amount > debt.balance) return state;
+  if (!debt || !account || account.type === 'debt' || !Number.isFinite(input.amount) || !Number.isFinite(input.accountAmount) || input.amount <= 0 || input.accountAmount <= 0 || input.amount > debt.balance) return state;
   if (state.transactions.some((item) => item.id === input.transactionId) || debt.payments.some((item) => item.id === input.paymentId)) return state;
   const transaction: Transaction = {
     id: input.transactionId, accountId: account.id, kind: 'expense', amount: input.accountAmount, currency: account.currency,
-    date: input.date, payee: debt.name, category: 'other', paymentMethod: 'bank', status: 'cleared', reference: debt.id,
+    date: input.date, payee: debt.name, category: 'other', paymentMethod: account.type === 'cash' || account.type === 'card' || account.type === 'bank' ? account.type : 'other', status: 'cleared', reference: debt.id,
     description: debt.creditor, debtId: debt.id,
+    ...captureCurrencySnapshot(input.accountAmount, account.currency, state.settings.preferredCurrency, state.settings.exchangeRates ?? { USD: 1 }),
   };
   return {
     ...state,
@@ -198,14 +231,14 @@ export function recordSavingsContribution(state: FinanceState, input: { goalId: 
   const goal = state.savingsGoals.find((item) => item.id === input.goalId);
   const source = state.accounts.find((item) => item.id === input.sourceAccountId && !item.archived);
   const destination = state.accounts.find((item) => item.id === input.destinationAccountId && !item.archived);
-  if (!goal || !source || !destination || source.id === destination.id || input.amount <= 0 || input.sourceAmount <= 0 || input.amount > goal.targetAmount - goal.balance) return state;
+  if (!goal || !source || !destination || source.type === 'debt' || destination.type === 'debt' || source.id === destination.id || !Number.isFinite(input.amount) || !Number.isFinite(input.sourceAmount) || input.amount <= 0 || input.sourceAmount <= 0 || input.amount > goal.targetAmount - goal.balance) return state;
   if (state.transfers.some((item) => item.id === input.transferId) || goal.contributions.some((item) => item.id === input.contributionId)) return state;
   const transfer: Transfer = {
     id: input.transferId, fromAccountId: source.id, toAccountId: destination.id, fromAmount: input.sourceAmount, toAmount: input.amount,
     fromCurrency: source.currency, toCurrency: destination.currency, rate: input.amount / input.sourceAmount, fee: 0, date: input.date, note: goal.name, status: 'cleared',
   };
-  const outgoing: Transaction = { id: `${input.transferId}-out`, accountId: source.id, kind: 'transfer', amount: input.sourceAmount, currency: source.currency, date: input.date, payee: goal.name, category: 'transfer', paymentMethod: 'transfer', status: 'cleared', reference: input.transferId, description: goal.name, transferId: input.transferId, savingsGoalId: goal.id };
-  const incoming: Transaction = { id: `${input.transferId}-in`, accountId: destination.id, kind: 'income', amount: input.amount, currency: destination.currency, date: input.date, payee: goal.name, category: 'transfer', paymentMethod: 'transfer', status: 'cleared', reference: input.transferId, description: goal.name, transferId: input.transferId, savingsGoalId: goal.id };
+  const outgoing: Transaction = { id: `${input.transferId}-out`, accountId: source.id, kind: 'transfer', amount: input.sourceAmount, currency: source.currency, date: input.date, payee: goal.name, category: 'transfer', paymentMethod: 'transfer', status: 'cleared', reference: input.transferId, description: goal.name, transferId: input.transferId, savingsGoalId: goal.id, ...captureCurrencySnapshot(input.sourceAmount, source.currency, state.settings.preferredCurrency, state.settings.exchangeRates ?? { USD: 1 }) };
+  const incoming: Transaction = { id: `${input.transferId}-in`, accountId: destination.id, kind: 'income', amount: input.amount, currency: destination.currency, date: input.date, payee: goal.name, category: 'transfer', paymentMethod: 'transfer', status: 'cleared', reference: input.transferId, description: goal.name, transferId: input.transferId, savingsGoalId: goal.id, ...captureCurrencySnapshot(input.amount, destination.currency, state.settings.preferredCurrency, state.settings.exchangeRates ?? { USD: 1 }) };
   const balance = goal.balance + input.amount;
   return {
     ...state,

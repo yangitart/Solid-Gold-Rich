@@ -16,7 +16,15 @@ function completeTranslation(root) {
       ...(financeCompletion?.common ?? {}),
       pin: { ...(finance.pin ?? {}), ...(financeCompletion?.pin ?? {}) },
       releaseImport: { ...(finance.releaseImport ?? {}), ...(financeCompletion?.releaseImport ?? {}) },
-      store: { ...(finance.store ?? {}), ...(storeCompletion?.store ?? {}), ...(finance.storeMessages ?? {}) },
+      store: {
+        ...(finance.store ?? {}),
+        ...(storeCompletion?.store ?? {}),
+        ...(finance.storeMessages ?? {}),
+        errors: {
+          ...(finance.store?.errors ?? {}),
+          ...(storeCompletion?.store?.errors ?? {}),
+        },
+      },
       storeFilters: { ...(finance.storeFilters ?? {}), ...(storeCompletion?.filters ?? {}) },
     },
   };
