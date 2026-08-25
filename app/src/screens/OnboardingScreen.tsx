@@ -4,7 +4,7 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { C, SANS, SERIF } from '../theme/luxury';
+import { C, SANS, SERIF, createThemeStyles } from '../theme/luxury';
 import { useFinance } from '../stores/FinanceContext';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
@@ -109,11 +109,11 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
         </Pressable>
       </View>
       <Modal visible={currencyPickerOpen} transparent animationType="fade" onRequestClose={() => setCurrencyPickerOpen(false)}>
-        <KeyboardAvoidingView style={styles.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.modalBackdrop} behavior="padding" enabled={Platform.OS === 'ios'}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setCurrencyPickerOpen(false)} />
           <View style={styles.currencySheet}>
             <View style={styles.currencyHeader}><Text style={styles.currencyTitle}>{t('app.onboarding.currency.select')}</Text><Pressable style={styles.closeButton} onPress={() => setCurrencyPickerOpen(false)} accessibilityLabel={t('app.onboarding.currency.close')}><Ionicons name="close" size={18} color={C.goldLight} /></Pressable></View>
-            <View style={styles.currencySearch}><Ionicons name="search-outline" size={17} color="rgba(255,244,208,0.4)" /><TextInput value={currencyQuery} onChangeText={setCurrencyQuery} autoCapitalize="characters" autoCorrect={false} placeholder={t('app.onboarding.currency.search')} placeholderTextColor="rgba(255,244,208,0.3)" style={styles.currencySearchInput} /></View>
+            <View style={styles.currencySearch}><Ionicons name="search-outline" size={17} color={C.textSubtle} /><TextInput value={currencyQuery} onChangeText={setCurrencyQuery} autoCapitalize="characters" autoCorrect={false} placeholder={t('app.onboarding.currency.search')} placeholderTextColor={C.textSubtle} style={styles.currencySearchInput} /></View>
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>{filteredCurrencies.map((item) => <Pressable key={item} style={[styles.currencyOption, currency === item && styles.currencyOptionActive]} onPress={() => { setCurrency(item); setCurrencyPickerOpen(false); }}><Text style={styles.currencyOptionText}>{item}</Text>{currency === item && <Ionicons name="checkmark" size={18} color={C.gold} />}</Pressable>)}</ScrollView>
           </View>
         </KeyboardAvoidingView>
@@ -122,7 +122,7 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemeStyles((C) => StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(4,5,10,0.9)' },
   topBar: { height: 62, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center' },
   brandMark: { width: 23, height: 23, alignItems: 'center', justifyContent: 'center', marginRight: 9 },
@@ -154,7 +154,7 @@ const styles = StyleSheet.create({
   currencyHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   currencyTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 22 },
   closeButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: 'rgba(255,255,255,0.07)', alignItems: 'center', justifyContent: 'center' },
-  currencySearch: { height: 44, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.055)', paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 12 },
+  currencySearch: { height: 44, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8, marginVertical: 12 },
   currencySearchInput: { flex: 1, height: 43, color: C.goldLight, fontFamily: SANS, fontSize: 12, paddingVertical: 0 },
   currencyOption: { minHeight: 50, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)', paddingHorizontal: 5, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   currencyOptionActive: { backgroundColor: 'rgba(233,200,119,0.06)' },
@@ -165,4 +165,4 @@ const styles = StyleSheet.create({
   dotActive: { width: 22, backgroundColor: C.gold },
   continueButton: { width: '100%', minHeight: 52, borderRadius: 17, backgroundColor: C.gold, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9 },
   continueText: { color: C.void, fontFamily: SANS, fontSize: 10, fontWeight: '800', letterSpacing: 1.1 },
-});
+}));

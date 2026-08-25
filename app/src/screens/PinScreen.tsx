@@ -2,7 +2,7 @@ import React from 'react';
 import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTranslation } from 'react-i18next';
-import { C, SANS, SERIF } from '../theme/luxury';
+import { C, SANS, SERIF, createThemeStyles } from '../theme/luxury';
 import { hashPin } from '../core/pin';
 
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', 'back', '0', 'submit'] as const;
@@ -53,7 +53,7 @@ export default function PinScreen({ pinHash, onUnlock }: { pinHash: string; onUn
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemeStyles((C) => StyleSheet.create({
   safe: { flex: 1 },
   content: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
   lockIcon: { width: 64, height: 64, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center', marginBottom: 22 },
@@ -66,4 +66,4 @@ const styles = StyleSheet.create({
   keypad: { width: '100%', maxWidth: 310, flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 12, marginTop: 24 },
   key: { width: 78, height: 58, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', alignItems: 'center', justifyContent: 'center' },
   keyText: { color: C.goldLight, fontFamily: SERIF, fontSize: 23 },
-});
+}));

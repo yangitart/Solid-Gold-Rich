@@ -14,6 +14,7 @@ import type {
 } from '../core/finance/types';
 import { emptyFinanceState, importCsv, loadFinanceState, normalizeFinanceState, saveFinanceState } from './financeStorage';
 import { generateDueRecurring, removeTransaction, removeTransfer, withStoreBalance } from '../domain/finance/financeDomain';
+import { captureCurrencySnapshot } from '../core/finance/currency';
 
 export type PersistenceStatus = 'loading' | 'ready' | 'saving' | 'error';
 export type PersistenceErrorPhase = 'load' | 'save' | null;
@@ -133,7 +134,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     const due = state.recurring.filter((item) => item.active && new Date(item.nextDate).getTime() <= Date.now());
     if (!due.length) return;
     setState((current) => {
-      const generated = generateDueRecurring(current.recurring, current.transactions, new Date(), () => newId('recurring'));
+      const generated = generateDueRecurring(current.recurring, current.transactions, new Date(), () => newId('recurring'), current.settings.preferredCurrency, current.settings.exchangeRates ?? { USD: 1 });
       return { ...current, recurring: generated.recurring, transactions: generated.transactions };
     });
   }, [loaded, state.recurring]);
@@ -150,8 +151,20 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
     return { ...current, accounts, settings: { ...current.settings, activeAccountId: nextActive } };
   }), [updateState]);
   const restoreAccount = React.useCallback((id: string) => updateState((current) => ({ ...current, accounts: current.accounts.map((item) => item.id === id ? { ...item, archived: false } : item), settings: { ...current.settings, activeAccountId: current.accounts.some((item) => item.id === current.settings.activeAccountId && !item.archived) ? current.settings.activeAccountId : id } })), [updateState]);
-  const addTransaction = React.useCallback((transaction: Transaction) => updateState((current) => ({ ...current, transactions: [transaction, ...current.transactions] })), [updateState]);
-  const updateTransaction = React.useCallback((transaction: Transaction) => updateState((current) => ({ ...current, transactions: replaceById(current.transactions, transaction) })), [updateState]);
+  const addTransaction = React.useCallback((transaction: Transaction) => updateState((current) => ({
+    ...current,
+    transactions: [{ ...transaction, ...captureCurrencySnapshot(transaction.amount, transaction.currency, current.settings.preferredCurrency, current.settings.exchangeRates ?? { USD: 1 }) }, ...current.transactions],
+  })), [updateState]);
+  const updateTransaction = React.useCallback((transaction: Transaction) => updateState((current) => {
+    const previous = current.transactions.find((item) => item.id === transaction.id);
+    const previousHistoricalRate = previous && previous.currency === transaction.currency && previous.amount > 0 && Number.isFinite(previous.baseAmount) && previous.baseCurrency
+      ? (previous.baseAmount as number) / previous.amount
+      : undefined;
+    const snapshot = previousHistoricalRate !== undefined
+      ? { baseAmount: transaction.amount * previousHistoricalRate, baseCurrency: previous?.baseCurrency }
+      : captureCurrencySnapshot(transaction.amount, transaction.currency, current.settings.preferredCurrency, current.settings.exchangeRates ?? { USD: 1 });
+    return { ...current, transactions: replaceById(current.transactions, { ...transaction, ...snapshot }) };
+  }), [updateState]);
   const deleteTransaction = React.useCallback((id: string) => updateState((current) => removeTransaction(current, id)), [updateState]);
   const addTransfer = React.useCallback((transfer: Transfer) => {
     updateState((current) => {
@@ -161,11 +174,13 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
         id: `${transfer.id}-out`, accountId: transfer.fromAccountId, kind: 'transfer', amount: transfer.fromAmount + transfer.fee,
         currency: transfer.fromCurrency, date: transfer.date, payee: '', category: 'transfer',
         paymentMethod: 'transfer', status: transfer.status, reference: transfer.id, description: transfer.note, transferId: transfer.id,
+        ...captureCurrencySnapshot(transfer.fromAmount + transfer.fee, transfer.fromCurrency, current.settings.preferredCurrency, current.settings.exchangeRates ?? { USD: 1 }),
       };
       const toTransaction: Transaction | null = isStoreTarget ? null : {
         id: `${transfer.id}-in`, accountId: transfer.toAccountId, kind: 'income', amount: transfer.toAmount,
         currency: transfer.toCurrency, date: transfer.date, payee: '', category: 'transfer',
         paymentMethod: 'transfer', status: transfer.status, reference: transfer.id, description: transfer.note, transferId: transfer.id,
+        ...captureCurrencySnapshot(transfer.toAmount, transfer.toCurrency, current.settings.preferredCurrency, current.settings.exchangeRates ?? { USD: 1 }),
       };
       const cashMovement = isStoreTarget || isStoreSource ? {
         id: `${transfer.id}-store-cash`,
@@ -224,7 +239,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   const importJson = React.useCallback((json: string) => {
     try {
       const parsed = JSON.parse(json) as FinanceState;
-      if (!parsed || ![2, 3, 4, 5].includes(Number(parsed.schemaVersion)) || !Array.isArray(parsed.accounts) || !Array.isArray(parsed.transactions)) return false;
+      if (!parsed || ![2, 3, 4, 5, 6, 7].includes(Number(parsed.schemaVersion)) || !Array.isArray(parsed.accounts) || !Array.isArray(parsed.transactions)) return false;
       setState(normalizeFinanceState(parsed));
       return true;
     } catch {
@@ -235,7 +250,7 @@ export function FinanceProvider({ children }: { children: React.ReactNode }) {
   const importCsvText = React.useCallback((csv: string, accountId: string) => {
     const account = state.accounts.find((item) => item.id === accountId);
     const result = importCsv(csv, accountId, account?.currency ?? state.settings.preferredCurrency);
-    if (result.items.length) updateState((current) => ({ ...current, transactions: [...result.items, ...current.transactions] }));
+    if (result.items.length) updateState((current) => ({ ...current, transactions: [...result.items.map((item) => ({ ...item, ...captureCurrencySnapshot(item.amount, item.currency, current.settings.preferredCurrency, current.settings.exchangeRates ?? { USD: 1 }) })), ...current.transactions] }));
     return result.errors;
   }, [state.accounts, state.settings.preferredCurrency, updateState]);
 

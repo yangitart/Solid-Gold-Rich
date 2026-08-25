@@ -36,7 +36,7 @@ export function FormField({ label, value, onChangeText, placeholder, error, requ
       value={value}
       onChangeText={handleChange}
       placeholder={placeholder}
-      placeholderTextColor="rgba(255,244,208,0.28)"
+      placeholderTextColor={C.textSubtle}
       keyboardType={numeric ? 'decimal-pad' : 'default'}
       multiline={multiline}
       editable={editable}
@@ -63,10 +63,10 @@ export function SearchableSelect({ label, value, options, onChange, placeholder,
   const close = () => { setOpen(false); setQuery(''); };
   return <View style={styles.field}>
     <Text style={styles.label} numberOfLines={2}>{label}{required ? <Text style={styles.required}> *</Text> : null}</Text>
-    <Pressable style={[styles.select, disabled && styles.disabledInput, Boolean(error) && styles.inputError]} onPress={() => !disabled && setOpen(true)} disabled={disabled} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }}><View style={styles.selectCopy}>{selected?.icon ? <Ionicons name={selected.icon} size={18} color={C.gold} /> : null}<Text style={[styles.selectText, !selected && styles.placeholder]} numberOfLines={1}>{selected?.label ?? placeholder}</Text></View><Ionicons name="chevron-down" size={17} color="rgba(255,244,208,0.42)" /></Pressable>
+    <Pressable style={[styles.select, disabled && styles.disabledInput, Boolean(error) && styles.inputError]} onPress={() => !disabled && setOpen(true)} disabled={disabled} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }}><View style={styles.selectCopy}>{selected?.icon ? <Ionicons name={selected.icon} size={18} color={C.gold} /> : null}<Text style={[styles.selectText, !selected && styles.placeholder]} numberOfLines={1}>{selected?.label ?? placeholder}</Text></View><Ionicons name="chevron-down" size={17} color={C.textSubtle} /></Pressable>
     {error ? <Text style={styles.error} numberOfLines={2}>{error}</Text> : null}
     <ResponsiveSheet visible={open} title={label} onClose={close} closeLabel={closeLabel}>
-      <View style={styles.search}><Ionicons name="search-outline" size={18} color="rgba(255,244,208,0.42)" /><TextInput value={query} onChangeText={setQuery} placeholder={searchPlaceholder} placeholderTextColor="rgba(255,244,208,0.28)" style={styles.searchInput} accessibilityLabel={searchPlaceholder} /></View>
+      <View style={styles.search}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={query} onChangeText={setQuery} placeholder={searchPlaceholder} placeholderTextColor={C.textSubtle} style={styles.searchInput} accessibilityLabel={searchPlaceholder} /></View>
       <View style={styles.options}>{visible.map((option) => {
         const active = value === option.value;
         return <Pressable key={option.value} style={[styles.option, active && styles.optionActive]} onPress={() => { onChange(option.value); close(); }} accessibilityRole="radio" accessibilityState={{ selected: active }}>{option.icon ? <View style={styles.optionIcon}><Ionicons name={option.icon} size={18} color={active ? C.goldLight : C.gold} /></View> : null}<View style={styles.optionCopy}><Text style={styles.optionLabel} numberOfLines={2}>{option.label}</Text>{option.description ? <Text style={styles.optionDescription} numberOfLines={2}>{option.description}</Text> : null}</View><View style={[styles.check, active && styles.checkActive]}>{active ? <Ionicons name="checkmark" size={14} color={C.void} /> : null}</View></Pressable>;
@@ -108,7 +108,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   selectCopy: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9 },
   selectText: { flex: 1, minWidth: 0, color: C.goldLight, fontFamily: SANS, fontSize: 13 },
   placeholder: { color: 'rgba(255,244,208,0.3)' },
-  search: { height: 48, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, marginBottom: 8 },
+  search: { height: 48, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, marginBottom: 8 },
   searchInput: { flex: 1, minWidth: 0, height: 46, color: C.goldLight, fontFamily: SANS, fontSize: 13 },
   options: { paddingBottom: 10 },
   option: { minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 9, borderRadius: 11, marginBottom: 3 },

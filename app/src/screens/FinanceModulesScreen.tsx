@@ -103,7 +103,7 @@ const ACCOUNT_CURRENCIES = [
 ] as const;
 
 function Field({ title, value, onChangeText, placeholder, multiline = false, numeric = false, secureTextEntry = false, maxLength }: { title: string; value: string; onChangeText: (value: string) => void; placeholder?: string; multiline?: boolean; numeric?: boolean; secureTextEntry?: boolean; maxLength?: number }) {
-  return <View style={styles.field}><Text style={styles.fieldLabel} numberOfLines={2}>{title}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="rgba(255,244,208,0.3)" keyboardType={numeric ? 'decimal-pad' : 'default'} multiline={multiline} secureTextEntry={secureTextEntry} maxLength={maxLength} style={[styles.input, multiline && styles.multiline]} accessibilityLabel={title} /></View>;
+  return <View style={styles.field}><Text style={styles.fieldLabel} numberOfLines={2}>{title}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={C.textSubtle} keyboardType={numeric ? 'decimal-pad' : 'default'} multiline={multiline} secureTextEntry={secureTextEntry} maxLength={maxLength} style={[styles.input, multiline && styles.multiline]} accessibilityLabel={title} /></View>;
 }
 
 function Choice({ values, value, onChange, labels }: { values: string[]; value: string; onChange: (value: string) => void; labels?: Record<string, string> }) {
@@ -680,7 +680,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
 
     return <View style={styles.activityView}>
       <View style={styles.activityToolbar}>
-        <View style={styles.activitySearch}><Ionicons name="search-outline" size={18} color="rgba(255,244,208,0.42)" /><TextInput value={activityQuery} onChangeText={setActivityQuery} placeholder={t('finance.modules.searchActivity')} placeholderTextColor="rgba(255,244,208,0.3)" style={styles.activitySearchInput} accessibilityLabel={t('finance.modules.searchActivity')} returnKeyType="search" /></View>
+        <View style={styles.activitySearch}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={activityQuery} onChangeText={setActivityQuery} placeholder={t('finance.modules.searchActivity')} placeholderTextColor={C.textSubtle} style={styles.activitySearchInput} accessibilityLabel={t('finance.modules.searchActivity')} returnKeyType="search" /></View>
         <Pressable style={[styles.activityFilterButton, filterCount > 0 && styles.activityFilterButtonActive]} onPress={openActivityFilters} accessibilityRole="button" accessibilityLabel={t('finance.activity.filterA11y', { count: filterCount })}><Ionicons name="options-outline" size={19} color={filterCount > 0 ? C.void : C.goldLight} />{filterCount > 0 && <View style={styles.activityFilterBadge}><Text style={styles.activityFilterBadgeText}>{filterCount}</Text></View>}</Pressable>
       </View>
       {filterCount > 0 && <View style={styles.activityFilterSummary}><View style={styles.activityFilterPulse} /><Text style={styles.activityFilterSummaryText} numberOfLines={1}>{filterLabel} · {selectedCategoryLabel}</Text><Pressable style={styles.activityClearIcon} onPress={clearActivityFilters} hitSlop={4} accessibilityRole="button" accessibilityLabel={t('finance.activity.clearFilters')}><Ionicons name="close" size={16} color={C.gold} /></Pressable></View>}
@@ -737,7 +737,6 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
   const renderSavings = () => <View style={styles.panel}>{state.savingsGoals.map((item) => <View key={item.id} style={styles.module}><View style={styles.row}><View style={styles.rowMain}><Text style={styles.cardTitle}>{item.name}</Text><Text style={styles.cardMeta}>{dateText(item.deadline)} · {Math.min(100, Math.round(item.balance / Math.max(1, item.targetAmount) * 100))}%</Text></View><Text style={styles.positive} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>{money(item.balance, item.currency)}</Text></View><View style={styles.track}><View style={[styles.fill, { width: `${Math.max(0, Math.min(100, item.balance / Math.max(1, item.targetAmount) * 100))}%`, backgroundColor: item.active ? C.gold : C.green }]} /></View><Text style={styles.cardMeta}>{t('finance.modules.goalOf', { target: money(item.targetAmount, item.currency) })}</Text>{item.contributions.slice().reverse().map((contribution) => <View key={contribution.id} style={styles.historyRow}><Text style={styles.cardMeta}>{dateText(contribution.date)}</Text><Text style={styles.positive}>+{money(contribution.amount, item.currency)}</Text><Pressable style={styles.smallAction} onPress={() => confirmDelete(t('finance.deleteAction'), () => contribution.transferId ? finance.deleteTransfer(contribution.transferId) : finance.updateState((current) => ({ ...current, savingsGoals: current.savingsGoals.map((goal) => goal.id === item.id ? { ...goal, balance: Math.max(0, goal.balance - contribution.amount), active: true, contributions: goal.contributions.filter((entry) => entry.id !== contribution.id) } : goal) })))} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={15} color={C.red} /></Pressable></View>)}<View style={styles.inlineActions}><Pressable style={[styles.inlineButton, !item.active && styles.buttonDisabled]} disabled={!item.active} onPress={() => { setSavingsTarget(item); setSavingsAmount(''); setSavingsDestinationAccountId(item.accountId && operationalAccounts.some((accountItem) => accountItem.id === item.accountId) ? item.accountId : operationalAccounts[0]?.id ?? ''); setSavingsSourceAccountId(operationalAccounts.find((accountItem) => accountItem.id !== item.accountId)?.id ?? ''); setLinkedActionError(''); }}><Text style={styles.inlineButtonText}>{t('finance.modules.addContribution')}</Text></Pressable><Pressable style={styles.smallAction} onPress={() => confirmDelete(t('finance.modules.deleteGoal'), () => finance.updateState((current) => ({ ...current, savingsGoals: current.savingsGoals.filter((entry) => entry.id !== item.id) })))} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View></View>)}{!state.savingsGoals.length && <Empty title={t('finance.modules.noGoals')} body={t('finance.modules.noGoalsCopy')} />}<AddAction label={t('finance.modules.addGoal')} onPress={() => { setSavings({ name: '', currency: baseCurrency, accountId: operationalAccounts.find((entry) => entry.type === 'savings')?.id ?? operationalAccounts[0]?.id ?? '', target: '', deadline: new Date().toISOString() }); setSavingsOpen(true); }} /></View>;
   const renderReminders = () => <View style={styles.panel}>{state.reminders.slice().sort((a, b) => Number(a.completed) - Number(b.completed) || new Date(a.date).getTime() - new Date(b.date).getTime()).map((item) => { const overdue = !item.completed && new Date(item.date).getTime() < Date.now(); return <View key={item.id} style={styles.row}><Pressable onPress={() => finance.updateReminder({ ...item, completed: !item.completed })} style={[styles.reminderCheck, item.completed && styles.reminderCheckDone, overdue && styles.reminderCheckOverdue]}><Ionicons name={item.completed ? 'checkmark' : overdue ? 'alert' : 'notifications-outline'} size={15} color={item.completed ? C.void : overdue ? C.red : C.gold} /></Pressable><View style={styles.rowMain}><Text style={[styles.cardTitle, item.completed && styles.strike]}>{item.title}</Text><Text style={[styles.cardMeta, overdue && styles.overdueText]}>{dateText(item.date)}{item.note ? ` · ${item.note}` : ''}</Text></View><Pressable style={styles.smallAction} onPress={() => { setEditingReminderId(item.id); setReminder({ title: item.title, date: item.date, note: item.note }); setReminderOpen(true); }} accessibilityLabel={t('finance.editAction')}><Ionicons name="pencil-outline" size={17} color={C.gold} /></Pressable><Pressable style={styles.smallAction} onPress={() => confirmDelete(t('finance.modules.deleteReminder'), () => finance.updateState((current) => ({ ...current, reminders: current.reminders.filter((entry) => entry.id !== item.id) })))}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View>; })}{!state.reminders.length && <Empty title={t('finance.modules.noReminders')} body={t('finance.modules.noRemindersCopy')} />}<AddAction label={t('finance.modules.addReminder')} onPress={() => { setEditingReminderId(null); setReminder({ title: '', date: new Date().toISOString(), note: '' }); setReminderOpen(true); }} /></View>;
   const renderCategories = () => {
-    const storeCategoryInUse = (categoryId: string) => state.store.products.filter((item) => item.categoryId === categoryId).length;
     const selectedStoreCategories = categoryType === 'store'
       ? [...state.store.categories].sort((a, b) => Number(Boolean(a.builtIn)) - Number(Boolean(b.builtIn)) || a.name.localeCompare(b.name))
       : [];
@@ -760,15 +759,11 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
         </View>
         {categoryType === 'store' && selectedStoreCategories.map((item) => {
           const label = item.builtIn ? t(`finance.storeCategories.${item.id}`, { defaultValue: item.name }) : item.name;
-          const usage = storeCategoryInUse(item.id);
           const locked = Boolean(item.builtIn) || item.id === 'general';
           return (
             <View key={`store-${item.id}`} style={styles.row}>
               <View style={styles.categoryRowIcon}><Ionicons name={(locked ? 'grid-outline' : 'pricetag-outline') as IconName} size={18} color={C.gold} /></View>
-              <View style={styles.rowMain}>
-                <Text style={[styles.cardTitle, styles.categoryRowName]}>{label}</Text>
-                <Text style={styles.cardMeta}>{usage} {t('finance.store.products')}</Text>
-              </View>
+              <Text style={[styles.cardTitle, styles.categoryRowName]}>{label}</Text>
               {!locked && <Pressable onPress={() => removeCategory('store', item.id)} accessibilityLabel={t('finance.deleteCategory')}><Ionicons name="trash-outline" size={19} color={C.red} /></Pressable>}
             </View>
           );
@@ -832,9 +827,9 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
             <View style={styles.cashDeleteSpace} />
           </View>
           {cashRows.map((row) => <View key={row.id} style={styles.cashRow}>
-            <TextInput value={row.denomination} onChangeText={(value) => updateCashRow(row.id, 'denomination', value)} keyboardType="decimal-pad" placeholder="0" placeholderTextColor="rgba(255,244,208,0.28)" style={[styles.input, styles.cashDenomination]} />
+            <TextInput value={row.denomination} onChangeText={(value) => updateCashRow(row.id, 'denomination', value)} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={C.textSubtle} style={[styles.input, styles.cashDenomination]} />
             <Text style={styles.cashMultiply}>×</Text>
-            <TextInput value={row.quantity} onChangeText={(value) => updateCashRow(row.id, 'quantity', value)} keyboardType="number-pad" placeholder="0" placeholderTextColor="rgba(255,244,208,0.28)" style={[styles.input, styles.cashQuantity]} />
+            <TextInput value={row.quantity} onChangeText={(value) => updateCashRow(row.id, 'quantity', value)} keyboardType="number-pad" placeholder="0" placeholderTextColor={C.textSubtle} style={[styles.input, styles.cashQuantity]} />
             <Pressable style={styles.cashDelete} onPress={() => setCashRows((current) => current.filter((item) => item.id !== row.id))} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="close-outline" size={17} color={C.red} /></Pressable>
           </View>)}
           <AddAction label={t('finance.toolCalculators.addDenomination')} onPress={() => setCashRows((current) => [...current, { id: uid('cash'), denomination: '', quantity: '' }])} />
@@ -994,7 +989,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
               </View>
               <View style={styles.activityFilterDivider} />
               <Text style={styles.activityFilterSectionTitle}>{t('finance.category')}</Text>
-              <View style={styles.activityCategorySearch}><Ionicons name="search-outline" size={17} color="rgba(255,244,208,0.42)" /><TextInput value={activityCategoryQuery} onChangeText={setActivityCategoryQuery} placeholder={t('finance.activity.categorySearch')} placeholderTextColor="rgba(255,244,208,0.3)" style={styles.activityCategorySearchInput} accessibilityLabel={t('finance.activity.categorySearch')} returnKeyType="search" /></View>
+              <View style={styles.activityCategorySearch}><Ionicons name="search-outline" size={17} color={C.textSubtle} /><TextInput value={activityCategoryQuery} onChangeText={setActivityCategoryQuery} placeholder={t('finance.activity.categorySearch')} placeholderTextColor={C.textSubtle} style={styles.activityCategorySearchInput} accessibilityLabel={t('finance.activity.categorySearch')} returnKeyType="search" /></View>
               <View style={styles.activityFilterChoices}>
               <Pressable style={[styles.activityFilterChoice, activityCategory === 'all' && styles.activityFilterChoiceSelected]} onPress={() => setActivityCategory('all')} accessibilityRole="radio" accessibilityState={{ selected: activityCategory === 'all' }} accessibilityLabel={t('finance.activity.allCategories')}><Ionicons name="apps-outline" size={16} color={activityCategory === 'all' ? C.void : C.gold} /><Text style={[styles.activityFilterChoiceText, activityCategory === 'all' && styles.activityFilterChoiceTextSelected]}>{t('finance.activity.allCategories')}</Text></Pressable>
               {visibleActivityCategoryOptions.map((item) => {
@@ -1073,7 +1068,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
         <Pressable style={StyleSheet.absoluteFill} onPress={() => setCurrencyPickerOpen(false)} />
         <View style={styles.currencyPickerSheet}>
           <View style={styles.currencyPickerHeader}><Text style={styles.sheetTitle}>{t('finance.selectCurrency')}</Text><Pressable style={styles.sheetClose} onPress={() => setCurrencyPickerOpen(false)} accessibilityLabel={t('finance.close')}><Ionicons name="close" size={18} color={C.goldLight} /></Pressable></View>
-          <View style={styles.currencySearch}><Ionicons name="search-outline" size={17} color="rgba(255,244,208,0.38)" /><TextInput value={currencyQuery} onChangeText={setCurrencyQuery} autoCapitalize="characters" autoCorrect={false} placeholder={t('finance.searchCurrency')} placeholderTextColor="rgba(255,244,208,0.3)" style={styles.currencySearchInput} /></View>
+          <View style={styles.currencySearch}><Ionicons name="search-outline" size={17} color={C.textSubtle} /><TextInput value={currencyQuery} onChangeText={setCurrencyQuery} autoCapitalize="characters" autoCorrect={false} placeholder={t('finance.searchCurrency')} placeholderTextColor={C.textSubtle} style={styles.currencySearchInput} /></View>
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
             {filteredAccountCurrencies.map((currency) => { const selectedCurrency = currencyPickerMode === 'account' ? account.currency : currencyPickerMode === 'debt' ? debt.currency : currencyPickerMode === 'rate' ? currencyRateCurrency : currencyBaseDraft; return <Pressable key={currency} style={[styles.currencyOption, selectedCurrency === currency && styles.currencyOptionActive]} onPress={() => { if (currencyPickerMode === 'account') { const configuredRate = rateBetweenCurrencies(currency, baseCurrency); setAccount((current) => ({ ...current, currency, exchangeRate: currency === baseCurrency ? '1' : current.currency === currency ? current.exchangeRate : configuredRate ? String(Number((1 / configuredRate).toPrecision(12))) : '' })); setAccountError(''); } else if (currencyPickerMode === 'debt') setDebt((current) => ({ ...current, currency })); else if (currencyPickerMode === 'rate') chooseRateCurrency(currency); else choosePrimaryCurrency(currency); setCurrencyPickerOpen(false); }}><View style={styles.currencyOptionMark}><Text style={styles.currencyOptionMarkText}>{currency.slice(0, 1)}</Text></View><Text style={styles.currencyOptionCode}>{currency}</Text>{selectedCurrency === currency && <Ionicons name="checkmark" size={18} color={C.gold} />}</Pressable>; })}
           </ScrollView>
@@ -1129,17 +1124,17 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   currencyPickerBackdrop: { flex: 1, justifyContent: 'center', paddingHorizontal: 18, paddingVertical: 34, backgroundColor: 'rgba(0,0,0,0.78)' },
   currencyPickerSheet: { width: '100%', maxWidth: 520, maxHeight: '82%', alignSelf: 'center', borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14', padding: 16, overflow: 'hidden' },
   currencyPickerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  currencySearch: { height: 44, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.055)', paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
+  currencySearch: { height: 44, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
   currencySearchInput: { flex: 1, minWidth: 0, height: 43, color: C.goldLight, fontFamily: SANS, fontSize: 11, paddingVertical: 0 },
   currencyOption: { minHeight: 52, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.09)', paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center', gap: 10 },
   currencyOptionActive: { backgroundColor: 'rgba(233,200,119,0.055)' },
   currencyOptionMark: { width: 30, height: 30, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.2)', alignItems: 'center', justifyContent: 'center' },
   currencyOptionMarkText: { color: C.gold, fontFamily: SERIF, fontSize: 14 },
   currencyOptionCode: { flex: 1, color: C.goldLight, fontFamily: SANS, fontSize: 11, fontWeight: '600', letterSpacing: 0.8 },
-  settingsOptionList: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, overflow: 'hidden', marginBottom: 14 },
+  settingsOptionList: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, overflow: 'hidden', marginBottom: 18 },
   activityView: { flex: 1, width: '100%', maxWidth: 720, alignSelf: 'center' },
   activityToolbar: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 9 },
-  activitySearch: { flex: 1, minWidth: 0, height: 48, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', paddingHorizontal: 13 },
+  activitySearch: { flex: 1, minWidth: 0, height: 48, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, paddingHorizontal: 13 },
   activitySearchInput: { flex: 1, minWidth: 0, height: 46, color: C.goldLight, fontFamily: SANS, fontSize: 12, paddingVertical: 0 },
   activityFilterButton: { width: 44, height: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', alignItems: 'center', justifyContent: 'center' },
   activityFilterButtonActive: { backgroundColor: C.gold, borderColor: C.gold },
@@ -1179,7 +1174,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   activityFilterChoiceText: { color: 'rgba(255,244,208,0.62)', fontFamily: SANS, fontSize: 10, fontWeight: '600' },
   activityFilterChoiceTextSelected: { color: C.void },
   activityFilterDivider: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(233,200,119,0.2)', marginVertical: 17 },
-  activityCategorySearch: { height: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.16)', backgroundColor: 'rgba(4,5,10,0.32)', paddingHorizontal: 12, marginBottom: 5 },
+  activityCategorySearch: { height: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, paddingHorizontal: 12, marginBottom: 5 },
   activityCategorySearchInput: { flex: 1, minWidth: 0, height: 42, color: C.goldLight, fontFamily: SANS, fontSize: 11, paddingVertical: 0 },
   activityFilterNoResults: { minHeight: 72, alignItems: 'center', justifyContent: 'center' },
   activityFilterNoResultsText: { color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 10 },
@@ -1188,7 +1183,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   chartCategory: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   summaryCard: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.07)', padding: 14, marginBottom: 18 },
   addAction: { alignSelf: 'flex-start', minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4, marginTop: 12 },
-  addActionIcon: { width: 28, height: 28, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.32)', backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center' },
+  addActionIcon: { width: 28, height: 28, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
   addActionText: { color: C.gold, fontFamily: SANS, fontSize: 9, fontWeight: '600', letterSpacing: 0.5 },
   summaryAmount: { color: C.goldLight, fontFamily: SERIF, fontSize: 28 },
   smallAction: { width: 44, height: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.025)', alignItems: 'center', justifyContent: 'center' },
@@ -1203,17 +1198,17 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   reminderCheckDone: { backgroundColor: C.green, borderColor: C.green },
   reminderCheckOverdue: { borderColor: 'rgba(240,139,136,0.55)', backgroundColor: 'rgba(240,139,136,0.08)' },
   overdueText: { color: C.red },
-  settingsOption: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 13, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)' },
-  settingsOptionText: { color: 'rgba(255,244,208,0.55)', fontFamily: SANS, fontSize: 10 },
+  settingsOption: { minHeight: 50, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 14, paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)' },
+  settingsOptionText: { color: C.textMuted, fontFamily: SANS, fontSize: 11.5, lineHeight: 17 },
   settingsOptionTextActive: { color: C.goldLight, fontWeight: '700' },
   rateSwap: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 6, marginTop: 4 },
   rateSwapText: { color: C.gold, fontFamily: SANS, fontSize: 10, fontWeight: '600' },
-  settingsRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)' },
+  settingsRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 2, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)' },
   settingsRowMain: { flex: 1, minWidth: 0 },
-  settingsRowTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 11, fontWeight: '600' },
-  settingsRowValue: { color: 'rgba(255,244,208,0.4)', fontFamily: SANS, fontSize: 9, marginTop: 5 },
-  settingsBack: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 8 },
-  settingsBackText: { color: C.gold, fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 1 },
+  settingsRowTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 12.5, fontWeight: '600' },
+  settingsRowValue: { color: C.textSubtle, fontFamily: SANS, fontSize: 10.5, lineHeight: 15, marginTop: 4 },
+  settingsBack: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 4, marginBottom: 10 },
+  settingsBackText: { color: C.gold, fontFamily: SANS, fontSize: 10.5, fontWeight: '700', letterSpacing: 0.8 },
   iconPreviewRow: { minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingHorizontal: 10, marginBottom: 8 },
   iconPreviewButton: { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(233,200,119,0.1)', alignItems: 'center', justifyContent: 'center' },
   iconPreviewText: { flex: 1, color: 'rgba(255,244,208,0.46)', fontFamily: SANS, fontSize: 9 },

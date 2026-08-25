@@ -902,7 +902,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
         </View>
 
         <Pressable style={styles.floatingAdd} onPress={() => openEntry('expense')} accessibilityRole="button" accessibilityLabel={t('finance.newEntry')}>
-          <Ionicons name="add" size={24} color={C.void} />
+          <Ionicons name="add" size={24} color={C.gold} />
         </Pressable>
         <Pressable
           style={styles.floatingWorkspace}
@@ -965,7 +965,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
         />
       </View>
       <Pressable style={styles.floatingAdd} onPress={() => openEntry('expense')} accessibilityRole="button" accessibilityLabel={t('finance.newEntry')}>
-        <Ionicons name="add" size={24} color={C.void} />
+        <Ionicons name="add" size={24} color={C.gold} />
       </Pressable>
       <Pressable style={styles.floatingWorkspace} onPress={() => updateFinanceState((current) => ({ ...current, settings: { ...current.settings, activeWorkspace: 'store' } }))} accessibilityRole="button" accessibilityLabel={t('finance.workspace.store')}>
         <Ionicons name="storefront-outline" size={19} color={C.gold} />
@@ -1079,7 +1079,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                   <Pressable key={module} style={styles.drawerItem} onPress={() => openDrawerModule(module)}>
                     <View style={styles.drawerItemIcon}><DrawerModuleGlyph module={module} /></View>
                     <View style={styles.drawerItemCopy}><Text style={styles.drawerItemText}>{t(`finance.navigation.items.${module}.title`)}</Text><Text style={styles.drawerItemSubtitle} numberOfLines={1}>{module === 'tools' ? t('finance.releaseExtra.toolsSubtitle') : t(`finance.navigation.items.${module}.subtitle`)}</Text></View>
-                    <Ionicons name="chevron-forward-outline" size={15} color="rgba(255,244,208,0.25)" />
+                    <Ionicons name="chevron-forward-outline" size={15} color={C.textSubtle} />
                   </Pressable>
                 ))}
               </View>
@@ -1219,7 +1219,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                   <Text style={styles.createEyebrow}>{t('finance.editBudget')}</Text>
                   <Text style={styles.createTitle}>{editingBudget.name}</Text>
                   <Text style={styles.inputLabel}>{t('finance.budgetName')}</Text>
-                  <TextInput value={editingBudget.name} onChangeText={(value) => setEditingBudget((current) => current ? { ...current, name: value } : current)} placeholder={t('finance.budgetNamePlaceholder')} placeholderTextColor="rgba(255,244,208,0.28)" style={styles.textInput} maxLength={24} />
+                  <TextInput value={editingBudget.name} onChangeText={(value) => setEditingBudget((current) => current ? { ...current, name: value } : current)} placeholder={t('finance.budgetNamePlaceholder')} placeholderTextColor={C.textSubtle} style={styles.textInput} maxLength={24} />
                   <View style={styles.managerInputRow}>
                     <View style={styles.managerInputColumn}>
                       <Text style={styles.inputLabel}>{t('finance.openingBalance')}</Text>
@@ -1232,7 +1232,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                       <Text style={styles.inputLabel}>{t('finance.spendingLimit')}</Text>
                       <View style={styles.moneyInputShell}>
                         <Text style={styles.moneyInputCurrency}>{editingBudget.currency}</Text>
-                        <TextInput value={editingBudget.limitSet ? String(editingBudget.limit) : ''} onChangeText={(value) => setEditingBudget((current) => current ? { ...current, limit: parseAmount(value), limitSet: parseAmount(value) > 0 } : current)} keyboardType="decimal-pad" placeholder="—" placeholderTextColor="rgba(255,244,208,0.28)" style={styles.moneyInput} />
+                        <TextInput value={editingBudget.limitSet ? String(editingBudget.limit) : ''} onChangeText={(value) => setEditingBudget((current) => current ? { ...current, limit: parseAmount(value), limitSet: parseAmount(value) > 0 } : current)} keyboardType="decimal-pad" placeholder="—" placeholderTextColor={C.textSubtle} style={styles.moneyInput} />
                       </View>
                     </View>
                   </View>
@@ -1242,7 +1242,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                   </ScrollView>
                   {accountHasHistory(financeState, editingBudget.id) && <Text style={styles.rateWarningText}>{t('finance.accountCurrencyLocked')}</Text>}
                   <Text style={styles.inputLabel}>1 {baseCurrency} = ? {editingBudget.currency}</Text>
-                  <TextInput value={String((() => { const direct = rateBetweenCurrencies(editingBudget.currency, baseCurrency) ?? editingBudget.exchangeRate; return direct && direct > 0 ? Number((1 / direct).toPrecision(12)) : ''; })())} onChangeText={(value) => setEditingBudget((current) => { const displayed = parseAmount(value); return current ? { ...current, exchangeRate: displayed > 0 ? 1 / displayed : undefined } : current; })} keyboardType="decimal-pad" placeholder="1.00" placeholderTextColor="rgba(255,244,208,0.28)" style={styles.textInput} editable={!accountHasHistory(financeState, editingBudget.id) && editingBudget.currency !== baseCurrency && !rateBetweenCurrencies(editingBudget.currency, baseCurrency)} />
+                  <TextInput value={String((() => { const direct = rateBetweenCurrencies(editingBudget.currency, baseCurrency) ?? editingBudget.exchangeRate; return direct && direct > 0 ? Number((1 / direct).toPrecision(12)) : ''; })())} onChangeText={(value) => setEditingBudget((current) => { const displayed = parseAmount(value); return current ? { ...current, exchangeRate: displayed > 0 ? 1 / displayed : undefined } : current; })} keyboardType="decimal-pad" placeholder="1.00" placeholderTextColor={C.textSubtle} style={styles.textInput} editable={!accountHasHistory(financeState, editingBudget.id) && editingBudget.currency !== baseCurrency && !rateBetweenCurrencies(editingBudget.currency, baseCurrency)} />
                   <Text style={styles.inputLabel}>{t('finance.accentColor')}</Text>
                   <View style={styles.colorRow}>{ACCOUNT_COLORS.map((color) => <Pressable key={color} onPress={() => setEditingBudget((current) => current ? { ...current, color } : current)} style={[styles.colorButton, editingBudget.color === color && styles.colorButtonSelected]}><View style={[styles.colorDot, { backgroundColor: color }]} /></Pressable>)}</View>
                   <View style={styles.editActions}><Pressable style={[styles.editCancelButton, styles.editAction]} onPress={() => setEditingBudget(null)}><Text style={styles.editCancelText}>{t('finance.cancel')}</Text></Pressable><Pressable style={[styles.createButton, styles.editAction]} onPress={saveBudgetEdit}><Text style={styles.createButtonText}>{t('finance.done')}</Text></Pressable></View>
@@ -1258,7 +1258,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                   value={newBudgetName}
                   onChangeText={setNewBudgetName}
                   placeholder={t('finance.budgetNamePlaceholder')}
-                  placeholderTextColor="rgba(255,244,208,0.28)"
+                  placeholderTextColor={C.textSubtle}
                   style={styles.textInput}
                   maxLength={24}
                 />
@@ -1274,7 +1274,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                         onChangeText={(value) => setNewBudgetBalance(value.replace(/[^0-9.]/g, ''))}
                         keyboardType="decimal-pad"
                         placeholder="0.00"
-                        placeholderTextColor="rgba(255,244,208,0.28)"
+                        placeholderTextColor={C.textSubtle}
                         style={styles.moneyInput}
                       />
                     </View>
@@ -1288,7 +1288,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                         onChangeText={(value) => setNewBudgetLimit(value.replace(/[^0-9.]/g, ''))}
                         keyboardType="decimal-pad"
                         placeholder="—"
-                        placeholderTextColor="rgba(255,244,208,0.28)"
+                        placeholderTextColor={C.textSubtle}
                         style={styles.moneyInput}
                       />
                     </View>
@@ -1317,7 +1317,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                   onChangeText={(value) => setNewBudgetExchangeRate(value.replace(/[^0-9.]/g, ''))}
                   keyboardType="decimal-pad"
                   placeholder="1"
-                  placeholderTextColor="rgba(255,244,208,0.28)"
+                  placeholderTextColor={C.textSubtle}
                   style={styles.textInput}
                   editable={newBudgetCurrency !== baseCurrency && !rateBetweenCurrencies(newBudgetCurrency, baseCurrency)}
                 />
@@ -1450,30 +1450,30 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                 </ScrollView>
                 <Text style={styles.inputLabel}>{t('finance.amount')}</Text>
                 <View style={styles.amountInputShell}>
-                  <TextInput value={entryAmount} onChangeText={(value) => setEntryAmount(sanitizeAmount(value))} keyboardType="decimal-pad" placeholder="0" placeholderTextColor="rgba(255,244,208,0.25)" numberOfLines={1} style={[styles.amountInput, { fontSize: amountFontSize(entryAmount) }]} />
+                  <TextInput value={entryAmount} onChangeText={(value) => setEntryAmount(sanitizeAmount(value))} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={C.textSubtle} numberOfLines={1} style={[styles.amountInput, { fontSize: amountFontSize(entryAmount) }]} />
                   <Text style={styles.amountCurrency}>{transferSource?.currency ?? baseCurrency}</Text>
                 </View>
                 <Text style={styles.inputLabel}>{t('finance.receivedAmount')}</Text>
                 <View style={styles.amountInputShell}>
-                  <TextInput value={transferReceivedAmount} onChangeText={(value) => { setTransferReceivedAmount(sanitizeAmount(value)); setTransferError(''); }} keyboardType="decimal-pad" placeholder={t('finance.releaseExtra.automaticByRate')} placeholderTextColor="rgba(255,244,208,0.25)" numberOfLines={1} style={[styles.amountInput, { fontSize: amountFontSize(transferReceivedAmount, 13) }]} />
+                  <TextInput value={transferReceivedAmount} onChangeText={(value) => { setTransferReceivedAmount(sanitizeAmount(value)); setTransferError(''); }} keyboardType="decimal-pad" placeholder={t('finance.releaseExtra.automaticByRate')} placeholderTextColor={C.textSubtle} numberOfLines={1} style={[styles.amountInput, { fontSize: amountFontSize(transferReceivedAmount, 13) }]} />
                   <Text style={styles.amountCurrency}>{transferTarget?.currency ?? baseCurrency}</Text>
                 </View>
                 <Text style={styles.inputLabel}>{t('finance.exchangeRate')} · 1 {transferRateInverted ? transferTarget?.currency ?? baseCurrency : transferSource?.currency ?? baseCurrency} = ? {transferRateInverted ? transferSource?.currency ?? baseCurrency : transferTarget?.currency ?? baseCurrency}</Text>
-                <TextInput value={transferRate} onChangeText={(value) => { setTransferRate(sanitizeAmount(value)); setTransferError(''); }} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor="rgba(255,244,208,0.25)" style={[styles.textInput, Boolean(transferValidationError) && styles.inputError]} />
+                <TextInput value={transferRate} onChangeText={(value) => { setTransferRate(sanitizeAmount(value)); setTransferError(''); }} keyboardType="decimal-pad" placeholder="0.00" placeholderTextColor={C.textSubtle} style={[styles.textInput, Boolean(transferValidationError) && styles.inputError]} />
                 <Pressable style={styles.rateSwap} onPress={() => { const value = parseAmount(transferRate); setTransferRateInverted((current) => !current); setTransferRate(value > 0 ? String(Number((1 / value).toPrecision(12))) : ''); setTransferError(''); }} accessibilityRole="button" accessibilityLabel={t('finance.exchangeRate')}><Ionicons name="swap-horizontal-outline" size={16} color={C.gold} /><Text style={styles.rateSwapText}>1 {transferRateInverted ? transferSource?.currency ?? baseCurrency : transferTarget?.currency ?? baseCurrency} = ? {transferRateInverted ? transferTarget?.currency ?? baseCurrency : transferSource?.currency ?? baseCurrency}</Text></Pressable>
                 {Boolean(transferValidationError) && <Text style={styles.inlineError}>{transferValidationError}</Text>}
                 <Text style={styles.inputLabel}>{t('finance.description')}</Text>
-                <TextInput value={entryTitle} onChangeText={setEntryTitle} placeholder={t('finance.descriptionPlaceholder')} placeholderTextColor="rgba(255,244,208,0.28)" style={styles.textInput} />
+                <TextInput value={entryTitle} onChangeText={setEntryTitle} placeholder={t('finance.descriptionPlaceholder')} placeholderTextColor={C.textSubtle} style={styles.textInput} />
               </>
             ) : (
               <>
                 <Text style={styles.inputLabel}>{t('finance.amount')}</Text>
                 <View style={styles.amountInputShell}>
-                  <TextInput value={entryAmount} onChangeText={(value) => setEntryAmount(sanitizeAmount(value))} keyboardType="decimal-pad" placeholder="0" placeholderTextColor="rgba(255,244,208,0.25)" numberOfLines={1} style={[styles.amountInput, { fontSize: amountFontSize(entryAmount) }]} />
+                  <TextInput value={entryAmount} onChangeText={(value) => setEntryAmount(sanitizeAmount(value))} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={C.textSubtle} numberOfLines={1} style={[styles.amountInput, { fontSize: amountFontSize(entryAmount) }]} />
                   <Text style={styles.amountCurrency}>{entryBudget?.currency ?? baseCurrency}</Text>
                 </View>
                 <Text style={styles.inputLabel}>{t('finance.description')}</Text>
-                <TextInput value={entryTitle} onChangeText={setEntryTitle} placeholder={t('finance.descriptionPlaceholder')} placeholderTextColor="rgba(255,244,208,0.28)" style={styles.textInput} />
+                <TextInput value={entryTitle} onChangeText={setEntryTitle} placeholder={t('finance.descriptionPlaceholder')} placeholderTextColor={C.textSubtle} style={styles.textInput} />
                 <Text style={styles.inputLabel}>{t('finance.category')}</Text>
                 <Pressable style={styles.categorySelect} onPress={() => { setCategoryQuery(''); setCategoryPickerOpen(true); }} accessibilityRole="button" accessibilityLabel={t('finance.category')}>
                   <View style={styles.categorySelectIcon}><Ionicons name={(operationCategories.find((category) => category.id === entryCategory)?.icon ?? 'pricetag-outline') as React.ComponentProps<typeof Ionicons>['name']} size={17} color={C.gold} /></View>
@@ -1485,7 +1485,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                     <Pressable style={StyleSheet.absoluteFill} onPress={() => setCategoryPickerOpen(false)} />
                     <View style={styles.categoryPickerSheet}>
                       <View style={styles.categoryPickerHeader}><Text style={styles.categoryPickerTitle}>{t('finance.category')}</Text><Pressable style={styles.categoryPickerClose} onPress={() => setCategoryPickerOpen(false)} accessibilityLabel={t('finance.close')}><Ionicons name="close" size={18} color={C.goldLight} /></Pressable></View>
-                      <View style={styles.categorySearch}><Ionicons name="search-outline" size={17} color="rgba(255,244,208,0.4)" /><TextInput value={categoryQuery} onChangeText={setCategoryQuery} placeholder={t('finance.search', { defaultValue: 'Search categories' })} placeholderTextColor="rgba(255,244,208,0.3)" style={styles.categorySearchInput} /></View>
+                      <View style={styles.categorySearch}><Ionicons name="search-outline" size={17} color={C.textSubtle} /><TextInput value={categoryQuery} onChangeText={setCategoryQuery} placeholder={t('finance.search', { defaultValue: 'Search categories' })} placeholderTextColor={C.textSubtle} style={styles.categorySearchInput} /></View>
                       <ScrollView style={styles.categoryPickerList} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
                         {filteredOperationCategories.map((category) => <Pressable key={category.id} style={[styles.categoryPickerRow, entryCategory === category.id && styles.categoryPickerRowActive]} onPress={() => { setEntryCategory(category.id); setCategoryPickerOpen(false); }}><View style={styles.categoryPickerRowIcon}><Ionicons name={category.icon as React.ComponentProps<typeof Ionicons>['name']} size={17} color={entryCategory === category.id ? C.goldLight : C.gold} /></View><Text style={[styles.categoryPickerRowText, entryCategory === category.id && styles.categoryPickerRowTextActive]}>{category.name ?? t(`finance.categories.${category.id}`, { defaultValue: category.id })}</Text>{entryCategory === category.id && <Ionicons name="checkmark" size={18} color={C.gold} />}</Pressable>)}
                         {!filteredOperationCategories.length && <Text style={styles.categoryPickerEmpty}>{t('finance.modules.noResults', { defaultValue: 'No categories found' })}</Text>}
@@ -1554,17 +1554,17 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   safe: { flex: 1 },
   root: { flex: 1, minHeight: 0 },
   header: { height: 78, paddingTop: 12, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' },
-  headerButton: { width: 44, height: 44, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.055)', alignItems: 'center', justifyContent: 'center' },
+  headerButton: { width: 44, height: 44, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, alignItems: 'center', justifyContent: 'center' },
   headerCenter: { flex: 1, alignItems: 'center', paddingHorizontal: 8 },
   headerTitle: { maxWidth: 220, color: C.goldLight, fontFamily: SANS, fontSize: 15, fontWeight: '600', letterSpacing: 0.2 },
   headerSubtitle: { color: 'rgba(255,244,208,0.48)', fontFamily: SANS, fontSize: 9.5, letterSpacing: 1.35, marginTop: 3 },
   menuGlyph: { width: 18, gap: 3.5 },
-  menuLineWide: { width: 18, height: 1.5, borderRadius: 2, backgroundColor: C.goldLight },
-  menuLine: { width: 12, height: 1.5, borderRadius: 2, backgroundColor: C.goldLight },
+  menuLineWide: { width: 18, height: 1.5, borderRadius: 2, backgroundColor: C.gold },
+  menuLine: { width: 12, height: 1.5, borderRadius: 2, backgroundColor: C.gold },
   accountsGlyph: { width: 19, gap: 3 },
   accountGlyphRow: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   accountGlyphDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: C.gold },
-  accountGlyphLine: { width: 13, height: 1.5, borderRadius: 2, backgroundColor: C.goldLight },
+  accountGlyphLine: { width: 13, height: 1.5, borderRadius: 2, backgroundColor: C.gold },
   tabShell: { height: 50, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.11)', overflow: 'hidden' },
   budgetTabs: { alignItems: 'stretch', gap: 2, paddingHorizontal: 10 },
   budgetTab: { maxWidth: 170, height: 50, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent' },
@@ -1606,7 +1606,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   statsMetricValue: { fontFamily: SERIF, fontSize: 15 },
   statsMetricDivider: { width: StyleSheet.hairlineWidth, height: 28, backgroundColor: C.line, marginHorizontal: 14 },
   operationHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  statsIconButton: { width: 44, height: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.19)', backgroundColor: 'rgba(233,200,119,0.055)', alignItems: 'center', justifyContent: 'center' },
+  statsIconButton: { width: 44, height: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, alignItems: 'center', justifyContent: 'center' },
   statsIcon: { width: 17, height: 17, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 2, paddingBottom: 3 },
   statsBarShort: { width: 3, height: 8, borderRadius: 2, backgroundColor: C.gold },
   statsBarTall: { width: 3, height: 15, borderRadius: 2, backgroundColor: C.goldLight },
@@ -1616,8 +1616,8 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   fixedOperationsPanel: { flex: 1, minHeight: 0, paddingBottom: 0 },
   operationsScroll: { flex: 1 },
   operationsScrollContent: { flexGrow: 1, paddingBottom: 76 },
-  floatingAdd: { position: 'absolute', right: 13, bottom: 12, width: 46, height: 46, borderRadius: 23, borderWidth: StyleSheet.hairlineWidth, borderColor: C.goldLight, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center', shadowColor: C.gold, shadowOpacity: 0.2, shadowRadius: 12, shadowOffset: { width: 0, height: 6 }, elevation: 9 },
-  floatingWorkspace: { position: 'absolute', right: 14, bottom: 68, width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.34)', backgroundColor: '#11141D', alignItems: 'center', justifyContent: 'center', shadowColor: '#000', shadowOpacity: 0.24, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, elevation: 7 },
+  floatingAdd: { position: 'absolute', right: 31, bottom: 12, width: 46, height: 46, borderRadius: 23, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
+  floatingWorkspace: { position: 'absolute', right: 32, bottom: 68, width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
   hero: { borderRadius: 26, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, padding: 18, overflow: 'hidden', backgroundColor: 'rgba(10,12,20,0.66)' },
   heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   eyebrow: { color: 'rgba(233,200,119,0.58)', fontFamily: SANS, fontSize: 8, letterSpacing: 2.1 },
@@ -1645,7 +1645,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   expenseText: { color: '#F08B88' },
   sectionEyebrow: { color: 'rgba(233,200,119,0.58)', fontFamily: SANS, fontSize: 9, letterSpacing: 1.35, marginBottom: 4 },
   sectionTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13, fontWeight: '600', letterSpacing: 0.45 },
-  operationCountBadge: { height: 44, minWidth: 48, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.16)', backgroundColor: 'rgba(255,255,255,0.025)', paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  operationCountBadge: { height: 44, minWidth: 48, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
   operationCount: { color: C.goldLight, fontFamily: SANS, fontSize: 10.5, fontWeight: '600' },
   panel: { borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.53)', paddingHorizontal: 13, overflow: 'hidden' },
   transactionRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.09)' },
@@ -1671,13 +1671,13 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   drawerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.68)' },
   exitBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.72)' },
   exitCard: { width: '100%', maxWidth: 360, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14', padding: 22 },
-  exitTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 23, textAlign: 'center' },
-  exitCopy: { color: 'rgba(255,244,208,0.56)', fontFamily: SANS, fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 9 },
+  exitTitle: { color: C.text, fontFamily: SERIF, fontSize: 23, textAlign: 'center' },
+  exitCopy: { color: C.textMuted, fontFamily: SANS, fontSize: 12, lineHeight: 18, textAlign: 'center', marginTop: 9 },
   exitActions: { flexDirection: 'row', gap: 9, marginTop: 19 },
   exitCancel: { flex: 1, minHeight: 46, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, alignItems: 'center', justifyContent: 'center' },
-  exitCancelText: { color: C.gold, fontFamily: SANS, fontSize: 10, fontWeight: '700' },
+  exitCancelText: { color: C.gold, fontFamily: SANS, fontSize: 11, fontWeight: '700' },
   exitConfirm: { flex: 1, minHeight: 46, borderRadius: 13, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center' },
-  exitConfirmText: { color: C.void, fontFamily: SANS, fontSize: 10, fontWeight: '800' },
+  exitConfirmText: { color: C.void, fontFamily: SANS, fontSize: 11, fontWeight: '800' },
   negativeBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.76)' },
   negativeCard: { width: '100%', maxWidth: 360, borderRadius: 24, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.38)', backgroundColor: '#0A0C14', padding: 22, alignItems: 'center' },
   negativeIcon: { width: 48, height: 48, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.4)', backgroundColor: 'rgba(233,200,119,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 14 },
@@ -1693,7 +1693,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   drawer: { width: '84%', height: '100%', backgroundColor: '#090B12', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.line, paddingHorizontal: 18 },
   drawerMenuScroll: { flex: 1 },
   drawerMenuContent: { paddingTop: 6, paddingBottom: 12 },
-  drawerBalanceCard: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, padding: 15, marginTop: 8, backgroundColor: 'rgba(233,200,119,0.045)' },
+  drawerBalanceCard: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, padding: 15, marginTop: 8, backgroundColor: C.glass },
   drawerBalance: { color: C.goldLight, fontFamily: SERIF, fontSize: 28, marginTop: 3 },
   drawerBudgetCount: { color: 'rgba(255,244,208,0.32)', fontFamily: SANS, fontSize: 9.5, letterSpacing: 0.8, marginTop: 7 },
   drawerNav: { marginTop: 18, gap: 3 },
@@ -1702,8 +1702,8 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   drawerItemActive: { backgroundColor: 'rgba(233,200,119,0.09)' },
   drawerItemIcon: { width: 34, alignItems: 'flex-start' },
   drawerItemCopy: { flex: 1, minWidth: 0 },
-  drawerItemText: { color: C.goldLight, fontFamily: SANS, fontSize: 12.5, letterSpacing: 0.5 },
-  drawerItemSubtitle: { color: 'rgba(255,244,208,0.3)', fontFamily: SANS, fontSize: 9, marginTop: 3 },
+  drawerItemText: { color: C.goldLight, fontFamily: SANS, fontSize: 14.5, letterSpacing: 0.4 },
+  drawerItemSubtitle: { color: 'rgba(255,244,208,0.3)', fontFamily: SANS, fontSize: 10.5, marginTop: 3 },
   drawerPrivacy: { color: 'rgba(255,244,208,0.24)', fontFamily: SANS, fontSize: 8.5, lineHeight: 13, marginTop: 'auto', marginBottom: 14 },
   managerRoot: { flex: 1, backgroundColor: C.background },
   managerSafe: { flex: 1 },
@@ -1805,7 +1805,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   categoryPickerHeader: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   categoryPickerTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 21 },
   categoryPickerClose: { width: 40, height: 40, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, alignItems: 'center', justifyContent: 'center' },
-  categorySearch: { minHeight: 45, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8, marginTop: 10 },
+  categorySearch: { minHeight: 45, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8, marginTop: 10 },
   categorySearchInput: { flex: 1, minHeight: 43, color: C.goldLight, fontFamily: SANS, fontSize: 13 },
   categoryPickerList: { marginTop: 8 },
   categoryPickerRow: { minHeight: 52, borderRadius: 13, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, gap: 10 },

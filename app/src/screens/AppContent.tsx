@@ -7,7 +7,7 @@ import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { useFinance } from '../stores/FinanceContext';
 import i18n, { getPhoneLanguage } from '../core/locales/i18next';
-import { C } from '../theme/luxury';
+import { createThemeStyles, setThemeMode } from '../theme/luxury';
 import AuroraBackground from '../components/AuroraBackground';
 import BootScreen from './BootScreen';
 import FinanceModulesScreen, { type FinanceModuleName } from './FinanceModulesScreen';
@@ -42,6 +42,7 @@ export function AppContent() {
   const onDone = useCallback(() => setBooted(true), []);
   const hasPin = Boolean(state.settings.pinHash);
   const preferredLanguage = state.settings.language;
+  setThemeMode(state.settings.theme ?? 'dark');
   const requiresAccount = state.accounts.every((account) => account.archived);
 
   const exportEmergencyBackup = useCallback(async () => {
@@ -221,13 +222,13 @@ export function AppContent() {
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.void },
+const styles = createThemeStyles((C) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: C.background },
   mainLayer: { flex: 1 },
   moduleLayer: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 10,
-    backgroundColor: C.void,
+    backgroundColor: C.background,
   },
   errorState: {
     flex: 1,
@@ -317,4 +318,4 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   bannerExportText: { color: C.goldLight, fontSize: 10, fontWeight: '700' },
-});
+}));

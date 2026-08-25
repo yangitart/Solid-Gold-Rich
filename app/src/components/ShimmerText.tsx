@@ -9,7 +9,7 @@ import Animated, {
   withTiming,
   interpolate,
 } from 'react-native-reanimated';
-import { C } from '../theme/luxury';
+import { createThemeStyles } from '../theme/luxury';
 
 const WINDOW = 120; // ancho de la ventana de brillo
 
@@ -87,7 +87,7 @@ export default function ShimmerText({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemeStyles((C) => StyleSheet.create({
   base: { color: C.gold },
   window: {
     position: 'absolute',
@@ -98,4 +98,4 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   shine: { color: '#FFFFFF' },
-});
+}));

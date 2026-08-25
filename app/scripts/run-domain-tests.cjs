@@ -20,19 +20,34 @@ const asyncStorage = {
   multiRemove: async (keys) => keys.forEach((key) => storage.delete(key)),
 };
 class MockFile {
-  constructor(uri) {
-    this.uri = String(uri);
+  constructor(...parts) {
+    const values = parts.map((part) => typeof part === 'string' ? part : part.uri);
+    this.uri = values.length === 1 ? values[0] : `${values[0].replace(/\/$/, '')}/${values.slice(1).map((value) => value.replace(/^\//, '')).join('/')}`;
   }
 
   async base64() {
     if (!fileContents.has(this.uri)) throw new Error('file-not-found');
     return fileContents.get(this.uri);
   }
+
+  create() {}
+
+  write(content) {
+    fileContents.set(this.uri, content);
+  }
+}
+class MockDirectory {
+  constructor(...parts) {
+    const values = parts.map((part) => typeof part === 'string' ? part : part.uri);
+    this.uri = values.length === 1 ? values[0] : `${values[0].replace(/\/$/, '')}/${values.slice(1).map((value) => value.replace(/^\//, '')).join('/')}`;
+  }
+
+  create() {}
 }
 const originalLoad = Module._load;
 Module._load = function load(request, parent, isMain) {
   if (request === '@react-native-async-storage/async-storage') return asyncStorage;
-  if (request === 'expo-file-system') return { File: MockFile };
+  if (request === 'expo-file-system') return { Directory: MockDirectory, File: MockFile, Paths: { document: 'file:///documents', cache: 'file:///cache' } };
   return originalLoad.call(this, request, parent, isMain);
 };
 
@@ -40,6 +55,7 @@ const {
   accountBalance,
   advanceRecurringDate,
   budgetSpent,
+  filterActivityTransactions,
   generateDueRecurring,
   recordDebtPayment,
   recordSavingsContribution,
@@ -47,17 +63,26 @@ const {
 } = require('../src/domain/finance/financeDomain.ts');
 const {
   completeSale,
+  filterStoreProducts,
+  filterStoreSales,
   productStock,
   storeReportData,
   voidSale,
 } = require('../src/domain/store/storeDomain.ts');
-const { currencyRate } = require('../src/core/finance/currency.ts');
+const { captureCurrencySnapshot, currencyRate, historicalAmountInCurrency } = require('../src/core/finance/currency.ts');
 const {
   createStoreBackup,
+  createAppBackup,
+  isolateStoreBackupForImport,
+  parseAppBackup,
   parseStoreBackup,
+  restoreAppBackupToDevice,
   restoreStoreBackup,
+  restoreStoreBackupToDevice,
 } = require('../src/domain/store/storeBackup.ts');
 const {
+  DEFAULT_CATEGORIES,
+  DEFAULT_STORE_CATEGORIES,
   emptyFinanceState,
   loadFinanceState,
   normalizeFinanceState,
@@ -69,8 +94,17 @@ function account(id, currency = 'USD', openingBalance = 0) {
 }
 
 async function run() {
+  const emptyStateCategories = emptyFinanceState();
+  assert.deepEqual(emptyStateCategories.categories.expense.map((item) => item.id), DEFAULT_CATEGORIES.expense.map((item) => item.id));
+  assert.deepEqual(emptyStateCategories.categories.income.map((item) => item.id), DEFAULT_CATEGORIES.income.map((item) => item.id));
+  assert.deepEqual(emptyStateCategories.store.categories.map((item) => item.id), DEFAULT_STORE_CATEGORIES.map((item) => item.id));
   assert.equal(currencyRate('EUR', 'CUP', { USD: 1, EUR: 1.1, CUP: 0.04 }), 27.5);
   assert.equal(currencyRate('EUR', 'CUP', { USD: 1, EUR: 1.1 }), undefined);
+  const cupRates = { USD: 1, CUP: 1 / 670 };
+  const cupSnapshot = captureCurrencySnapshot(100, 'CUP', 'USD', cupRates);
+  assert.ok(Math.abs(cupSnapshot.baseAmount - (100 / 670)) < 1e-12);
+  assert.equal(cupSnapshot.baseCurrency, 'USD');
+  assert.equal(historicalAmountInCurrency({ amount: 100, currency: 'CUP', ...cupSnapshot }, 'USD', { USD: 1, CUP: 1 / 500 }), cupSnapshot.baseAmount);
 
   const balances = emptyFinanceState();
   balances.accounts = [account('a', 'USD', 100)];
@@ -79,6 +113,14 @@ async function run() {
     { id: 'void', accountId: 'a', kind: 'expense', amount: 999, currency: 'USD', date: '2026-01-01', payee: '', category: 'other', paymentMethod: 'cash', status: 'void', reference: '', description: '' },
   ];
   assert.equal(accountBalance(balances, 'a'), 125);
+  const activityItems = [
+    { ...balances.transactions[0], id: 'accented', payee: 'José', description: 'Café', amount: 25, currency: 'USD', reference: 'REF-25' },
+    { ...balances.transactions[0], id: 'standalone-transfer', kind: 'transfer', amount: 12, category: 'transfer' },
+    balances.transactions[1],
+  ];
+  assert.deepEqual(filterActivityTransactions(activityItems, { filter: 'transfer', category: 'all', query: '' }).map((item) => item.id), ['standalone-transfer']);
+  assert.deepEqual(filterActivityTransactions(activityItems, { filter: 'income', category: 'all', query: 'cafe' }).map((item) => item.id), ['accented']);
+  assert.deepEqual(filterActivityTransactions(activityItems, { filter: 'all', category: 'all', query: 'ref-25' }).map((item) => item.id), ['accented']);
   const spent = budgetSpent({ id: 'b', accountId: 'a', category: 'food', period: 'monthly', startDate: '', endDate: '', limit: 100, rollover: false, rolloverAmount: 0 }, [
     { ...balances.transactions[0], id: 'expense', kind: 'expense', category: 'food', amount: 10, date: '2026-01-10T12:00:00.000Z' },
     { ...balances.transactions[0], id: 'transfer', kind: 'transfer', category: 'food', amount: 99, date: '2026-01-10T12:00:00.000Z', transferId: 'x' },
@@ -94,8 +136,10 @@ async function run() {
   const jan31 = '2025-01-31T12:00:00.000Z';
   assert.equal(new Date(advanceRecurringDate(jan31, 'monthly')).getUTCDate(), 28);
   const recurring = [{ id: 'r', accountId: 'a', kind: 'expense', amount: 10, currency: 'USD', payee: 'Rent', category: 'housing', paymentMethod: 'bank', frequency: 'monthly', nextDate: jan31, description: '', active: true }];
-  const generated = generateDueRecurring(recurring, [], new Date('2025-03-31T23:00:00.000Z'), (() => { let id = 0; return () => `g-${++id}`; })());
+  const generated = generateDueRecurring(recurring, [], new Date('2025-03-31T23:00:00.000Z'), (() => { let id = 0; return () => `g-${++id}`; })(), 'USD', { USD: 1 });
   assert.equal(generated.generated.length, 3);
+  assert.equal(generated.generated[0].baseAmount, 10);
+  assert.equal(generated.generated[0].baseCurrency, 'USD');
   assert.equal(new Set(generated.generated.map((item) => `${item.recurringId}|${item.date}`)).size, 3);
   assert.equal(generateDueRecurring(generated.recurring, generated.transactions, new Date('2025-03-31T23:00:00.000Z'), () => 'duplicate').generated.length, 0);
   for (const day of [29, 30, 31]) {
@@ -122,7 +166,11 @@ async function run() {
   obligations.savingsGoals = [{ id: 'save', name: 'Reserve', currency: 'USD', targetAmount: 100, balance: 0, deadline: jan31, accountId: 'savings', contributions: [], active: true }];
   const paid = recordDebtPayment(obligations, { debtId: 'debt', accountId: 'cash', amount: 30, accountAmount: 30, date: jan31, transactionId: 'debt-tx', paymentId: 'debt-pay' });
   assert.equal(paid.debts[0].balance, 70);
+  assert.equal(paid.transactions[0].paymentMethod, 'cash');
   assert.equal(recordDebtPayment(paid, { debtId: 'debt', accountId: 'cash', amount: 30, accountAmount: 30, date: jan31, transactionId: 'debt-tx', paymentId: 'debt-pay' }).transactions.length, 1);
+  const debtAccountState = { ...paid, accounts: [...paid.accounts, { ...account('debt-account'), type: 'debt' }] };
+  assert.equal(recordDebtPayment(debtAccountState, { debtId: 'debt', accountId: 'debt-account', amount: 10, accountAmount: 10, date: jan31, transactionId: 'invalid-debt-tx', paymentId: 'invalid-debt-pay' }).transactions.length, paid.transactions.length);
+  assert.equal(recordDebtPayment(paid, { debtId: 'debt', accountId: 'cash', amount: Number.NaN, accountAmount: Number.NaN, date: jan31, transactionId: 'invalid-nan-tx', paymentId: 'invalid-nan-pay' }).transactions.length, paid.transactions.length);
   const contributed = recordSavingsContribution(paid, { goalId: 'save', sourceAccountId: 'cash', destinationAccountId: 'savings', amount: 40, sourceAmount: 40, date: jan31, transferId: 'save-tr', contributionId: 'save-c' });
   assert.equal(contributed.savingsGoals[0].balance, 40);
   assert.equal(contributed.transfers.length, 1);
@@ -141,15 +189,50 @@ async function run() {
   assert.equal(productStock(voided.state, 'p'), 5);
   assert.equal(voided.state.store.businessAccount.balance, 0);
   assert.equal(voidSale(voided.state, 'sale', () => 'again', '', '').error, 'already-void');
+  assert.equal(storeReportData(voided.state).sales.length, 0);
+  assert.equal(storeReportData(voided.state).total, 0);
   const report = storeReportData(sold.state);
   assert.equal(report.topProducts[0][1].quantity, 2);
   assert.equal(report.topClients[0][0], 'client');
+
+  const filterState = emptyFinanceState();
+  filterState.store.categories.push({ id: 'cafe', name: 'Café' });
+  filterState.store.products = [
+    { id: 'reserved-low', key: 'LOW', sku: 'SKU-LOW', name: 'Coffee', type: 'product', unit: 'unit', categoryId: 'cafe', salePrice: 2, purchasePrice: 1, additionalSalePrices: [], initialStock: 0, reservedQuantity: 9, stockMinimum: 2, active: true },
+    { id: 'reserved-out', key: 'OUT', name: 'Milk', type: 'product', unit: 'unit', categoryId: 'general', salePrice: 2, purchasePrice: 1, additionalSalePrices: [], initialStock: 0, reservedQuantity: 5, stockMinimum: 1, active: true },
+    { id: 'expired', key: 'EXP', name: 'Old', type: 'product', unit: 'unit', categoryId: 'general', salePrice: 2, purchasePrice: 1, additionalSalePrices: [], initialStock: 0, reservedQuantity: 0, stockMinimum: 0, expirationDate: '2025-01-30T12:00:00.000Z', active: false },
+    { id: 'expiring', key: 'SOON', name: 'Fresh', type: 'product', unit: 'unit', categoryId: 'general', salePrice: 3, purchasePrice: 1, additionalSalePrices: [], initialStock: 0, reservedQuantity: 0, stockMinimum: 0, expirationDate: '2025-02-15T12:00:00.000Z', active: true },
+    { id: 'service', key: 'SERV', name: 'Repair', type: 'service', unit: 'hour', categoryId: 'general', salePrice: 5, purchasePrice: 0, additionalSalePrices: [], initialStock: 0, reservedQuantity: 0, stockMinimum: 0, active: true },
+  ];
+  filterState.store.stockMovements = [
+    { id: 'low-stock', productId: 'reserved-low', type: 'entry', quantity: 10, date: jan31, note: '' },
+    { id: 'out-stock', productId: 'reserved-out', type: 'entry', quantity: 5, date: jan31, note: '' },
+    { id: 'expiring-stock', productId: 'expiring', type: 'entry', quantity: 1, date: jan31, note: '' },
+  ];
+  const filterToday = new Date(jan31);
+  assert.deepEqual(filterStoreProducts(filterState, { type: 'product', query: 'cafe', categoryId: '', status: '', stock: '', today: filterToday }).map((item) => item.id), ['reserved-low']);
+  assert.deepEqual(filterStoreProducts(filterState, { type: 'product', query: '', categoryId: '', status: '', stock: 'low', today: filterToday }).map((item) => item.id), ['reserved-low']);
+  assert.deepEqual(filterStoreProducts(filterState, { type: 'product', query: '', categoryId: '', status: '', stock: 'out', today: filterToday }).map((item) => item.id), ['reserved-out', 'expired']);
+  assert.deepEqual(filterStoreProducts(filterState, { type: 'product', query: '', categoryId: '', status: 'inactive', stock: 'expired', today: filterToday }).map((item) => item.id), ['expired']);
+  assert.deepEqual(filterStoreProducts(filterState, { type: 'product', query: '', categoryId: 'general', status: 'active', stock: 'expiring', today: filterToday }).map((item) => item.id), ['expiring']);
+  assert.deepEqual(filterStoreProducts(filterState, { type: 'service', query: '', categoryId: '', status: '', stock: 'out', today: filterToday }), []);
+  filterState.store.clients = [{ id: 'filter-client', name: 'José', active: true, createdAt: jan31 }];
+  filterState.store.employees = [{ id: 'filter-employee', name: 'María', salary: 0, payFrequency: 'monthly', payMode: 'manual', active: true, createdAt: jan31 }];
+  const saleTemplate = { items: [{ productId: 'reserved-low', name: 'Coffee', type: 'product', quantity: 1, unitPrice: 2, total: 2 }], total: 2, paymentMethod: 'cash', status: 'completed', note: 'Entrega rápida', clientId: 'filter-client', employeeId: 'filter-employee' };
+  filterState.store.sales = [
+    { ...saleTemplate, id: 'week-sale', date: jan31 },
+    { ...saleTemplate, id: 'future-sale', date: '2025-02-03T12:00:00.000Z' },
+  ];
+  assert.deepEqual(filterStoreSales(filterState, { query: 'maria', period: 'all', firstDayOfWeek: 1, today: filterToday }).map((item) => item.id), ['week-sale', 'future-sale']);
+  assert.deepEqual(filterStoreSales(filterState, { query: 'rapida', period: 'week', firstDayOfWeek: 1, today: filterToday }).map((item) => item.id), ['week-sale']);
+  assert.deepEqual(filterStoreSales(filterState, { query: '', period: 'today', firstDayOfWeek: 1, today: filterToday }).map((item) => item.id), ['week-sale']);
+  assert.deepEqual(filterStoreSales(filterState, { query: '', period: 'month', firstDayOfWeek: 1, today: filterToday }).map((item) => item.id), ['week-sale']);
 
   const emptyStoreBackup = await createStoreBackup(emptyFinanceState().store);
   assert.equal(emptyStoreBackup.kind, 'solid-gold-rich-store');
   assert.deepEqual(emptyStoreBackup.store.products, []);
 
-  const productTemplate = { id: 'photo-product', key: 'PHOTO', name: 'Photo product', type: 'product', unit: 'unit', categoryId: 'general', salePrice: 10, purchasePrice: 4, additionalSalePrices: [], initialStock: 0, reservedQuantity: 0, stockMinimum: 0, active: true };
+  const productTemplate = { id: 'photo-product', key: 'PHOTO', name: 'Photo product', type: 'product', unit: 'box', categoryId: 'custom', sku: 'PHOTO-SKU', salePrice: 10, purchasePrice: 4, additionalSalePrices: [9, 8], initialStock: 0, reservedQuantity: 1, stockMinimum: 2, expirationDate: jan31, additionalInfo: 'Complete product data', active: true };
   fileContents.set('file:///product.jpg', 'aW1hZ2U=');
   const storeWithPictures = emptyFinanceState().store;
   storeWithPictures.products = [
@@ -157,6 +240,15 @@ async function run() {
     { ...productTemplate, id: 'embedded-product', key: 'EMBEDDED', picture: 'data:image/png;base64,cG5n' },
     { ...productTemplate, id: 'no-picture-product', key: 'PLAIN', picture: undefined },
   ];
+  storeWithPictures.name = 'Complete store';
+  storeWithPictures.currency = 'CUP';
+  storeWithPictures.categories.push({ id: 'custom', name: 'Custom' });
+  storeWithPictures.stockMovements = [{ id: 'stock-all', productId: 'photo-product', type: 'entry', quantity: 4, date: jan31, note: 'Stock record' }];
+  storeWithPictures.clients = [{ id: 'client-all', name: 'Client', phone: '123', email: 'client@example.com', note: 'Client note', active: true, createdAt: jan31 }];
+  storeWithPictures.employees = [{ id: 'employee-all', name: 'Employee', role: 'Seller', phone: '456', salary: 25, payFrequency: 'weekly', payMode: 'manual', nextPayDate: jan31, active: true, createdAt: jan31 }];
+  storeWithPictures.sales = [{ id: 'sale-all', date: jan31, items: [{ productId: 'photo-product', name: 'Photo product', type: 'product', quantity: 1, unitPrice: 10, total: 10 }], total: 10, paymentMethod: 'cash', status: 'completed', note: 'Sale note', clientId: 'client-all', employeeId: 'employee-all' }];
+  storeWithPictures.cashMovements = [{ id: 'cash-all', type: 'sale', amount: 10, date: jan31, note: 'Cash record', saleId: 'sale-all' }];
+  storeWithPictures.businessAccount = { id: 'store-business', name: 'Complete store', currency: 'CUP', balance: 10 };
   const pictureBackup = await createStoreBackup(storeWithPictures);
   assert.deepEqual(pictureBackup.store.products.map((product) => product.picture), [
     { mimeType: 'image/jpeg', data: 'aW1hZ2U=' },
@@ -169,31 +261,88 @@ async function run() {
     'data:image/png;base64,cG5n',
     undefined,
   ]);
+  assert.deepEqual({ ...restoredStore, products: restoredStore.products.map(({ picture, ...product }) => product) }, { ...storeWithPictures, products: storeWithPictures.products.map(({ picture, ...product }) => product) });
+  const materializedStore = await restoreStoreBackupToDevice(parseStoreBackup(JSON.stringify(pictureBackup)));
+  assert.ok(materializedStore.products[0].picture.startsWith('file:///documents/product-images/photo-product-'));
+  assert.equal(fileContents.get(materializedStore.products[0].picture), 'aW1hZ2U=');
+  assert.ok(materializedStore.products[1].picture.startsWith('file:///documents/product-images/embedded-product-'));
+  assert.equal(fileContents.get(materializedStore.products[1].picture), 'cG5n');
+  assert.equal(materializedStore.products[2].picture, undefined);
+  const isolatedStore = isolateStoreBackupForImport({
+    ...materializedStore,
+    stockMovements: materializedStore.stockMovements.map((movement) => ({ ...movement, personalTransactionId: 'foreign-transaction' })),
+    cashMovements: materializedStore.cashMovements.map((movement) => ({ ...movement, transferId: 'foreign-transfer', personalTransactionId: 'foreign-transaction' })),
+  });
+  assert.equal(isolatedStore.stockMovements.some((movement) => movement.personalTransactionId), false);
+  assert.equal(isolatedStore.cashMovements.some((movement) => movement.transferId || movement.personalTransactionId), false);
+  assert.equal(isolatedStore.sales[0].id, 'sale-all');
+  const personalState = emptyFinanceState();
+  personalState.accounts = [account('personal-safe', 'USD', 99)];
+  personalState.transactions = [{ id: 'personal-operation', accountId: 'personal-safe', kind: 'income', amount: 5, currency: 'USD', date: jan31, payee: 'Personal', category: 'other', paymentMethod: 'cash', status: 'cleared', reference: '', description: 'Keep me' }];
+  personalState.budgets = [{ id: 'personal-budget', accountId: 'personal-safe', category: 'all', period: 'monthly', startDate: jan31, endDate: '2025-02-28T12:00:00.000Z', limit: 50, rollover: false, rolloverAmount: 0 }];
+  personalState.debts = [{ id: 'personal-debt', name: 'Debt', creditor: 'Bank', currency: 'USD', originalAmount: 20, balance: 20, interestRate: 0, dueDate: jan31, payments: [], active: true }];
+  personalState.savingsGoals = [{ id: 'personal-goal', name: 'Goal', currency: 'USD', targetAmount: 30, balance: 0, deadline: jan31, accountId: 'personal-safe', contributions: [], active: true }];
+  personalState.reminders = [{ id: 'personal-reminder', title: 'Reminder', date: jan31, note: 'Remember', completed: false }];
+  personalState.notes = [{ id: 'personal-note', title: 'Note', body: 'Body', tags: ['tag'], createdAt: jan31, updatedAt: jan31, pinned: true }];
+  const importedStoreOnly = normalizeFinanceState({ ...personalState, store: materializedStore });
+  assert.equal(importedStoreOnly.accounts[0].id, 'personal-safe');
+  assert.equal(importedStoreOnly.accounts[0].openingBalance, 99);
+  assert.equal(importedStoreOnly.transactions[0].id, 'personal-operation');
+  assert.equal(importedStoreOnly.store.products.length, 3);
+  const completeState = { ...personalState, store: storeWithPictures };
+  const appBackup = await createAppBackup(completeState);
+  const serializedAppBackup = JSON.stringify(appBackup);
+  assert.equal(serializedAppBackup.includes('file:///product.jpg'), false);
+  assert.equal(serializedAppBackup.includes('aW1hZ2U='), true);
+  const restoredApp = await restoreAppBackupToDevice(parseAppBackup(serializedAppBackup));
+  const { store: expectedStore, ...expectedPersonalData } = completeState;
+  const { store: restoredAppStore, ...restoredPersonalData } = restoredApp;
+  assert.deepEqual(restoredPersonalData, expectedPersonalData);
+  assert.equal(restoredApp.accounts[0].id, 'personal-safe');
+  assert.equal(restoredApp.transactions[0].id, 'personal-operation');
+  assert.equal(restoredApp.store.sales[0].id, 'sale-all');
+  assert.ok(restoredApp.store.products[0].picture.startsWith('file:///documents/product-images/photo-product-'));
+  assert.deepEqual({ ...restoredAppStore, products: restoredAppStore.products.map(({ picture, ...product }) => product) }, { ...expectedStore, products: expectedStore.products.map(({ picture, ...product }) => product) });
+  assert.throws(() => parseAppBackup('{"kind":"solid-gold-rich-full","version":1}'), /invalid-app-backup/);
   assert.throws(() => parseStoreBackup('{"kind":"wrong"}'), /invalid-store-backup/);
   await assert.rejects(() => createStoreBackup({ ...storeWithPictures, products: [{ ...productTemplate, picture: 'file:///missing.jpg' }] }), /file-not-found/);
 
   const normalized = normalizeFinanceState({
     schemaVersion: 5,
     accounts: [account('safe'), null],
-    transactions: [null, { id: 'valid', accountId: 'safe', kind: 'income', amount: 3, currency: 'USD' }],
+    transactions: [null, { id: 'valid', accountId: 'safe', kind: 'income', amount: 3, currency: 'USD' }, { id: 'orphan-category-operation', accountId: 'safe', kind: 'expense', amount: 2, currency: 'USD', category: 'legacy-expense' }],
+    recurring: [{ id: 'orphan-category-recurring', accountId: 'safe', kind: 'income', amount: 1, currency: 'USD', category: 'legacy-income', frequency: 'monthly', nextDate: jan31, active: true }],
     budgets: [
       { id: 'budget-safe-total', accountId: 'safe', category: 'all', period: 'monthly', limit: 2500 },
       { id: 'account-budget-safe', accountId: 'safe', category: 'all', period: 'monthly', limit: 900 },
     ],
-    store: { categories: ['General', 'Food'], products: [null, { id: 'old', sku: 'OLD', name: 'Old', category: 'Food', salePrice: 2, costPrice: 1, initialStock: 4, type: 'product' }] },
+    categories: { expense: [{ id: 'subscriptions', icon: 'repeat-outline', name: 'Subscriptions' }], income: [{ id: 'commission', icon: 'cash-outline', name: 'Commission' }], tag: [] },
+    store: { categories: ['General', 'Food', { id: 'custom-imported', name: 'Custom imported' }, { id: 'duplicate-food', name: 'Food' }], products: [null, { id: 'old', sku: 'OLD', name: 'Old', category: 'Food', salePrice: 2, costPrice: 1, initialStock: 4, type: 'product' }] },
   });
-  assert.equal(normalized.schemaVersion, 6);
-  assert.equal(normalized.transactions.length, 1);
+  assert.equal(normalized.schemaVersion, 7);
+  assert.equal(normalized.transactions.length, 2);
+  assert.equal(normalized.transactions[0].baseAmount, 3);
+  assert.equal(normalized.transactions[0].baseCurrency, 'USD');
   assert.deepEqual(normalized.budgets.map((item) => item.id), ['account-budget-safe']);
+  assert.equal(normalized.categories.expense.some((item) => item.id === 'food' && item.builtIn), true);
+  assert.equal(normalized.categories.expense.some((item) => item.id === 'subscriptions' && !item.builtIn), true);
+  assert.equal(normalized.categories.income.some((item) => item.id === 'salary' && item.builtIn), true);
+  assert.equal(normalized.categories.income.some((item) => item.id === 'commission' && !item.builtIn), true);
+  assert.equal(normalized.categories.expense.some((item) => item.id === 'legacy-expense' && !item.builtIn), true);
+  assert.equal(normalized.categories.income.some((item) => item.id === 'legacy-income' && !item.builtIn), true);
+  assert.equal(normalized.store.categories.filter((item) => item.name === 'Food').length, 1);
+  assert.equal(normalized.store.categories.some((item) => item.id === 'custom-imported' && !item.builtIn), true);
   assert.equal(normalized.store.products[0].categoryId, normalized.store.categories.find((item) => item.name === 'Food').id);
 
   storage.clear();
-  storage.set('@solid-gold/finance-state-v5', JSON.stringify({ ...normalized, schemaVersion: 5 }));
+  const legacyV6Transactions = normalized.transactions.map(({ baseAmount, baseCurrency, ...transaction }) => transaction);
+  storage.set('@solid-gold/finance-state-v6', JSON.stringify({ ...normalized, schemaVersion: 6, transactions: legacyV6Transactions }));
   const migrated = await loadFinanceState();
-  assert.equal(migrated.schemaVersion, 6);
+  assert.equal(migrated.schemaVersion, 7);
+  assert.equal(migrated.transactions[0].baseAmount, 3);
   await saveFinanceState(migrated);
-  assert.ok(storage.has('@solid-gold/finance-state-v6'));
-  assert.equal(storage.has('@solid-gold/finance-state-v5'), false);
+  assert.ok(storage.has('@solid-gold/finance-state-v7'));
+  assert.equal(storage.has('@solid-gold/finance-state-v6'), false);
 
   console.log('Domain tests passed');
 }

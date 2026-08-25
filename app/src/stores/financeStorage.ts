@@ -19,8 +19,10 @@ import type {
   TransactionKind,
   TransactionStatus,
 } from '../core/finance/types';
+import { captureCurrencySnapshot } from '../core/finance/currency';
 
-export const FINANCE_STATE_KEY = '@solid-gold/finance-state-v6';
+export const FINANCE_STATE_KEY = '@solid-gold/finance-state-v7';
+const FINANCE_STATE_V6_KEY = '@solid-gold/finance-state-v6';
 const FINANCE_STATE_V5_KEY = '@solid-gold/finance-state-v5';
 const FINANCE_STATE_V3_KEY = '@solid-gold/finance-state-v3';
 const FINANCE_STATE_V2_KEY = '@solid-gold/finance-state-v2';
@@ -45,19 +47,19 @@ export const DEFAULT_STORE_CATEGORIES: StoreCategory[] = [
 ];
 export const DEFAULT_CATEGORIES: FinanceCategories = {
   expense: [
-    { id: 'food', icon: 'restaurant-outline' },
-    { id: 'housing', icon: 'home-outline' },
-    { id: 'transport', icon: 'car-outline' },
-    { id: 'shopping', icon: 'cart-outline' },
-    { id: 'health', icon: 'medkit-outline' },
-    { id: 'other', icon: 'pricetag-outline' },
+    { id: 'food', icon: 'restaurant-outline', builtIn: true },
+    { id: 'housing', icon: 'home-outline', builtIn: true },
+    { id: 'transport', icon: 'car-outline', builtIn: true },
+    { id: 'shopping', icon: 'cart-outline', builtIn: true },
+    { id: 'health', icon: 'medkit-outline', builtIn: true },
+    { id: 'other', icon: 'pricetag-outline', builtIn: true },
   ],
   income: [
-    { id: 'salary', icon: 'cash-outline' },
-    { id: 'business', icon: 'briefcase-outline' },
-    { id: 'gift', icon: 'gift-outline' },
-    { id: 'refund', icon: 'refresh-outline' },
-    { id: 'other', icon: 'pricetag-outline' },
+    { id: 'salary', icon: 'cash-outline', builtIn: true },
+    { id: 'business', icon: 'briefcase-outline', builtIn: true },
+    { id: 'gift', icon: 'gift-outline', builtIn: true },
+    { id: 'refund', icon: 'refresh-outline', builtIn: true },
+    { id: 'other', icon: 'pricetag-outline', builtIn: true },
   ],
   tag: [],
 };
@@ -76,7 +78,7 @@ export const emptyStoreState = (): StoreState => ({
 });
 
 export const emptyFinanceState = (): FinanceState => ({
-  schemaVersion: 6,
+  schemaVersion: 7,
   accounts: [],
   transactions: [],
   transfers: [],
@@ -89,7 +91,7 @@ export const emptyFinanceState = (): FinanceState => ({
   noteFolders: [],
   categories: cloneCategories(DEFAULT_CATEGORIES),
   store: emptyStoreState(),
-  settings: { preferredCurrency: 'USD', exchangeRates: { USD: 1 }, firstDayOfWeek: 1, dateFormat: 'system', activeWorkspace: 'personal' },
+  settings: { preferredCurrency: 'USD', exchangeRates: { USD: 1 }, firstDayOfWeek: 1, dateFormat: 'system', activeWorkspace: 'personal', theme: 'dark' },
 });
 
 function text(value: unknown, fallback = '') {
@@ -142,12 +144,18 @@ function normalizeCategory(value: unknown): FinanceCategory | null {
     id,
     icon: text(record.icon, DEFAULT_CATEGORY_ICONS[id] ?? 'pricetag-outline'),
     name: text(record.name).trim() || undefined,
+    builtIn: Boolean(record.builtIn),
   };
 }
 
 function normalizeCategories(value: unknown, fallback: FinanceCategory[]) {
   const normalized = Array.isArray(value) ? value.map(normalizeCategory).filter((item): item is FinanceCategory => Boolean(item)) : [];
-  return normalized.length ? normalized : fallback.map((category) => ({ ...category }));
+  const defaultIds = new Set(fallback.map((category) => category.id));
+  const normalizedById = new Map(normalized.map((category) => [category.id, category]));
+  return [
+    ...fallback.map((category) => ({ ...category, ...(normalizedById.get(category.id) ?? {}), builtIn: true })),
+    ...Array.from(normalizedById.values()).filter((category) => !defaultIds.has(category.id)).map((category) => ({ ...category, builtIn: false })),
+  ];
 }
 
 function normalizeTransaction(value: Partial<Transaction>, accountId: string): Transaction {
@@ -172,6 +180,8 @@ function normalizeTransaction(value: Partial<Transaction>, accountId: string): T
     status,
     reference: text(value.reference),
     description: text(value.description || value.payee),
+    baseAmount: Number.isFinite(value.baseAmount) && Number(value.baseAmount) >= 0 ? Number(value.baseAmount) : undefined,
+    baseCurrency: text(value.baseCurrency).toUpperCase() || undefined,
     splits: Array.isArray(value.splits) ? value.splits : undefined,
     transferId: text(value.transferId) || undefined,
     recurringId: text(value.recurringId) || undefined,
@@ -183,6 +193,10 @@ function normalizeTransaction(value: Partial<Transaction>, accountId: string): T
 function slug(value: string, fallback: string) {
   const result = value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
   return result || fallback;
+}
+
+function normalizedName(value: string) {
+  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim();
 }
 
 function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState {
@@ -203,8 +217,8 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
     const name = typeof raw === 'string' ? raw.trim() : text(record?.name).trim();
     if (!name || name.toLocaleLowerCase() === 'general') return;
     const requestedId = text(record?.id).trim() || slug(name, `category-${index + 1}`);
-    if (DEFAULT_STORE_CATEGORIES.some((category) => category.id === requestedId)) return;
-    addCategory({ id: requestedId, name, builtIn: Boolean(record?.builtIn) });
+    if (DEFAULT_STORE_CATEGORIES.some((category) => category.id === requestedId) || categories.some((category) => normalizedName(category.name) === normalizedName(name))) return;
+    addCategory({ id: requestedId, name, builtIn: false });
   });
   const categoryIdFor = (rawId: unknown, rawName: unknown) => {
     const id = text(rawId).trim();
@@ -212,7 +226,7 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
     const name = text(rawName).trim();
     return categories.find((item) => item.name.toLocaleLowerCase() === name.toLocaleLowerCase())?.id ?? 'general';
   };
-  const products = recordArray(source.products).map((product, index) => {
+  const products = uniqueById(recordArray(source.products).map((product, index) => {
     const item = product as Partial<StoreProduct> & { category?: unknown; costPrice?: unknown; additionalPrices?: unknown };
     const type = item.type === 'service' ? 'service' : 'product';
     const key = text(item.key, text(item.sku, `product-${index + 1}`)).trim();
@@ -238,9 +252,9 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       additionalInfo: text(item.additionalInfo) || undefined,
       active: item.active !== false,
     } satisfies StoreProduct;
-  });
+  }));
   const productIds = new Set(products.map((product) => product.id));
-  const stockMovements = recordArray(source.stockMovements).map((movement, index) => {
+  const stockMovements = uniqueById(recordArray(source.stockMovements).map((movement, index) => {
     const item = movement as Partial<StoreStockMovement>;
     const type: StoreStockMovement['type'] = ['initial', 'entry', 'exit', 'adjustment', 'sale', 'saleReversal'].includes(item.type ?? '')
       ? item.type as StoreStockMovement['type'] : 'adjustment';
@@ -255,8 +269,8 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       cashMovementId: text(item.cashMovementId) || undefined,
       personalTransactionId: text(item.personalTransactionId) || undefined,
     } satisfies StoreStockMovement;
-  }).filter((movement) => productIds.has(movement.productId));
-  const sales = recordArray(source.sales).map((sale, index) => {
+  }).filter((movement) => productIds.has(movement.productId)));
+  const sales = uniqueById(recordArray(source.sales).map((sale, index) => {
     const item = sale as Partial<StoreSale>;
     const items: StoreSaleItem[] = recordArray(item.items).map((line) => ({
       productId: text(line.productId),
@@ -265,7 +279,7 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       quantity: Math.max(0, number(line.quantity)),
       unitPrice: Math.max(0, number(line.unitPrice)),
       total: Math.max(0, number(line.total, number(line.quantity) * number(line.unitPrice))),
-    }));
+    })).filter((line) => productIds.has(line.productId) && line.quantity > 0);
     const paymentMethod = ['cash', 'card', 'bank', 'transfer', 'other'].includes(item.paymentMethod ?? '')
       ? item.paymentMethod as PaymentMethod : undefined;
     return {
@@ -279,8 +293,8 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       clientId: text(item.clientId) || undefined,
       employeeId: text(item.employeeId) || undefined,
     } satisfies StoreSale;
-  }).filter((sale) => sale.items.length > 0);
-  const employees = recordArray(source.employees).map((employee, index) => {
+  }).filter((sale) => sale.items.length > 0));
+  const employees = uniqueById(recordArray(source.employees).map((employee, index) => {
     const item = employee as Partial<StoreEmployee>;
     return {
       id: text(item.id, `store-employee-${index}`),
@@ -295,8 +309,8 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       active: item.active !== false,
       createdAt: text(item.createdAt, new Date().toISOString()),
     } satisfies StoreEmployee;
-  });
-  const clients = recordArray(source.clients).map((client, index) => {
+  }));
+  const clients = uniqueById(recordArray(source.clients).map((client, index) => {
     const item = client as Partial<StoreClient>;
     return {
       id: text(item.id, `store-client-${index}`),
@@ -307,9 +321,9 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       active: item.active !== false,
       createdAt: text(item.createdAt, new Date().toISOString()),
     } satisfies StoreClient;
-  });
+  }));
   const rawBalance = number(source.businessAccount?.balance);
-  const cashMovements: StoreCashMovement[] = recordArray(source.cashMovements).map((movement, index) => {
+  const cashMovements: StoreCashMovement[] = uniqueById(recordArray(source.cashMovements).map((movement, index) => {
     const item = movement as Partial<StoreCashMovement>;
     const type = ['opening', 'funding', 'withdrawal', 'sale', 'saleReversal', 'purchase', 'purchaseReversal', 'salary'].includes(item.type ?? '')
       ? item.type as StoreCashMovement['type'] : 'opening';
@@ -324,19 +338,21 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       productId: text(item.productId) || undefined,
       personalTransactionId: text(item.personalTransactionId) || undefined,
     };
-  }).filter((movement) => movement.amount !== 0);
+  }).filter((movement) => movement.amount !== 0));
   if (!cashMovements.length && rawBalance !== 0) {
     cashMovements.push({ id: 'store-cash-opening-v5', type: 'opening', amount: rawBalance, date: new Date().toISOString(), note: '' });
   }
   const businessBalance = cashMovements.reduce((total, movement) => total + movement.amount, 0);
+  const storeCurrency = text(source.currency, text(source.businessAccount?.currency, 'USD')).toUpperCase();
+  const storeName = text(source.name, text(source.businessAccount?.name));
   return {
-    name: text(source.name),
-    currency: text(source.currency, 'USD').toUpperCase(),
+    name: storeName,
+    currency: storeCurrency,
     categories,
     businessAccount: {
       id: 'store-business',
-      name: text(source.businessAccount?.name, 'Business'),
-      currency: text(source.businessAccount?.currency, text(source.currency, 'USD')).toUpperCase(),
+      name: text(source.businessAccount?.name, storeName || 'Business'),
+      currency: storeCurrency,
       balance: businessBalance,
     },
     cashMovements,
@@ -419,6 +435,16 @@ export function normalizeFinanceState(value: Partial<FinanceState>): FinanceStat
     income: normalizeCategories(value.categories?.income, DEFAULT_CATEGORIES.income),
     tag: normalizeCategories(value.categories?.tag, DEFAULT_CATEGORIES.tag),
   };
+  (['expense', 'income'] as const).forEach((type) => {
+    const configuredIds = new Set(state.categories[type].map((category) => category.id));
+    const usedIds = new Set([
+      ...state.transactions.filter((transaction) => transaction.kind === type && !transaction.transferId).map((transaction) => transaction.category),
+      ...state.recurring.filter((transaction) => transaction.kind === type).map((transaction) => transaction.category),
+    ].filter(Boolean));
+    usedIds.forEach((id) => {
+      if (!configuredIds.has(id)) state.categories[type].push({ id, icon: DEFAULT_CATEGORY_ICONS[id] ?? 'pricetag-outline', builtIn: false });
+    });
+  });
   state.store = normalizeStoreState(value.store);
   const exchangeRates = Object.entries(value.settings?.exchangeRates ?? {}).reduce<Record<string, number>>((all, [currency, rate]) => {
     if (Number.isFinite(rate) && rate > 0) all[currency.toUpperCase()] = rate;
@@ -430,14 +456,19 @@ export function normalizeFinanceState(value: Partial<FinanceState>): FinanceStat
     preferredCurrency: text(value.settings?.preferredCurrency, 'USD'),
     exchangeRates,
     language: SUPPORTED_LANGUAGES.includes(value.settings?.language as AppLanguage) ? value.settings?.language as AppLanguage : undefined,
+    theme: value.settings?.theme === 'light' ? 'light' : 'dark',
     pinHash: text(value.settings?.pinHash) || undefined,
     activeAccountId: state.accounts.some((account) => account.id === value.settings?.activeAccountId)
       ? value.settings?.activeAccountId
       : state.accounts.find((account) => !account.archived)?.id,
     activeWorkspace: value.settings?.activeWorkspace === 'store' ? 'store' : 'personal',
   };
+  state.transactions = state.transactions.map((transaction) => {
+    if (Number.isFinite(transaction.baseAmount) && transaction.baseCurrency) return transaction;
+    return { ...transaction, ...captureCurrencySnapshot(transaction.amount, transaction.currency, state.settings.preferredCurrency, exchangeRates) };
+  });
   if (!value.store?.currency) state.store.currency = state.settings.preferredCurrency;
-  state.schemaVersion = 6;
+  state.schemaVersion = 7;
   return state;
 }
 
@@ -531,8 +562,9 @@ function mergeById<T extends { id: string }>(preferred: T[], fallback: T[]) {
 }
 
 export async function loadFinanceState() {
-  const [savedV6, savedV5, savedV3, savedV2, budgets, activeId, transactions, limit] = await Promise.all([
+  const [savedV7, savedV6, savedV5, savedV3, savedV2, budgets, activeId, transactions, limit] = await Promise.all([
     AsyncStorage.getItem(FINANCE_STATE_KEY),
+    AsyncStorage.getItem(FINANCE_STATE_V6_KEY),
     AsyncStorage.getItem(FINANCE_STATE_V5_KEY),
     AsyncStorage.getItem(FINANCE_STATE_V3_KEY),
     AsyncStorage.getItem(FINANCE_STATE_V2_KEY),
@@ -549,17 +581,18 @@ export async function loadFinanceState() {
       return null;
     }
   };
+  const v7State = parseSaved(savedV7);
   const v6State = parseSaved(savedV6);
   const v5State = parseSaved(savedV5);
   const v3State = parseSaved(savedV3);
   const v2State = parseSaved(savedV2);
   const legacyState = migrateLegacy(budgets, activeId, transactions, limit);
-  const savedState = v6State ?? v5State ?? v3State ?? v2State;
+  const savedState = v7State ?? v6State ?? v5State ?? v3State ?? v2State;
   if (!savedState) return legacyState;
-  const olderState = savedState === v6State ? v5State ?? v3State ?? v2State ?? legacyState : savedState === v5State ? v3State ?? v2State ?? legacyState : savedState === v3State ? v2State ?? legacyState : legacyState;
+  const olderState = savedState === v7State ? v6State ?? v5State ?? v3State ?? v2State ?? legacyState : savedState === v6State ? v5State ?? v3State ?? v2State ?? legacyState : savedState === v5State ? v3State ?? v2State ?? legacyState : savedState === v3State ? v2State ?? legacyState : legacyState;
   const merged = {
     ...savedState,
-    schemaVersion: 6 as const,
+    schemaVersion: 7 as const,
     accounts: mergeById(savedState.accounts, mergeById(olderState.accounts, legacyState.accounts)),
     transactions: mergeById(savedState.transactions, mergeById(olderState.transactions, legacyState.transactions)),
     transfers: mergeById(savedState.transfers, olderState.transfers),
@@ -581,7 +614,7 @@ export async function saveFinanceState(state: FinanceState) {
   await AsyncStorage.setItem(FINANCE_STATE_KEY, serialized);
   const verified = await AsyncStorage.getItem(FINANCE_STATE_KEY);
   if (verified !== serialized) throw new Error('Local data verification failed.');
-  await AsyncStorage.multiRemove([FINANCE_STATE_V5_KEY, FINANCE_STATE_V3_KEY, FINANCE_STATE_V2_KEY, LEGACY_BUDGETS_KEY, LEGACY_ACTIVE_KEY, LEGACY_TRANSACTIONS_KEY, LEGACY_BUDGET_KEY]);
+  await AsyncStorage.multiRemove([FINANCE_STATE_V6_KEY, FINANCE_STATE_V5_KEY, FINANCE_STATE_V3_KEY, FINANCE_STATE_V2_KEY, LEGACY_BUDGETS_KEY, LEGACY_ACTIVE_KEY, LEGACY_TRANSACTIONS_KEY, LEGACY_BUDGET_KEY]);
 }
 
 export function exportJson(state: FinanceState) {
@@ -594,47 +627,53 @@ function csvCell(value: string | number) {
 }
 
 export function exportCsv(state: FinanceState) {
-  const headers = ['date', 'kind', 'amount', 'currency', 'account', 'payee', 'category', 'paymentMethod', 'status', 'reference', 'description'];
+  const headers = ['date', 'kind', 'amount', 'currency', 'account', 'payee', 'category', 'paymentMethod', 'status', 'reference', 'description', 'baseAmount', 'baseCurrency'];
   const rows = state.transactions.map((transaction) => {
     const account = state.accounts.find((item) => item.id === transaction.accountId);
-    return [transaction.date, transaction.kind, transaction.amount, transaction.currency, account?.name ?? '', transaction.payee, transaction.category, transaction.paymentMethod, transaction.status, transaction.reference, transaction.description]
+    return [transaction.date, transaction.kind, transaction.amount, transaction.currency, account?.name ?? '', transaction.payee, transaction.category, transaction.paymentMethod, transaction.status, transaction.reference, transaction.description, transaction.baseAmount ?? '', transaction.baseCurrency ?? '']
       .map(csvCell)
       .join(',');
   });
   return [headers.join(','), ...rows].join('\n');
 }
 
-function parseCsvLine(line: string) {
-  const cells: string[] = [];
+function parseCsvRecords(text: string): string[][] {
+  const records: string[][] = [];
+  let row: string[] = [];
   let cell = '';
   let quoted = false;
-  for (let index = 0; index < line.length; index += 1) {
-    const character = line[index];
-    if (character === '"' && line[index + 1] === '"' && quoted) {
-      cell += '"';
-      index += 1;
-    } else if (character === '"') {
-      quoted = !quoted;
-    } else if (character === ',' && !quoted) {
-      cells.push(cell.trim());
-      cell = '';
-    } else {
-      cell += character;
-    }
+  const pushCell = () => { row.push(cell.trim()); cell = ''; };
+  const pushRow = () => {
+    pushCell();
+    if (row.some((value) => value !== '')) records.push(row);
+    row = [];
+  };
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quoted) {
+      if (character === '"') {
+        if (text[index + 1] === '"') { cell += '"'; index += 1; }
+        else quoted = false;
+      } else cell += character;
+    } else if (character === '"') quoted = true;
+    else if (character === ',') pushCell();
+    else if (character === '\n' || character === '\r') {
+      if (character === '\r' && text[index + 1] === '\n') index += 1;
+      pushRow();
+    } else cell += character;
   }
-  cells.push(cell.trim());
-  return cells;
+  if (cell !== '' || row.length) pushRow();
+  return records;
 }
 
 export function importCsv(csv: string, accountId: string, fallbackCurrency: string) {
-  const lines = csv.split(/\r?\n/).filter(Boolean);
-  if (lines.length < 2) return { items: [] as Transaction[], errors: ['header'] };
-  const headers = parseCsvLine(lines[0]);
+  const records = parseCsvRecords(csv);
+  if (records.length < 2) return { items: [] as Transaction[], errors: ['header'] };
+  const [headers, ...rows] = records;
   const index = (name: string) => headers.indexOf(name);
   const errors: string[] = [];
   const items: Transaction[] = [];
-  for (const [rowIndex, line] of lines.slice(1).entries()) {
-    const cells = parseCsvLine(line);
+  for (const [rowIndex, cells] of rows.entries()) {
     const amount = number(cells[index('amount')]);
     if (!amount) {
       errors.push(`row:${rowIndex + 2}:amount`);
@@ -654,6 +693,8 @@ export function importCsv(csv: string, accountId: string, fallbackCurrency: stri
       status: cells[index('status')] as TransactionStatus,
       reference: cells[index('reference')],
       description: cells[index('description')],
+      baseAmount: index('baseAmount') >= 0 ? number(cells[index('baseAmount')]) : undefined,
+      baseCurrency: index('baseCurrency') >= 0 ? cells[index('baseCurrency')] : undefined,
     }, accountId));
   }
   return { items, errors };

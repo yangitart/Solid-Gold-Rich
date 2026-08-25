@@ -12,7 +12,7 @@ import Animated, {
   interpolate,
   Extrapolation,
 } from 'react-native-reanimated';
-import { C, SANS, SERIF } from '../theme/luxury';
+import { C, LIGHT_C, SANS, SERIF, createThemeStyles } from '../theme/luxury';
 import Gem, { diamondLevel } from '../components/Gem';
 
 const BOOT_MS = 900;
@@ -123,7 +123,9 @@ export default function BootScreen({ ready, onDone }: { ready: boolean; onDone: 
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemeStyles((C) => {
+  const isLight = C === LIGHT_C;
+  return StyleSheet.create({
   root: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   kicker: { width: 300, color: 'rgba(233,200,119,0.48)', fontFamily: SANS, fontSize: 9, letterSpacing: 3.2, marginBottom: 18, textAlign: 'center' },
   markStage: { width: 220, height: 190, alignItems: 'center', justifyContent: 'center', marginTop: -8 },
@@ -141,7 +143,7 @@ const styles = StyleSheet.create({
     marginLeft: 5.5,
   },
   subtitle: { width: 300, color: 'rgba(255,244,208,0.38)', fontFamily: SANS, fontSize: 9, letterSpacing: 2.1, marginTop: -15, marginBottom: 12, textAlign: 'center' },
-  statusCard: { width: 288, padding: 16, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.04)', shadowColor: '#000', shadowOpacity: 0.28, shadowRadius: 18, shadowOffset: { width: 0, height: 10 }, elevation: 8, marginTop: 12 },
+  statusCard: { width: 288, padding: 16, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, shadowColor: '#000', shadowOpacity: isLight ? 0 : 0.28, shadowRadius: isLight ? 0 : 18, shadowOffset: { width: 0, height: isLight ? 0 : 10 }, elevation: isLight ? 0 : 8, marginTop: 12 },
   statusTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
   statusLabel: { flex: 1, minWidth: 0, color: 'rgba(255,244,208,0.58)', fontFamily: SANS, fontSize: 8, letterSpacing: 1.7 },
   percentage: { color: C.gold, fontFamily: SERIF, fontSize: 16 },
@@ -161,8 +163,9 @@ const styles = StyleSheet.create({
     borderRadius: 3,
     backgroundColor: C.goldLight,
     shadowColor: C.gold,
-    shadowOpacity: 1,
-    shadowRadius: 8,
+    shadowOpacity: isLight ? 0 : 1,
+    shadowRadius: isLight ? 0 : 8,
     shadowOffset: { width: 0, height: 0 },
   },
+  });
 });

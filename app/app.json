@@ -13,6 +13,7 @@
     },
     "android": {
       "allowBackup": false,
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/iconapp-playstore-rounded-final.png",
         "backgroundColor": "#04050A"

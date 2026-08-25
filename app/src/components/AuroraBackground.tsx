@@ -9,7 +9,7 @@ import Animated, {
   withTiming,
   interpolate,
 } from 'react-native-reanimated';
-import { C } from '../theme/luxury';
+import { C, LIGHT_C, createThemeStyles, getThemeColors } from '../theme/luxury';
 
 // Fondo vivo: dos manchas doradas enormes y muy difusas que respiran y giran a
 // distinta velocidad. Al desfasarse entre ellas la luz nunca repite el mismo
@@ -20,6 +20,7 @@ import { C } from '../theme/luxury';
 export default function AuroraBackground() {
   const slow = useSharedValue(0);
   const fast = useSharedValue(0);
+  const lightMode = getThemeColors().void === LIGHT_C.void;
 
   React.useEffect(() => {
     slow.value = withRepeat(
@@ -56,18 +57,18 @@ export default function AuroraBackground() {
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
-      <View style={[StyleSheet.absoluteFill, { backgroundColor: C.void }]} />
+      <View style={[StyleSheet.absoluteFill, { backgroundColor: C.background }]} />
 
       <Animated.View style={[styles.blob, styles.blobTop, blobA]}>
         <LinearGradient
-          colors={['rgba(233,200,119,0.30)', 'rgba(138,106,34,0.10)', 'rgba(4,5,10,0)']}
+          colors={lightMode ? ['rgba(233,200,119,0.18)', 'rgba(138,106,34,0.06)', 'rgba(247,243,234,0)'] : ['rgba(233,200,119,0.30)', 'rgba(138,106,34,0.10)', 'rgba(4,5,10,0)']}
           style={styles.fill}
         />
       </Animated.View>
 
       <Animated.View style={[styles.blob, styles.blobBottom, blobB]}>
         <LinearGradient
-          colors={['rgba(201,162,77,0.22)', 'rgba(74,55,18,0.08)', 'rgba(4,5,10,0)']}
+          colors={lightMode ? ['rgba(201,162,77,0.14)', 'rgba(74,55,18,0.04)', 'rgba(247,243,234,0)'] : ['rgba(201,162,77,0.22)', 'rgba(74,55,18,0.08)', 'rgba(4,5,10,0)']}
           start={{ x: 0.2, y: 0 }}
           end={{ x: 0.8, y: 1 }}
           style={styles.fill}
@@ -76,7 +77,7 @@ export default function AuroraBackground() {
 
       {/* Viñeta: oscurece los bordes para que la mirada caiga en el centro. */}
       <LinearGradient
-        colors={['rgba(4,5,10,0.95)', 'rgba(4,5,10,0)', 'rgba(4,5,10,0)', 'rgba(4,5,10,0.98)']}
+        colors={lightMode ? ['rgba(247,243,234,0.28)', 'rgba(247,243,234,0)', 'rgba(247,243,234,0)', 'rgba(247,243,234,0.34)'] : ['rgba(4,5,10,0.95)', 'rgba(4,5,10,0)', 'rgba(4,5,10,0)', 'rgba(4,5,10,0.98)']}
         locations={[0, 0.28, 0.62, 1]}
         style={StyleSheet.absoluteFill}
       />
@@ -84,7 +85,7 @@ export default function AuroraBackground() {
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemeStyles((C) => StyleSheet.create({
   blob: {
     position: 'absolute',
     width: 520,
@@ -95,4 +96,4 @@ const styles = StyleSheet.create({
   blobTop: { top: -110, alignSelf: 'center' },
   blobBottom: { bottom: -160, left: -120 },
   fill: { flex: 1, borderRadius: 260 },
-});
+}));

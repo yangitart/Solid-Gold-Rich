@@ -28,6 +28,10 @@ export type Transaction = {
   status: TransactionStatus;
   reference: string;
   description: string;
+  /** Historical converted value captured when the operation was recorded. */
+  baseAmount?: number;
+  /** Currency used by baseAmount at the time of the operation. */
+  baseCurrency?: Currency;
   splits?: TransactionSplit[];
   transferId?: string;
   recurringId?: string;
@@ -172,6 +176,7 @@ export type AppSettings = {
   firstDayOfWeek: 0 | 1;
   dateFormat: 'system' | 'iso';
   language?: AppLanguage;
+  theme?: 'dark' | 'light';
   pinHash?: string;
 };
 
@@ -181,6 +186,7 @@ export type FinanceCategory = {
   id: string;
   icon: string;
   name?: string;
+  builtIn?: boolean;
 };
 
 export type FinanceCategories = {
@@ -313,7 +319,7 @@ export type StoreState = {
 };
 
 export type FinanceState = {
-  schemaVersion: 6;
+  schemaVersion: 7;
   accounts: Account[];
   transactions: Transaction[];
   transfers: Transfer[];

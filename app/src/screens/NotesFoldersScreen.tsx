@@ -4,9 +4,10 @@ import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFinance } from '../stores/FinanceContext';
-import { C, SANS, SERIF } from '../theme/luxury';
+import { C, SANS, SERIF, createThemeStyles } from '../theme/luxury';
 
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+const normalizedSearch = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim();
 
 function BackButton({ onPress }: { onPress: () => void }) {
   const { t } = useTranslation();
@@ -14,7 +15,7 @@ function BackButton({ onPress }: { onPress: () => void }) {
 }
 
 function Field({ title, value, onChangeText, placeholder, multiline = false }: { title: string; value: string; onChangeText: (value: string) => void; placeholder?: string; multiline?: boolean }) {
-  return <View style={styles.field}><Text style={styles.fieldLabel}>{title}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor="rgba(255,244,208,0.3)" multiline={multiline} style={[styles.input, multiline && styles.multiline]} /></View>;
+  return <View style={styles.field}><Text style={styles.fieldLabel}>{title}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={C.textSubtle} multiline={multiline} style={[styles.input, multiline && styles.multiline]} /></View>;
 }
 
 export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
@@ -56,7 +57,7 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
     ? state.notes.filter((item) => item.folderId === selectedFolderId)
     : state.notes.filter((item) => !item.folderId);
   const visibleNotes = folderNotes
-    .filter((item) => !query.trim() || `${item.title} ${item.body} ${item.tags.join(' ')}`.toLowerCase().includes(query.trim().toLowerCase()))
+    .filter((item) => !normalizedSearch(query) || normalizedSearch(`${item.title} ${item.body} ${item.tags.join(' ')}`).includes(normalizedSearch(query)))
     .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
 
   const openNewNote = () => {
@@ -117,60 +118,60 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
       <View style={styles.header}><BackButton onPress={onBack} /><Text style={styles.headerTitle} numberOfLines={1}>{selectedFolder?.name ?? t('finance.notes')}</Text><Pressable style={styles.headerCompose} onPress={openNewNote} accessibilityLabel={t('finance.newNote')}><Ionicons name="create-outline" size={21} color={C.gold} /></Pressable></View>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <View style={styles.search}><Ionicons name="search-outline" size={17} color="rgba(255,244,208,0.35)" /><TextInput value={query} onChangeText={setQuery} placeholder={t('finance.notesSearch', { defaultValue: 'Search notes' })} placeholderTextColor="rgba(255,244,208,0.3)" style={styles.searchInput} /><Text style={styles.searchCount}>{visibleNotes.length}</Text></View>
+        <View style={styles.search}><Ionicons name="search-outline" size={17} color={C.textSubtle} /><TextInput value={query} onChangeText={setQuery} placeholder={t('finance.notesSearch', { defaultValue: 'Search notes' })} placeholderTextColor={C.textSubtle} style={styles.searchInput} /><Text style={styles.searchCount}>{visibleNotes.length}</Text></View>
         <View style={styles.panel}>
           {selectedFolder ? (
             <View style={styles.folderHeader}>
-              <Pressable onPress={() => setSelectedFolderId(null)} style={styles.folderBack} accessibilityLabel={t('finance.folders')}><Ionicons name="chevron-back-outline" size={18} color={C.gold} /><Text style={styles.folderBackText}>{t('finance.folders')}</Text></Pressable>
+              <Pressable onPress={() => { setSelectedFolderId(null); setQuery(''); }} style={styles.folderBack} accessibilityLabel={t('finance.folders')}><Ionicons name="chevron-back-outline" size={18} color={C.gold} /><Text style={styles.folderBackText}>{t('finance.folders')}</Text></Pressable>
               <Text style={styles.cardMeta}>{t('finance.noteCount', { count: folderNotes.length })}</Text>
             </View>
           ) : (
             <>
-              <View style={styles.sectionHeader}><Text style={styles.fieldLabel}>{t('finance.folders')}</Text><Pressable onPress={() => { setEditingFolderId(null); setFolderName(''); setFolderError(''); setFolderOpen(true); }} style={styles.iconButton} accessibilityLabel={t('finance.newFolder')}><Ionicons name="folder-open-outline" size={19} color={C.gold} /></Pressable></View>
+              <View style={styles.sectionHeader}><Text style={styles.fieldLabel}>{t('finance.folders')}</Text></View>
               {state.noteFolders.map((folder) => {
                 const count = state.notes.filter((item) => item.folderId === folder.id).length;
-                return <View key={folder.id} style={styles.folderCard}><Pressable style={styles.folderMain} onPress={() => setSelectedFolderId(folder.id)}><View style={styles.folderIcon}><Ionicons name="folder-outline" size={21} color={C.gold} /></View><View style={styles.folderCardMain}><Text style={styles.cardTitle}>{folder.name}</Text><Text style={styles.cardMeta}>{t('finance.noteCount', { count })}</Text></View></Pressable><Pressable style={styles.iconButton} onPress={() => { setEditingFolderId(folder.id); setFolderName(folder.name); setFolderError(''); setFolderOpen(true); }} accessibilityLabel={t('finance.editAction')}><Ionicons name="pencil-outline" size={17} color={C.gold} /></Pressable><Pressable style={styles.iconButton} onPress={() => deleteFolder(folder.id)} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color="#F08B88" /></Pressable></View>;
+                return <View key={folder.id} style={styles.folderCard}><Pressable style={styles.folderMain} onPress={() => { setSelectedFolderId(folder.id); setQuery(''); }}><View style={styles.folderIcon}><Ionicons name="folder-outline" size={21} color={C.gold} /></View><View style={styles.folderCardMain}><Text style={styles.cardTitle}>{folder.name}</Text><Text style={styles.cardMeta}>{t('finance.noteCount', { count })}</Text></View></Pressable><Pressable style={styles.ghostAction} onPress={() => { setEditingFolderId(folder.id); setFolderName(folder.name); setFolderError(''); setFolderOpen(true); }} accessibilityLabel={t('finance.editAction')}><Ionicons name="pencil-outline" size={17} color={C.textSubtle} /></Pressable><Pressable style={styles.ghostAction} onPress={() => deleteFolder(folder.id)} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View>;
               })}
             </>
           )}
 
-          {visibleNotes.map((item) => <View key={item.id} style={styles.noteCard}><Pressable style={styles.noteMain} onPress={() => openNote(item)}><View style={styles.noteHeaderMain}><View style={styles.noteTitleRow}><Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>{item.pinned && <Ionicons name="pin" size={13} color={C.gold} />}</View><Text style={styles.notePreview} numberOfLines={1}>{new Date(item.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {item.body || t('finance.noActivityCopy')}</Text>{Boolean(item.tags.length) && <Text style={styles.tagLine} numberOfLines={1}>{item.tags.map((tag) => `#${tag}`).join('  ')}</Text>}</View></Pressable><Pressable style={styles.iconButton} onPress={() => finance.updateNote({ ...item, pinned: !item.pinned, updatedAt: new Date().toISOString() })} accessibilityLabel={item.pinned ? t('finance.unpinNote') : t('finance.pinNote')}><Ionicons name={item.pinned ? 'pin' : 'pin-outline'} size={17} color={C.gold} /></Pressable><Pressable style={styles.iconButton} onPress={() => deleteNote(item.id)} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color="#F08B88" /></Pressable></View>)}
+          {visibleNotes.map((item) => <View key={item.id} style={styles.noteCard}><Pressable style={styles.noteMain} onPress={() => openNote(item)}><View style={styles.noteHeaderMain}><View style={styles.noteTitleRow}><Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>{item.pinned && <Ionicons name="pin" size={13} color={C.gold} />}</View><Text style={styles.notePreview} numberOfLines={1}>{new Date(item.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {item.body || t('finance.noActivityCopy')}</Text>{Boolean(item.tags.length) && <Text style={styles.tagLine} numberOfLines={1}>{item.tags.map((tag) => `#${tag}`).join('  ')}</Text>}</View></Pressable><Pressable style={styles.ghostAction} onPress={() => finance.updateNote({ ...item, pinned: !item.pinned, updatedAt: new Date().toISOString() })} accessibilityLabel={item.pinned ? t('finance.unpinNote') : t('finance.pinNote')}><Ionicons name={item.pinned ? 'pin' : 'pin-outline'} size={17} color={item.pinned ? C.gold : C.textSubtle} /></Pressable><Pressable style={styles.ghostAction} onPress={() => deleteNote(item.id)} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View>)}
           {!visibleNotes.length && <View style={styles.empty}><View style={styles.diamond} /><Text style={styles.emptyTitle}>{selectedFolderId || !state.noteFolders.length || state.notes.length === 0 ? t('finance.noNotes') : t('finance.folders')}</Text><Text style={styles.emptyBody}>{selectedFolderId ? t('finance.noActivityCopy') : state.noteFolders.length ? t('finance.noNotesInFolders') : t('finance.noActivityCopy')}</Text></View>}
 
         </View>
       </ScrollView>
       <View style={styles.bottomToolbar}>{!selectedFolder && <Pressable style={styles.toolbarAction} onPress={() => { setEditingFolderId(null); setFolderName(''); setFolderError(''); setFolderOpen(true); }}><Ionicons name="folder-open-outline" size={19} color={C.gold} /><Text style={styles.toolbarText}>{t('finance.newFolder')}</Text></Pressable>}<Pressable style={styles.composeButton} onPress={openNewNote}><Ionicons name="create-outline" size={22} color={C.void} /></Pressable></View>
 
-      <Modal visible={folderOpen} transparent animationType="slide" onRequestClose={() => setFolderOpen(false)}>
-        <KeyboardAvoidingView style={styles.modalBackdrop} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <Modal visible={folderOpen} transparent animationType="fade" onRequestClose={() => setFolderOpen(false)}>
+        <KeyboardAvoidingView style={styles.modalBackdrop} behavior="padding" enabled={Platform.OS === 'ios'}>
           <View style={styles.sheet}><Text style={styles.sheetTitle}>{editingFolderId ? t('finance.renameFolder') : t('finance.newFolder')}</Text><Field title={t('finance.folderName')} value={folderName} onChangeText={(value) => { setFolderName(value); setFolderError(''); }} placeholder={t('finance.folderNamePlaceholder')} />{Boolean(folderError) && <Text style={styles.error}>{folderError}</Text>}<Pressable style={[styles.primary, !folderName.trim() && styles.disabled]} disabled={!folderName.trim()} onPress={saveFolder}><Text style={styles.primaryText}>{t('finance.done')}</Text></Pressable><Pressable style={styles.secondary} onPress={() => { setFolderOpen(false); setEditingFolderId(null); }}><Text style={styles.secondaryText}>{t('finance.cancel')}</Text></Pressable></View>
         </KeyboardAvoidingView>
       </Modal>
 
-      <Modal visible={noteOpen} animationType="slide" onRequestClose={() => setNoteOpen(false)}>
-        <SafeAreaView style={styles.editorRoot} edges={['top', 'bottom']}><KeyboardAvoidingView style={styles.editorRoot} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+      <Modal visible={noteOpen} animationType="fade" onRequestClose={() => setNoteOpen(false)}>
+        <SafeAreaView style={styles.editorRoot} edges={['top', 'bottom']}><KeyboardAvoidingView style={styles.editorRoot} behavior="padding" enabled={Platform.OS === 'ios'}>
           <View style={styles.editorHeader}><Pressable style={styles.editorHeaderAction} onPress={() => setNoteOpen(false)}><Text style={styles.editorAction}>{t('finance.cancel')}</Text></Pressable><Text style={styles.editorHeading}>{editingNoteId ? t('finance.notes') : t('finance.newNote')}</Text><Pressable style={styles.editorHeaderAction} disabled={!note.title.trim() && !note.body.trim()} onPress={saveNote}><Text style={[styles.editorAction, !note.title.trim() && !note.body.trim() && styles.editorActionDisabled]}>{t('finance.done')}</Text></Pressable></View>
-          <ScrollView contentContainerStyle={styles.editorContent} keyboardShouldPersistTaps="handled"><TextInput value={note.title} onChangeText={(value) => setNote((current) => ({ ...current, title: value }))} placeholder={t('finance.noteTitle')} placeholderTextColor="rgba(255,244,208,0.25)" style={styles.editorTitle} /><TextInput value={note.body} onChangeText={(value) => setNote((current) => ({ ...current, body: value }))} placeholder={t('finance.noteBody')} placeholderTextColor="rgba(255,244,208,0.22)" multiline autoFocus style={styles.editorBody} /><Field title={t('finance.tags')} value={note.tags} onChangeText={(value) => setNote((current) => ({ ...current, tags: value }))} placeholder={t('finance.tags')} />{state.noteFolders.length > 0 && <><Text style={styles.fieldLabel}>{t('finance.chooseFolder')}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choices}><Pressable style={[styles.choice, !note.folderId && styles.choiceActive]} onPress={() => setNote((current) => ({ ...current, folderId: '' }))}><Text style={[styles.choiceText, !note.folderId && styles.choiceTextActive]}>{t('finance.rootFolder')}</Text></Pressable>{state.noteFolders.map((folder) => <Pressable key={folder.id} style={[styles.choice, note.folderId === folder.id && styles.choiceActive]} onPress={() => setNote((current) => ({ ...current, folderId: folder.id }))}><Text style={[styles.choiceText, note.folderId === folder.id && styles.choiceTextActive]}>{folder.name}</Text></Pressable>)}</ScrollView></>}{editingNoteId && <Pressable style={styles.deleteEditor} onPress={() => deleteNote(editingNoteId)}><Ionicons name="trash-outline" size={17} color="#F08B88" /><Text style={styles.deleteEditorText}>{t('finance.deleteNote')}</Text></Pressable>}</ScrollView>
+          <ScrollView contentContainerStyle={styles.editorContent} keyboardShouldPersistTaps="handled"><TextInput value={note.title} onChangeText={(value) => setNote((current) => ({ ...current, title: value }))} placeholder={t('finance.noteTitle')} placeholderTextColor={C.textSubtle} style={styles.editorTitle} /><TextInput value={note.body} onChangeText={(value) => setNote((current) => ({ ...current, body: value }))} placeholder={t('finance.noteBody')} placeholderTextColor={C.textSubtle} multiline style={styles.editorBody} /><Field title={t('finance.tags')} value={note.tags} onChangeText={(value) => setNote((current) => ({ ...current, tags: value }))} placeholder={t('finance.tags')} />{state.noteFolders.length > 0 && <><Text style={styles.fieldLabel}>{t('finance.chooseFolder')}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choices}><Pressable style={[styles.choice, !note.folderId && styles.choiceActive]} onPress={() => setNote((current) => ({ ...current, folderId: '' }))}><Text style={[styles.choiceText, !note.folderId && styles.choiceTextActive]}>{t('finance.rootFolder')}</Text></Pressable>{state.noteFolders.map((folder) => <Pressable key={folder.id} style={[styles.choice, note.folderId === folder.id && styles.choiceActive]} onPress={() => setNote((current) => ({ ...current, folderId: folder.id }))}><Text style={[styles.choiceText, note.folderId === folder.id && styles.choiceTextActive]}>{folder.name}</Text></Pressable>)}</ScrollView></>}{editingNoteId && <Pressable style={styles.deleteEditor} onPress={() => deleteNote(editingNoteId)}><Ionicons name="trash-outline" size={17} color={C.red} /><Text style={styles.deleteEditorText}>{t('finance.deleteNote')}</Text></Pressable>}</ScrollView>
         </KeyboardAvoidingView></SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: C.void },
+const styles = createThemeStyles((C) => StyleSheet.create({
+  root: { flex: 1, backgroundColor: C.background },
   header: { height: 78, paddingTop: 12, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line },
   backButton: { width: 44, height: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, minWidth: 0, marginHorizontal: 8, textAlign: 'center', color: C.goldLight, fontFamily: SERIF, fontSize: 21 },
   headerCompose: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
   content: { width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: 18, paddingTop: 24, paddingBottom: 96 },
-  search: { height: 48, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.12)', backgroundColor: 'rgba(255,255,255,0.045)', paddingHorizontal: 14, marginBottom: 20 },
+  search: { height: 48, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, paddingHorizontal: 14, marginBottom: 20 },
   searchInput: { flex: 1, height: 48, color: C.goldLight, fontFamily: SANS, fontSize: 14, paddingVertical: 0 },
   searchCount: { color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 11 },
   panel: { overflow: 'hidden', borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.1)', backgroundColor: 'rgba(10,12,20,0.42)', paddingHorizontal: 14 },
   sectionHeader: { minHeight: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   fieldLabel: { color: 'rgba(233,200,119,0.7)', fontFamily: SANS, fontSize: 11, letterSpacing: 1, marginBottom: 6 },
-  iconButton: { width: 44, height: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.04)', alignItems: 'center', justifyContent: 'center' },
+  ghostAction: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   folderCard: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)' },
   folderMain: { flex: 1, minWidth: 0, minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 11 },
   folderIcon: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
@@ -200,7 +201,7 @@ const styles = StyleSheet.create({
   sheet: { width: '100%', maxWidth: 620, maxHeight: '90%', borderTopLeftRadius: 25, borderTopRightRadius: 25, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14', padding: 18 },
   sheetTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 23, marginBottom: 12 },
   field: { marginTop: 11 },
-  input: { minHeight: 48, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', color: C.goldLight, fontFamily: SANS, fontSize: 14, paddingHorizontal: 12, paddingVertical: 10 },
+  input: { minHeight: 48, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', color: C.goldLight, fontFamily: SANS, fontSize: 13, paddingHorizontal: 12, paddingVertical: 10 },
   multiline: { minHeight: 90, textAlignVertical: 'top' },
   error: { color: '#F08B88', fontFamily: SANS, fontSize: 10, marginTop: 8 },
   choices: { gap: 7, paddingVertical: 8 },
@@ -212,7 +213,7 @@ const styles = StyleSheet.create({
   toolbarAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 6 },
   toolbarText: { color: C.gold, fontFamily: SANS, fontSize: 10 },
   composeButton: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center' },
-  editorRoot: { flex: 1, backgroundColor: C.void },
+  editorRoot: { flex: 1, backgroundColor: C.background },
   editorHeader: { height: 58, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 18, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line },
   editorHeaderAction: { minWidth: 64, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
   editorAction: { minWidth: 54, color: C.gold, fontFamily: SANS, fontSize: 11 },
@@ -222,5 +223,5 @@ const styles = StyleSheet.create({
   editorTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 27, paddingVertical: 8 },
   editorBody: { minHeight: 260, color: 'rgba(255,244,208,0.78)', fontFamily: SANS, fontSize: 15, lineHeight: 23, paddingVertical: 12, textAlignVertical: 'top' },
   deleteEditor: { minHeight: 48, marginTop: 22, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(240,139,136,0.5)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  deleteEditorText: { color: '#F08B88', fontFamily: SANS, fontSize: 11, fontWeight: '700' },
-});
+  deleteEditorText: { color: C.red, fontFamily: SANS, fontSize: 11, fontWeight: '700' },
+}));

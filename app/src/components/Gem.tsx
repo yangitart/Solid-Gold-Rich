@@ -11,7 +11,7 @@ import Animated, {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { C } from '../theme/luxury';
+import { createThemeStyles, LIGHT_C } from '../theme/luxury';
 
 const SIZE = 150;
 
@@ -182,17 +182,21 @@ export default function Gem({
   );
 }
 
-const styles = StyleSheet.create({
+const styles = createThemeStyles((C) => {
+  const isLight = C === LIGHT_C;
+  return StyleSheet.create({
   stage: { width: 300, height: 288, alignItems: 'center', justifyContent: 'center' },
   stageContent: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
   halo: { position: 'absolute', width: 290, height: 290, borderRadius: 145 },
   haloFill: { flex: 1, borderRadius: 145 },
-  floorShadow: { position: 'absolute', bottom: 28, width: 142, height: 18, borderRadius: 70, backgroundColor: 'rgba(0,0,0,0.52)', transform: [{ scaleX: 1.35 }] },
+  floorShadow: isLight
+    ? { display: 'none' }
+    : { position: 'absolute', bottom: 28, width: 142, height: 18, borderRadius: 70, backgroundColor: 'rgba(0,0,0,0.52)', transform: [{ scaleX: 1.35 }] },
   burst: { position: 'absolute', width: 172, height: 172, borderRadius: 86, borderWidth: 1.2 },
   ring: { position: 'absolute', width: 232, height: 232, borderRadius: 116, borderWidth: 1, borderColor: 'rgba(226,220,255,0.14)', borderLeftColor: 'transparent' },
   ringOuter: { borderColor: 'rgba(226,220,255,0.08)', borderRightColor: 'transparent' },
   crownRing: { position: 'absolute', width: 270, height: 270, borderRadius: 135, borderWidth: StyleSheet.hairlineWidth, borderStyle: 'dashed', opacity: 0.38 },
-  body: { width: SIZE, height: SIZE, borderRadius: 12, overflow: 'hidden', backgroundColor: C.goldMid, shadowOpacity: 0.78, shadowRadius: 32, shadowOffset: { width: 0, height: 0 }, elevation: 22 },
+  body: { width: SIZE, height: SIZE, borderRadius: 12, overflow: 'hidden', backgroundColor: C.goldMid, shadowOpacity: isLight ? 0 : 0.78, shadowRadius: isLight ? 0 : 32, shadowOffset: { width: 0, height: 0 }, elevation: isLight ? 0 : 22 },
   facets: { ...StyleSheet.absoluteFillObject, flexDirection: 'row', flexWrap: 'wrap' },
   quad: { width: '50%', height: '50%' },
   innerTable: { position: 'absolute', left: 37, top: 37, width: 76, height: 76, borderRadius: 9, borderWidth: 1, borderColor: 'rgba(255,255,255,0.38)', overflow: 'hidden' },
@@ -203,11 +207,11 @@ const styles = StyleSheet.create({
   lineDiagonalB: { left: 75, top: -32, width: StyleSheet.hairlineWidth, height: 214, transform: [{ rotate: '-45deg' }] },
   sweep: { position: 'absolute', top: -SIZE, bottom: -SIZE, width: 42 },
   rim: { ...StyleSheet.absoluteFillObject, borderRadius: 12, borderWidth: 1.4, opacity: 0.7 },
-  sparkle: { position: 'absolute', width: 2, height: 20, borderRadius: 2, shadowColor: '#FFFFFF', shadowOpacity: 0.9, shadowRadius: 7 },
+  sparkle: { position: 'absolute', width: 2, height: 20, borderRadius: 2, shadowColor: '#FFFFFF', shadowOpacity: isLight ? 0 : 0.9, shadowRadius: isLight ? 0 : 7 },
   sparkleCross: { position: 'absolute', width: 12, height: 2, left: -5, top: 9, borderRadius: 2 },
   sparkleTop: { top: 48, right: 67, transform: [{ scale: 0.75 }] },
   sparkleRight: { top: 112, right: 34, transform: [{ scale: 0.42 }] },
-  satellite: { position: 'absolute', width: 24, height: 24, borderRadius: 4, borderWidth: 1.2, overflow: 'hidden', transform: [{ rotate: '45deg' }], shadowOpacity: 0.9, shadowRadius: 9, shadowOffset: { width: 0, height: 0 }, elevation: 8 },
+  satellite: { position: 'absolute', width: 24, height: 24, borderRadius: 4, borderWidth: 1.2, overflow: 'hidden', transform: [{ rotate: '45deg' }], shadowOpacity: isLight ? 0 : 0.9, shadowRadius: isLight ? 0 : 9, shadowOffset: { width: 0, height: 0 }, elevation: isLight ? 0 : 8 },
   satelliteTable: { position: 'absolute', left: 6, top: 6, width: 10, height: 10, borderRadius: 2, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.55)', backgroundColor: 'rgba(255,255,255,0.1)' },
   satelliteFacetH: { position: 'absolute', left: 0, right: 0, top: 11, height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.45)' },
   satelliteFacetV: { position: 'absolute', top: 0, bottom: 0, left: 11, width: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.45)' },
@@ -218,4 +222,5 @@ const styles = StyleSheet.create({
   ray: { position: 'absolute', opacity: 0.13, borderRadius: 2 },
   rayHorizontal: { width: 292, height: 1 },
   rayVertical: { width: 1, height: 278 },
+  });
 });
