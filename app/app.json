@@ -15,7 +15,7 @@
       "allowBackup": false,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/iconapp-playstore-rounded-final.png",
+        "foregroundImage": "./assets/images/iconapp-transparent.png",
         "backgroundColor": "#04050A"
       },
       "edgeToEdgeEnabled": true,
@@ -41,7 +41,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/iconapp.png",
+          "image": "./assets/images/iconapp-transparent.png",
           "imageWidth": 260,
           "resizeMode": "contain",
           "backgroundColor": "#04050A"

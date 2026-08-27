@@ -453,6 +453,51 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
     return { category: category.id, icon: category.icon, total };
   }).filter((category) => category.total > 0).sort((a, b) => b.total - a.total);
   const statsMaxCategory = Math.max(1, ...statsCategories.map((category) => category.total));
+  const statsTotalExpense = statsCategories.reduce((sum, category) => sum + category.total, 0);
+  const statsAmountOf = (item: typeof statsTransactions[number]) => {
+    if (screenMode !== 'allActivity') return item.amount;
+    const portfolioItem = item as PortfolioTransaction;
+    const budget = accountViews.find((candidate) => candidate.id === portfolioItem.budgetId);
+    return transactionToBaseCurrency(item, budget ?? createDefaultBudget(''));
+  };
+  const statsFlowBuckets = (() => {
+    const buckets: { key: string; label: string; income: number; expenses: number; current: boolean }[] = [];
+    const pushBucket = (key: string, label: string, from: Date, to: Date) => {
+      const items = statsTransactions.filter((item) => inDateRange(item.date, { start: from, end: to }));
+      buckets.push({
+        key,
+        label,
+        income: items.filter((item) => item.kind === 'income').reduce((sum, item) => sum + statsAmountOf(item), 0),
+        expenses: items.filter((item) => item.kind === 'expense').reduce((sum, item) => sum + statsAmountOf(item), 0),
+        current: inDateRange(now.toISOString(), { start: from, end: to }),
+      });
+    };
+    if (statsRange === 'year') {
+      const year = statsRangeBounds.start.getFullYear();
+      for (let month = 0; month < 12; month += 1) pushBucket(String(month), new Date(year, month, 1).toLocaleDateString(language, { month: 'narrow' }), new Date(year, month, 1), new Date(year, month + 1, 0, 23, 59, 59));
+    } else if (statsRange === 'month') {
+      const cursor = new Date(statsRangeBounds.start.getFullYear(), statsRangeBounds.start.getMonth(), statsRangeBounds.start.getDate());
+      while (cursor <= statsRangeBounds.end) {
+        const from = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate());
+        const weekEnd = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 6, 23, 59, 59);
+        const to = weekEnd > statsRangeBounds.end ? statsRangeBounds.end : weekEnd;
+        pushBucket(from.toDateString(), `${from.getDate()}–${to.getDate()}`, from, to);
+        cursor.setDate(cursor.getDate() + 7);
+      }
+    } else {
+      const cursor = new Date(statsRangeBounds.start.getFullYear(), statsRangeBounds.start.getMonth(), statsRangeBounds.start.getDate());
+      while (cursor <= statsRangeBounds.end) {
+        const day = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate());
+        pushBucket(day.toDateString(), statsRange === 'week' ? day.toLocaleDateString(language, { weekday: 'narrow' }) : String(day.getDate()), day, new Date(day.getFullYear(), day.getMonth(), day.getDate(), 23, 59, 59));
+        cursor.setDate(cursor.getDate() + 1);
+      }
+    }
+    return buckets;
+  })();
+  const statsFlowMax = Math.max(1, ...statsFlowBuckets.flatMap((bucket) => [bucket.income, bucket.expenses]));
+  const statsFlowHasData = statsFlowBuckets.some((bucket) => bucket.income > 0 || bucket.expenses > 0);
+  const statsFlowBarWidth = statsRange === 'year' ? 5 : 8;
+  const statsFlowBarGap = statsRange === 'year' ? 2 : 4;
   const statsCalendarFirstDay = financeState.settings.firstDayOfWeek ?? 1;
   const statsCalendarOffset = (new Date(statsCalendarMonth.getFullYear(), statsCalendarMonth.getMonth(), 1).getDay() - statsCalendarFirstDay + 7) % 7;
   const statsCalendarDays = new Date(statsCalendarMonth.getFullYear(), statsCalendarMonth.getMonth() + 1, 0).getDate();
@@ -1110,12 +1155,49 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                 <View style={styles.statsSummaryTop}><View style={styles.statsSummaryCopy}><Text style={styles.statsSummaryLabel}>{t('finance.cashFlow')}</Text><Text style={[styles.statsSummaryNet, statsNet < 0 ? styles.expenseText : styles.incomeText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.58}>{formatMoney(statsNet, language, statsCurrency)}</Text></View><View style={styles.statsOperationBadge}><Ionicons name="receipt-outline" size={14} color={C.gold} /><Text style={styles.statsOperationCount}>{statsTransactions.length}</Text></View></View>
                 <View style={styles.statsSummaryValues}><View style={styles.statsMetric}><Text style={styles.statsMetricLabel}>{t('finance.income')}</Text><Text style={[styles.statsMetricValue, styles.incomeText]} numberOfLines={1} adjustsFontSizeToFit>+{formatMoney(selectedStatsPeriod.income, language, statsCurrency)}</Text></View><View style={styles.statsMetricDivider} /><View style={styles.statsMetric}><Text style={styles.statsMetricLabel}>{t('finance.expenses')}</Text><Text style={[styles.statsMetricValue, styles.expenseText]} numberOfLines={1} adjustsFontSizeToFit>-{formatMoney(selectedStatsPeriod.expenses, language, statsCurrency)}</Text></View></View>
               </View>
+              {statsRange !== 'today' && <>
+              <Text style={styles.managerEyebrow}>{t('finance.flowChart')}</Text>
+              <View style={[styles.managerAccounts, styles.statsFlowCard]}>
+                {statsFlowHasData ? <>
+                <View style={styles.flowChart}>
+                  {statsFlowBuckets.map((bucket) => {
+                    const incomeHeight = bucket.income > 0 ? Math.max(7, bucket.income / statsFlowMax * 62) : 0;
+                    const expenseHeight = bucket.expenses > 0 ? Math.max(7, bucket.expenses / statsFlowMax * 62) : 0;
+                    return <View key={bucket.key} style={styles.flowColumn}>
+                      <View style={[styles.flowBars, { gap: statsFlowBarGap }]}>
+                        <View style={[styles.flowBar, { height: incomeHeight, width: statsFlowBarWidth, borderRadius: statsFlowBarWidth / 2, backgroundColor: C.gold }]} />
+                        <View style={[styles.flowBar, { height: expenseHeight, width: statsFlowBarWidth, borderRadius: statsFlowBarWidth / 2, backgroundColor: C.red }]} />
+                      </View>
+                      <View style={[styles.flowNowDot, bucket.current && styles.flowNowDotActive]} />
+                      <Text style={[styles.flowLabel, bucket.current && styles.flowLabelActive]} numberOfLines={1}>{bucket.label}</Text>
+                    </View>;
+                  })}
+                </View>
+                <View style={styles.flowLegend}>
+                  <View style={styles.flowLegendItem}><View style={[styles.flowLegendChip, { backgroundColor: C.gold }]} /><Text style={styles.flowLegendText}>{t('finance.income')}</Text></View>
+                  <View style={styles.flowLegendItem}><View style={[styles.flowLegendChip, { backgroundColor: C.red }]} /><Text style={styles.flowLegendText}>{t('finance.expenses')}</Text></View>
+                </View>
+                </> : <View style={styles.statsFlowEmpty}><Ionicons name="stats-chart-outline" size={21} color={C.textSubtle} /><Text style={styles.emptyCopy}>{t('finance.noActivityCopy')}</Text></View>}
+              </View>
+              </>}
               <Text style={styles.managerEyebrow}>{t('finance.categoryBreakdown')}</Text>
               <View style={styles.managerAccounts}>
-                {statsCategories.map(({ category, icon, total }) => {
+                {statsCategories.length > 0 && (() => {
+                  const top = statsCategories[0];
+                  const topName = [...financeState.categories.expense, ...financeState.categories.income].find((item) => item.id === top.category)?.name ?? t(`finance.categories.${top.category}`, { defaultValue: top.category });
+                  return <View style={styles.statsTopCard}>
+                    <Text style={styles.statsTopLabel}>{t('finance.topCategory')}</Text>
+                    <View style={styles.statsCategoryTop}>
+                      <View style={styles.statsCategoryName}><View style={[styles.statsCategoryIcon, styles.statsCategoryIconTop]}><Ionicons name={top.icon as React.ComponentProps<typeof Ionicons>['name']} size={15} color={C.gold} /></View><Text style={styles.statsTopName} numberOfLines={1}>{topName}</Text></View>
+                      <View style={styles.statsCategoryAmount}><Text style={styles.statsTopAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>{formatMoney(top.total, language, statsCurrency)}</Text><Text style={styles.statsCategoryPct}>{Math.round(top.total / Math.max(1, statsTotalExpense) * 100)}%</Text></View>
+                    </View>
+                  </View>;
+                })()}
+                {statsCategories.slice(1).map(({ category, icon, total }, index) => {
                   const categoryName = [...financeState.categories.expense, ...financeState.categories.income].find((item) => item.id === category)?.name ?? t(`finance.categories.${category}`, { defaultValue: category });
-                  return <View key={category} style={styles.statsCategoryRow}><View style={styles.statsCategoryTop}><View style={styles.statsCategoryName}><Ionicons name={icon as React.ComponentProps<typeof Ionicons>['name']} size={16} color={C.gold} /><Text style={styles.managerAccountName}>{categoryName}</Text></View><Text style={styles.managerAccountBalance} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>{formatMoney(total, language, statsCurrency)}</Text></View><View style={styles.statsCategoryTrack}><View style={[styles.statsCategoryFill, { width: `${total / statsMaxCategory * 100}%` }]} /></View></View>;
+                  return <View key={category} style={styles.statsCategoryRow}><View style={styles.statsCategoryTop}><View style={styles.statsCategoryName}><Text style={styles.statsCategoryRank}>{String(index + 2).padStart(2, '0')}</Text><View style={styles.statsCategoryIcon}><Ionicons name={icon as React.ComponentProps<typeof Ionicons>['name']} size={14} color={C.gold} /></View><Text style={[styles.managerAccountName, styles.statsCategoryNameText]} numberOfLines={1}>{categoryName}</Text></View><View style={styles.statsCategoryAmount}><Text style={styles.managerAccountBalance} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>{formatMoney(total, language, statsCurrency)}</Text><Text style={styles.statsCategoryPct}>{Math.round(total / Math.max(1, statsTotalExpense) * 100)}%</Text></View></View><View style={styles.statsCategoryTrack}><LinearGradient colors={[C.gold, C.goldMid]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.statsCategoryFill, { width: `${total / statsMaxCategory * 100}%` }]} /></View></View>;
                 })}
+                {statsCategories.length > 0 && <View style={styles.statsTotalRow}><Text style={styles.statsTotalLabel}>{t('finance.totalSpent')}</Text><Text style={styles.statsTotalValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>{formatMoney(statsTotalExpense, language, statsCurrency)}</Text></View>}
                 {!statsCategories.length && <View style={styles.statsEmpty}><Ionicons name="analytics-outline" size={22} color="rgba(233,200,119,0.35)" /><Text style={styles.emptyCopy}>{t('finance.noActivityCopy')}</Text></View>}
               </View>
               </> : <View style={styles.statsCalendarCard}>
@@ -1598,7 +1680,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   statsSummaryCopy: { flex: 1, minWidth: 0 },
   statsSummaryLabel: { color: 'rgba(233,200,119,0.5)', fontFamily: SANS, fontSize: 8, letterSpacing: 1.4 },
   statsSummaryNet: { width: '100%', fontFamily: SERIF, fontSize: 29, marginTop: 6 },
-  statsOperationBadge: { minWidth: 44, height: 44, borderRadius: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.07)', paddingHorizontal: 8 },
+  statsOperationBadge: { minWidth: 44, height: 44, borderRadius: 15, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.ink, paddingHorizontal: 8 },
   statsOperationCount: { color: C.goldLight, fontFamily: SANS, fontSize: 10.5 },
   statsSummaryValues: { flexDirection: 'row', alignItems: 'center', marginTop: 17, paddingTop: 13, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line },
   statsMetric: { flex: 1, minWidth: 0 },
@@ -1606,7 +1688,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   statsMetricValue: { fontFamily: SERIF, fontSize: 15 },
   statsMetricDivider: { width: StyleSheet.hairlineWidth, height: 28, backgroundColor: C.line, marginHorizontal: 14 },
   operationHeaderActions: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  statsIconButton: { width: 44, height: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, alignItems: 'center', justifyContent: 'center' },
+  statsIconButton: { width: 44, height: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
   statsIcon: { width: 17, height: 17, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 2, paddingBottom: 3 },
   statsBarShort: { width: 3, height: 8, borderRadius: 2, backgroundColor: C.gold },
   statsBarTall: { width: 3, height: 15, borderRadius: 2, backgroundColor: C.goldLight },
@@ -1616,8 +1698,8 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   fixedOperationsPanel: { flex: 1, minHeight: 0, paddingBottom: 0 },
   operationsScroll: { flex: 1 },
   operationsScrollContent: { flexGrow: 1, paddingBottom: 76 },
-  floatingAdd: { position: 'absolute', right: 31, bottom: 12, width: 46, height: 46, borderRadius: 23, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
-  floatingWorkspace: { position: 'absolute', right: 32, bottom: 68, width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
+  floatingAdd: { position: 'absolute', right: 13, bottom: 25, width: 46, height: 46, borderRadius: 23, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
+  floatingWorkspace: { position: 'absolute', right: 14, bottom: 81, width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
   hero: { borderRadius: 26, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, padding: 18, overflow: 'hidden', backgroundColor: 'rgba(10,12,20,0.66)' },
   heroTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
   eyebrow: { color: 'rgba(233,200,119,0.58)', fontFamily: SANS, fontSize: 8, letterSpacing: 2.1 },
@@ -1645,7 +1727,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   expenseText: { color: '#F08B88' },
   sectionEyebrow: { color: 'rgba(233,200,119,0.58)', fontFamily: SANS, fontSize: 9, letterSpacing: 1.35, marginBottom: 4 },
   sectionTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13, fontWeight: '600', letterSpacing: 0.45 },
-  operationCountBadge: { height: 44, minWidth: 48, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
+  operationCountBadge: { height: 44, minWidth: 48, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.ink, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5 },
   operationCount: { color: C.goldLight, fontFamily: SANS, fontSize: 10.5, fontWeight: '600' },
   panel: { borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.53)', paddingHorizontal: 13, overflow: 'hidden' },
   transactionRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.09)' },
@@ -1728,11 +1810,37 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   statsRoot: { flex: 1, backgroundColor: C.background },
   statsSafe: { flex: 1 },
   statsContent: { padding: 18, paddingBottom: 38 },
-  statsCategoryRow: { minHeight: 61, justifyContent: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.09)', paddingVertical: 10 },
-  statsCategoryTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  statsCategoryName: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  statsCategoryTrack: { height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.055)', overflow: 'hidden', marginTop: 9 },
-  statsCategoryFill: { height: 3, borderRadius: 2, backgroundColor: C.gold },
+  statsCategoryRow: { minHeight: 61, justifyContent: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.09)', paddingVertical: 11 },
+  statsCategoryTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
+  statsCategoryName: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 7 }, statsCategoryNameText: { flex: 1, minWidth: 0 },
+  statsCategoryRank: { color: 'rgba(255,244,208,0.3)', fontFamily: SANS, fontSize: 9, fontWeight: '700', minWidth: 15 },
+  statsCategoryIcon: { width: 24, height: 24, borderRadius: 8, backgroundColor: 'rgba(233,200,119,0.1)', alignItems: 'center', justifyContent: 'center' },
+  statsCategoryIconTop: { width: 28, height: 28, borderRadius: 9, backgroundColor: 'rgba(233,200,119,0.16)' },
+  statsCategoryAmount: { minWidth: 82, maxWidth: '44%', alignItems: 'flex-end', gap: 2 },
+  statsCategoryPct: { color: 'rgba(255,244,208,0.4)', fontFamily: SANS, fontSize: 9 },
+  statsTopCard: { marginHorizontal: -12, paddingHorizontal: 12, paddingTop: 14, paddingBottom: 14, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, borderBottomColor: C.line, backgroundColor: C.glass },
+  statsTopLabel: { color: 'rgba(233,200,119,0.55)', fontFamily: SANS, fontSize: 8, letterSpacing: 1.2, marginBottom: 9 },
+  statsTopName: { flex: 1, minWidth: 0, color: C.goldLight, fontFamily: SERIF, fontSize: 16, lineHeight: 20 },
+  statsTopAmount: { width: '100%', color: C.goldLight, fontFamily: SERIF, fontSize: 16, textAlign: 'right' },
+  statsTotalRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', minHeight: 52 },
+  statsTotalLabel: { color: 'rgba(255,244,208,0.5)', fontFamily: SANS, fontSize: 9, letterSpacing: 1 },
+  statsTotalValue: { color: C.goldLight, fontFamily: SERIF, fontSize: 16, flexShrink: 1, marginLeft: 10 },
+  statsCategoryTrack: { height: 5, borderRadius: 3, backgroundColor: C.line, overflow: 'hidden', marginTop: 10 },
+  statsCategoryFill: { height: 5, borderRadius: 3 },
+  statsFlowCard: { marginBottom: 22 },
+  flowChart: { flexDirection: 'row', alignItems: 'flex-end', paddingTop: 14, paddingHorizontal: 2 },
+  flowColumn: { flex: 1, minWidth: 0, alignItems: 'center', gap: 3 },
+  flowBars: { height: 72, width: '100%', flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line },
+  flowBar: { borderRadius: 3 },
+  flowNowDot: { width: 3, height: 3, borderRadius: 2, backgroundColor: 'transparent' },
+  flowNowDotActive: { backgroundColor: C.gold },
+  flowLabel: { width: '100%', height: 14, color: 'rgba(255,244,208,0.38)', fontFamily: SANS, fontSize: 7.5, lineHeight: 12, maxWidth: '100%', textAlign: 'center' },
+  flowLabelActive: { color: C.goldLight, fontWeight: '700' },
+  flowLegend: { flexDirection: 'row', gap: 18, paddingTop: 12, paddingBottom: 10 },
+  flowLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  flowLegendChip: { width: 8, height: 8, borderRadius: 4 },
+  flowLegendText: { color: 'rgba(255,244,208,0.5)', fontFamily: SANS, fontSize: 9 },
+  statsFlowEmpty: { minHeight: 112, alignItems: 'center', justifyContent: 'center', gap: 4 },
   statsCalendarCard: { borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.72)', padding: 12 },
   statsCalendarHeader: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   statsCalendarArrow: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },

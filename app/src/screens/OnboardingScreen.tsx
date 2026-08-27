@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { C, SANS, SERIF, createThemeStyles } from '../theme/luxury';
 import { useFinance } from '../stores/FinanceContext';
+import i18n, { getPhoneLanguage, supportedLanguages, type SupportedLanguage } from '../core/locales/i18next';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -31,6 +32,8 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
   const [currency, setCurrency] = React.useState(state.settings.preferredCurrency || 'USD');
   const [currencyPickerOpen, setCurrencyPickerOpen] = React.useState(false);
   const [currencyQuery, setCurrencyQuery] = React.useState('');
+  const [languagePickerOpen, setLanguagePickerOpen] = React.useState(false);
+  const [language, setLanguage] = React.useState<SupportedLanguage>(() => state.settings.language ?? getPhoneLanguage());
   const compact = height < 700;
   const veryCompact = height < 620;
   const lastPage = page === PAGES.length - 1;
@@ -41,11 +44,17 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
       const storeHasHistory = current.store.products.length > 0 || current.store.sales.length > 0 || current.store.stockMovements.length > 0 || current.store.cashMovements.length > 0;
       return {
         ...current,
-        settings: { ...current.settings, preferredCurrency: currency, exchangeRates: { ...(current.settings.exchangeRates ?? {}), USD: 1 } },
+        settings: { ...current.settings, preferredCurrency: currency, language, exchangeRates: { ...(current.settings.exchangeRates ?? {}), USD: 1 } },
         store: storeHasHistory ? current.store : { ...current.store, currency, businessAccount: { ...current.store.businessAccount, currency } },
       };
     });
     onComplete();
+  };
+
+  const selectLanguage = (nextLanguage: SupportedLanguage) => {
+    setLanguage(nextLanguage);
+    void i18n.changeLanguage(nextLanguage);
+    setLanguagePickerOpen(false);
   };
 
   const updatePage = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
@@ -72,6 +81,7 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
       <View style={styles.topBar}>
         <View style={styles.brandMark}><View style={styles.brandDiamond} /></View>
         <Text style={styles.brand}>SOLID GOLD RICH</Text>
+        <Pressable style={styles.languageButton} onPress={() => setLanguagePickerOpen(true)} hitSlop={6} accessibilityRole="button" accessibilityLabel={t('finance.language')}><Ionicons name="globe-outline" size={14} color={C.gold} /><Text style={styles.languageButtonText}>{language.toUpperCase()}</Text></Pressable>
         {!lastPage ? <Pressable onPress={skipToCurrency} hitSlop={10} accessibilityRole="button" accessibilityLabel={t('app.onboarding.skip')}><Text style={styles.skip}>{t('app.onboarding.skip')}</Text></Pressable> : <View style={styles.topSpacer} />}
       </View>
 
@@ -118,6 +128,16 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      <Modal visible={languagePickerOpen} transparent animationType="fade" onRequestClose={() => setLanguagePickerOpen(false)}>
+        <View style={styles.modalBackdrop}>
+          <Pressable style={StyleSheet.absoluteFill} onPress={() => setLanguagePickerOpen(false)} />
+          <View style={styles.languageSheet}>
+            <View style={styles.currencyHeader}><Text style={styles.currencyTitle}>{t('finance.language')}</Text><Pressable style={styles.closeButton} onPress={() => setLanguagePickerOpen(false)} accessibilityLabel={t('finance.close')}><Ionicons name="close" size={18} color={C.goldLight} /></Pressable></View>
+            <Text style={styles.languageCopy}>{t('app.onboarding.pages.privacy.body')}</Text>
+            <View style={styles.languageOptions}>{supportedLanguages.map((item) => <Pressable key={item} style={[styles.languageOption, language === item && styles.currencyOptionActive]} onPress={() => selectLanguage(item)} accessibilityRole="radio" accessibilityState={{ selected: language === item }}><View style={styles.languageOptionCopy}><Text style={styles.currencyOptionText}>{t(`finance.languages.${item}`)}</Text><Text style={styles.languageCode}>{item.toUpperCase()}</Text></View>{language === item && <Ionicons name="checkmark" size={18} color={C.gold} />}</Pressable>)}</View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -128,6 +148,8 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   brandMark: { width: 23, height: 23, alignItems: 'center', justifyContent: 'center', marginRight: 9 },
   brandDiamond: { width: 12, height: 12, borderWidth: 1, borderColor: C.gold, transform: [{ rotate: '45deg' }] },
   brand: { flex: 1, color: C.goldLight, fontFamily: SANS, fontSize: 8.5, fontWeight: '700', letterSpacing: 1.8 },
+  languageButton: { minHeight: 36, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, paddingHorizontal: 9, flexDirection: 'row', alignItems: 'center', gap: 5, marginRight: 9 },
+  languageButtonText: { color: C.goldLight, fontFamily: SANS, fontSize: 9, fontWeight: '800', letterSpacing: 0.8 },
   skip: { color: C.gold, fontFamily: SANS, fontSize: 10, fontWeight: '600' },
   topSpacer: { width: 40 },
   page: { paddingHorizontal: 27, paddingTop: 20, alignItems: 'center' },
@@ -159,6 +181,12 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   currencyOption: { minHeight: 50, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)', paddingHorizontal: 5, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   currencyOptionActive: { backgroundColor: 'rgba(233,200,119,0.06)' },
   currencyOptionText: { color: C.goldLight, fontFamily: SANS, fontSize: 12, fontWeight: '600', letterSpacing: 1 },
+  languageSheet: { width: '100%', maxWidth: 430, alignSelf: 'center', borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14', padding: 16 },
+  languageCopy: { color: 'rgba(255,244,208,0.5)', fontFamily: SANS, fontSize: 11, lineHeight: 17, marginTop: 4, marginBottom: 10 },
+  languageOptions: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line },
+  languageOption: { minHeight: 52, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)', paddingHorizontal: 5, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  languageOptionCopy: { flexDirection: 'row', alignItems: 'center', gap: 9 },
+  languageCode: { color: 'rgba(255,244,208,0.35)', fontFamily: SANS, fontSize: 9, letterSpacing: 1 },
   footer: { paddingHorizontal: 22, paddingTop: 12, paddingBottom: 8 },
   dots: { height: 18, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginBottom: 10 },
   dot: { width: 5, height: 5, borderRadius: 3, backgroundColor: 'rgba(233,200,119,0.22)' },

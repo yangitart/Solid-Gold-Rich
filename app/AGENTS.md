@@ -9,7 +9,7 @@
 
 ## Alcance y estructura
 
-- Esta carpeta contiene una app Expo/React Native con Expo Router, orientada principalmente a Android.
+- Esta carpeta contiene una app Expo/React Native orientada principalmente a Android.
 - La entrada nativa de la app es `index.js`, registrada con `registerRootComponent`; no usa Expo Router ni rutas web.
 - `src/screens/AppRoot.tsx` coordina la pantalla de carga (`BootScreen`) y el panel principal (`RichScreen`).
 - La composicion visual de `RichScreen` es estable y no debe redisenarse sin peticion explicita; las funciones nuevas se abren desde los accesos del encabezado en `src/screens/FinanceModulesScreen.tsx`.
@@ -23,6 +23,7 @@
 - Es un gestor de patrimonio y presupuestos con estética oscura, dorada y premium.
 - El usuario puede crear varias cuentas de presupuesto, elegir una cuenta activa y registrar ingresos o gastos por categoría.
 - El panel muestra saldo, flujo de caja, actividad reciente, actividad global, límites de gasto y totales por período.
+- El modal de estadísticas de `src/screens/RichScreen.tsx` ofrece vista de gráficos y calendario, filtros de hoy/semana/mes/año, flujo de ingresos y gastos, categoría principal y desglose por categorías. La vista de actividad global convierte los importes a la moneda base.
 - El diamante de `src/components/Gem.tsx` evoluciona según el saldo positivo de la cuenta activa. Tocar el diamante solo activa su animación.
 - Los presupuestos, la cuenta activa y las transacciones se guardan localmente con AsyncStorage usando las claves definidas en `src/screens/RichScreen.tsx`.
 - Las categorías de gastos e ingresos se administran desde el módulo `Categories` del menú izquierdo y se usan en el formulario de operaciones.
