@@ -136,3 +136,10 @@ export const SANS = Platform.select({
   android: 'sans-serif',
   default: 'Helvetica Neue, Arial, sans-serif',
 });
+
+// Escala compartida para mantener la misma jerarquía tipográfica en todos los formularios.
+export const FORM_TYPOGRAPHY = {
+  label: 9.5,
+  input: 13.5,
+  option: 11,
+} as const;

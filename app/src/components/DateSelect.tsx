@@ -3,7 +3,7 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { C, SANS, SERIF, createThemeStyles } from '../theme/luxury';
+import { C, FORM_TYPOGRAPHY, SANS, SERIF, createThemeStyles } from '../theme/luxury';
 
 function validDate(value: string) {
   const parsed = new Date(value);
@@ -18,7 +18,7 @@ export default function DateSelect({ label, value, onChange, firstDayOfWeek = 1,
   const language = i18n.resolvedLanguage ?? i18n.language;
   const firstDay = (new Date(month.getFullYear(), month.getMonth(), 1).getDay() - firstDayOfWeek + 7) % 7;
   const days = new Date(month.getFullYear(), month.getMonth() + 1, 0).getDate();
-  const cells = Array.from({ length: 42 }, (_, index) => index - firstDay + 1);
+  const cells = React.useMemo(() => Array.from({ length: 42 }, (_, index) => index - firstDay + 1), [firstDay]);
   const select = (day: number) => {
     const next = new Date(month.getFullYear(), month.getMonth(), day, 12);
     onChange(next.toISOString());
@@ -56,9 +56,9 @@ export default function DateSelect({ label, value, onChange, firstDayOfWeek = 1,
 }
 
 const styles = createThemeStyles((C) => StyleSheet.create({
-  field: { gap: 8, marginTop: 14 }, label: { color: 'rgba(255,244,208,0.58)', fontFamily: SANS, fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase' },
-  select: { minHeight: 50, borderRadius: 14, borderWidth: 1, borderColor: 'rgba(212,175,55,0.18)', backgroundColor: 'rgba(255,255,255,0.025)', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', gap: 10 },
-  value: { flex: 1, color: C.goldLight, fontFamily: SANS, fontSize: 15 }, emptyValue: { color: 'rgba(255,244,208,0.42)' }, backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.78)' }, center: { flexGrow: 1, justifyContent: 'center', padding: 18 },
+  field: { marginTop: 8 }, label: { color: 'rgba(233,200,119,0.54)', fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.label, lineHeight: 14, marginBottom: 1, letterSpacing: 0.25 },
+  select: { minHeight: 43, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.16)', backgroundColor: 'transparent', paddingHorizontal: 2, flexDirection: 'row', alignItems: 'center', gap: 9 },
+  value: { flex: 1, color: C.goldLight, fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.input }, emptyValue: { color: 'rgba(255,244,208,0.35)' }, backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.78)' }, center: { flexGrow: 1, justifyContent: 'center', padding: 18 },
   sheet: { width: '100%', maxWidth: 430, alignSelf: 'center', borderRadius: 24, borderWidth: 1, borderColor: 'rgba(212,175,55,0.22)', backgroundColor: C.ink, padding: 18 },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }, iconButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' }, month: { color: C.goldLight, fontFamily: SERIF, fontSize: 20, textTransform: 'capitalize' },
   week: { flexDirection: 'row', marginTop: 12 }, weekday: { width: '14.285%', textAlign: 'center', color: 'rgba(255,244,208,0.45)', fontFamily: SANS, fontSize: 10, textTransform: 'uppercase' },

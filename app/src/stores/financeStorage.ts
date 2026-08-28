@@ -238,6 +238,7 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       name: text(item.name, `Product ${index + 1}`),
       type,
       unit: text(item.unit, 'unit'),
+      unitAbbreviation: Array.from(text(item.unitAbbreviation).trim()).slice(0, 4).join('') || undefined,
       categoryId: categoryIdFor(item.categoryId, item.category),
       sku: text(item.sku) || undefined,
       salePrice: Math.max(0, number(item.salePrice)),

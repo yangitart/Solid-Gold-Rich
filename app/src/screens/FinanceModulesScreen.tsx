@@ -11,11 +11,11 @@ import { DEFAULT_COLORS, exportCsv } from '../stores/financeStorage';
 import { hashPin } from '../core/pin';
 import { supportedLanguages } from '../core/locales/i18next';
 import type { Account, AppLanguage, Budget, Debt, FinanceCategory, RecurringFrequency, RecurringTransaction, SavingsGoal, Transaction } from '../core/finance/types';
-import { C, SANS, SERIF, createThemeStyles } from '../theme/luxury';
+import { C, FORM_TYPOGRAPHY, SANS, SERIF, createThemeStyles } from '../theme/luxury';
 import DateSelect from '../components/DateSelect';
 import { SearchableSelect } from '../components/FormKit';
 import { captureCurrencySnapshot, currencyRate as resolveCurrencyRate } from '../core/finance/currency';
-import { accountBalance as resolveAccountBalance, accountHasHistory, budgetSpent, filterActivityTransactions, periodBounds, recordDebtPayment, recordSavingsContribution, transactionMatchesActivityFilter, type FinanceActivityFilter } from '../domain/finance/financeDomain';
+import { accountBalance as resolveAccountBalance, accountHasHistory, budgetSpent, filterActivityTransactions, inDateRange, periodBounds, recordDebtPayment, recordSavingsContribution, transactionMatchesActivityFilter, type FinanceActivityFilter } from '../domain/finance/financeDomain';
 import { createAppBackup, parseAppBackup, restoreAppBackupToDevice } from '../domain/store/storeBackup';
 
 export type FinanceModuleName = 'accounts' | 'debt' | 'notes' | 'tools' | 'savings' | 'budget' | 'activity' | 'recurring' | 'categories' | 'settings';
@@ -28,6 +28,7 @@ type ToolKey = 'calculator' | 'cashCounter' | 'discountTax' | 'interest';
 type CashCountRow = { id: string; denomination: string; quantity: string };
 type SettingsSection = 'language' | 'currency' | 'theme' | 'week' | 'pin' | 'data';
 type ActivityFilter = FinanceActivityFilter;
+type ActivityPeriod = 'all' | 'today' | 'week' | 'month' | 'year';
 type ActivityGroup = { key: string; label: string; transactions: Transaction[] };
 
 const localDayKey = (value: string | Date) => {
@@ -103,15 +104,16 @@ const ACCOUNT_CURRENCIES = [
 ] as const;
 
 function Field({ title, value, onChangeText, placeholder, multiline = false, numeric = false, secureTextEntry = false, maxLength }: { title: string; value: string; onChangeText: (value: string) => void; placeholder?: string; multiline?: boolean; numeric?: boolean; secureTextEntry?: boolean; maxLength?: number }) {
-  return <View style={styles.field}><Text style={styles.fieldLabel} numberOfLines={2}>{title}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={C.textSubtle} keyboardType={numeric ? 'decimal-pad' : 'default'} multiline={multiline} secureTextEntry={secureTextEntry} maxLength={maxLength} style={[styles.input, multiline && styles.multiline]} accessibilityLabel={title} /></View>;
+  const [focused, setFocused] = React.useState(false);
+  return <View style={styles.formField}><Text style={styles.formFieldLabel} numberOfLines={2}>{title}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={C.textSubtle} keyboardType={numeric ? 'decimal-pad' : 'default'} multiline={multiline} secureTextEntry={secureTextEntry} maxLength={maxLength} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} selectionColor={C.gold} style={[styles.formInput, focused && styles.formInputFocused, multiline && styles.formMultiline]} accessibilityLabel={title} /></View>;
 }
 
 function Choice({ values, value, onChange, labels }: { values: string[]; value: string; onChange: (value: string) => void; labels?: Record<string, string> }) {
-  return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choices}>{values.map((item) => <Pressable key={item} onPress={() => onChange(item)} hitSlop={4} style={[styles.choice, { minHeight: 36, borderRadius: 9, paddingHorizontal: 10 }, item === value && styles.choiceActive]} accessibilityRole="radio" accessibilityState={{ selected: item === value }} accessibilityLabel={labels?.[item] ?? item}><Text style={[styles.choiceText, { fontSize: 10 }, item === value && styles.choiceTextActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{labels?.[item] ?? item}</Text></Pressable>)}</ScrollView>;
+  return <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.formChoices}>{values.map((item) => <Pressable key={item} onPress={() => onChange(item)} hitSlop={4} style={[styles.formChoice, item === value && styles.formChoiceActive]} accessibilityRole="radio" accessibilityState={{ selected: item === value }} accessibilityLabel={labels?.[item] ?? item}><Text style={[styles.formChoiceText, item === value && styles.formChoiceTextActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{labels?.[item] ?? item}</Text></Pressable>)}</ScrollView>;
 }
 
-function Empty({ title, body }: { title: string; body: string }) {
-  return <View style={styles.empty}><View style={styles.diamond} /><Text style={styles.emptyTitle} numberOfLines={2}>{title}</Text><Text style={styles.emptyBody} numberOfLines={3}>{body}</Text></View>;
+function Empty({ title, body, fullHeight = false }: { title: string; body: string; fullHeight?: boolean }) {
+  return <View style={[styles.empty, fullHeight && styles.fullHeightEmpty]}><View style={styles.diamond} /><Text style={styles.emptyTitle} numberOfLines={2}>{title}</Text><Text style={styles.emptyBody} numberOfLines={3}>{body}</Text></View>;
 }
 
 function BackButton({ onPress }: { onPress: () => void }) {
@@ -124,7 +126,7 @@ function AddAction({ label, onPress }: { label: string; onPress: () => void }) {
 }
 
 function Sheet({ children }: { children: React.ReactNode }) {
-  return <ScrollView style={styles.sheet} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>{children}</ScrollView>;
+  return <ScrollView style={styles.formSheet} contentContainerStyle={styles.formSheetContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>{children}</ScrollView>;
 }
 
 function ResponsiveModal({ visible, onClose, children }: { visible: boolean; onClose: () => void; children: React.ReactNode }) {
@@ -133,7 +135,7 @@ function ResponsiveModal({ visible, onClose, children }: { visible: boolean; onC
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}><KeyboardAvoidingView style={[styles.modalBackdrop, tablet && styles.modalBackdropTablet]} behavior="padding" enabled={Platform.OS === 'ios'}><Sheet><View style={styles.responsiveModalHeader}><Pressable style={styles.sheetClose} onPress={onClose} accessibilityRole="button" accessibilityLabel={t('finance.close')}><Ionicons name="close" size={18} color={C.goldLight} /></Pressable></View>{children}</Sheet></KeyboardAvoidingView></Modal>;
 }
 
-export default function FinanceModulesScreen({ module: initialModule, onBack }: { module: FinanceModuleName; onBack: () => void }) {
+export default function FinanceModulesScreen({ module: initialModule, onBack, initialActivityAccountId }: { module: FinanceModuleName; onBack: () => void; initialActivityAccountId?: string }) {
   const { t, i18n: translationI18n } = useTranslation();
   const isTablet = useWindowDimensions().width >= 700;
   const finance = useFinance();
@@ -182,6 +184,8 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
   const [currencyRateInverted, setCurrencyRateInverted] = React.useState(false);
   const [currencyRateError, setCurrencyRateError] = React.useState('');
   const [activityFilter, setActivityFilter] = React.useState<ActivityFilter>('all');
+  const [activityAccountId, setActivityAccountId] = React.useState(() => initialActivityAccountId ?? state.settings.activeAccountId ?? state.accounts.find((account) => !account.archived)?.id ?? 'all');
+  const [activityPeriod, setActivityPeriod] = React.useState<ActivityPeriod>('all');
   const [activityCategory, setActivityCategory] = React.useState('all');
   const [activityQuery, setActivityQuery] = React.useState('');
   const [activityFilterOpen, setActivityFilterOpen] = React.useState(false);
@@ -204,7 +208,8 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
     setModule(initialModule);
     if (initialModule === 'tools') setActiveTool(null);
     if (initialModule === 'settings') setSettingsSection(null);
-  }, [initialModule]);
+    if (initialModule === 'activity' && initialActivityAccountId) setActivityAccountId(initialActivityAccountId);
+  }, [initialActivityAccountId, initialModule]);
 
   React.useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -243,8 +248,8 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
       setCurrencyRateCurrency(preferred);
     }
   }, [settingsSection, state.settings.preferredCurrency]);
-  const accounts = state.accounts.filter((item) => !item.archived);
-  const operationalAccounts = accounts.filter((item) => item.type !== 'debt');
+  const accounts = React.useMemo(() => state.accounts.filter((item) => !item.archived), [state.accounts]);
+  const operationalAccounts = React.useMemo(() => accounts.filter((item) => item.type !== 'debt'), [accounts]);
   const baseCurrency = state.settings.preferredCurrency || 'USD';
   const currencyRates = React.useMemo(() => state.settings.exchangeRates ?? { USD: 1 }, [state.settings.exchangeRates]);
   const rateBetweenCurrencies = React.useCallback((fromCurrency: string, toCurrency: string) => resolveCurrencyRate(fromCurrency, toCurrency, currencyRates), [currencyRates]);
@@ -270,16 +275,17 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
     setCurrencyRate(display.value);
     setCurrencyRateError('');
   }, [comparisonRateCurrency, configuredRateCurrency, friendlyRate]);
-  const accountBalance = (item: Account) => resolveAccountBalance(state, item.id);
+  const accountBalance = React.useCallback((item: Account) => resolveAccountBalance(state, item.id), [state]);
+  const activityScopedTransactions = React.useMemo(() => state.transactions.filter((item) => activityAccountId === 'all' || item.accountId === activityAccountId), [activityAccountId, state.transactions]);
   const activityCategories = React.useMemo(() => {
     const configured = activityFilter === 'all'
       ? [...state.categories.expense, ...state.categories.income]
       : activityFilter === 'transfer' ? [] : state.categories[activityFilter];
-    const used = state.transactions
+    const used = activityScopedTransactions
       .filter((item) => item.status !== 'void' && transactionMatchesActivityFilter(item, activityFilter))
       .map((item) => item.category);
     return Array.from(new Set([...configured.map((item) => item.id), ...used].filter(Boolean)));
-  }, [activityFilter, state.categories, state.transactions]);
+  }, [activityFilter, activityScopedTransactions, state.categories]);
   const accountNames = React.useMemo(() => Object.fromEntries(state.accounts.map((item) => [item.id, item.name])), [state.accounts]);
   const filteredAccountCurrencies = React.useMemo(() => {
     const query = currencyQuery.trim().toUpperCase();
@@ -290,6 +296,11 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
     if (activityCategory !== 'all' && !activityCategories.includes(activityCategory)) setActivityCategory('all');
   }, [activityCategories, activityCategory]);
 
+  React.useEffect(() => {
+    if (activityAccountId === 'all' || accounts.some((account) => account.id === activityAccountId)) return;
+    setActivityAccountId(state.settings.activeAccountId && accounts.some((account) => account.id === state.settings.activeAccountId) ? state.settings.activeAccountId : 'all');
+  }, [accounts, activityAccountId, state.settings.activeAccountId]);
+
   const openActivityFilters = () => {
     setActivityCategoryQuery('');
     setActivityFilterOpen(true);
@@ -297,6 +308,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
 
   const closeActivityFilters = () => setActivityFilterOpen(false);
   const activityFilterName = (value: ActivityFilter) => value === 'transfer' ? t('finance.toolsList.transfer') : t(`finance.filters.${value}`);
+  const activityPeriodName = (value: ActivityPeriod) => value === 'all' ? t('finance.filters.all') : t(`finance.${value === 'today' ? 'today' : value === 'week' ? 'thisWeek' : value === 'month' ? 'thisMonth' : 'yearToDate'}`);
 
   React.useEffect(() => {
     if (initialModule !== 'accounts' || accounts.length || firstAccountPrompted.current) return;
@@ -642,13 +654,44 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
     setCalculatorResult('');
   };
 
+  const sortedReminders = React.useMemo(() => state.reminders.slice().sort((left, right) => Number(left.completed) - Number(right.completed) || new Date(left.date).getTime() - new Date(right.date).getTime()), [state.reminders]);
+  const sortedStoreCategories = React.useMemo(() => [...state.store.categories].sort((left, right) => Number(Boolean(left.builtIn)) - Number(Boolean(right.builtIn)) || left.name.localeCompare(right.name)), [state.store.categories]);
+  const categoryTabs = React.useMemo(() => [
+    { key: 'expense' as const, label: t('finance.expenses') },
+    { key: 'income' as const, label: t('finance.income') },
+    { key: 'store' as const, label: t('finance.workspace.store') },
+  ], [t]);
+  const visibleBudgets = React.useMemo(() => state.budgets.filter((item) => item.limit > 0), [state.budgets]);
+  const [moduleReferenceNow] = React.useState(() => new Date());
+  const accountsById = React.useMemo(() => new Map(state.accounts.map((item) => [item.id, item])), [state.accounts]);
+  const budgetSummaries = React.useMemo(() => visibleBudgets.map((item) => {
+    const account = accountsById.get(item.accountId);
+    const budgetCurrency = account?.currency ?? baseCurrency;
+    const bounds = periodBounds(item.period === 'weekly' ? 'week' : 'month', moduleReferenceNow, state.settings.firstDayOfWeek);
+    const spent = budgetSpent(item, state.transactions, budgetCurrency, bounds, rateBetweenCurrencies);
+    const category = state.categories.expense.find((entry) => entry.id === item.category);
+    return {
+      item,
+      accountName: account?.name ?? t('finance.modules.unknownAccount'),
+      budgetCurrency,
+      spent,
+      percentage: Math.min(100, spent / Math.max(1, item.limit) * 100),
+      categoryLabel: item.category === 'all' ? t('finance.filters.all') : category?.name ?? t(`finance.categories.${item.category}`, { defaultValue: item.category }),
+    };
+  }), [accountsById, baseCurrency, moduleReferenceNow, rateBetweenCurrencies, state.categories.expense, state.settings.firstDayOfWeek, state.transactions, t, visibleBudgets]);
+  const titles = React.useMemo(() => Object.fromEntries((['accounts', 'debt', 'notes', 'tools', 'savings', 'budget', 'activity', 'recurring', 'categories', 'settings'] as FinanceModuleName[]).map((item) => [item, t(`finance.navigation.items.${item}.title`)])) as Record<FinanceModuleName, string>, [t]);
+
   const renderActivity = () => {
     const categoryLabels = Object.fromEntries(activityCategories.map((category) => {
       const configured = [...state.categories.expense, ...state.categories.income].find((item) => item.id === category);
       return [category, configured?.name ?? t(`finance.categories.${category}`, { defaultValue: category })];
     }));
-    const availableTransactions = state.transactions.filter((item) => item.status !== 'void');
-    const items = filterActivityTransactions(state.transactions, { filter: activityFilter, category: activityCategory, query: activityQuery, categoryLabels, accountNames })
+    const selectedActivityAccount = accounts.find((account) => account.id === activityAccountId);
+    const activityCurrency = selectedActivityAccount?.currency ?? baseCurrency;
+    const availableTransactions = activityScopedTransactions.filter((item) => item.status !== 'void');
+    const activityBounds = activityPeriod === 'all' ? undefined : periodBounds(activityPeriod, moduleReferenceNow, state.settings.firstDayOfWeek);
+    const items = filterActivityTransactions(activityScopedTransactions, { filter: activityFilter, category: activityCategory, query: activityQuery, categoryLabels, accountNames })
+      .filter((item) => !activityBounds || inDateRange(item.date, activityBounds))
       .slice()
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
     const today = new Date();
@@ -671,19 +714,42 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
           : new Date(transactions[0].date).toLocaleDateString(translationI18n.resolvedLanguage, { weekday: 'long', day: 'numeric', month: 'long', year: new Date(transactions[0].date).getFullYear() === today.getFullYear() ? undefined : 'numeric' }),
     }));
     const filterCount = Number(activityFilter !== 'all') + Number(activityCategory !== 'all');
-    const filterLabel = activityFilterName(activityFilter);
-    const selectedCategoryLabel = activityCategory === 'all' ? t('finance.activity.allCategories') : categoryLabels[activityCategory] ?? activityCategory;
-    const clearActivityFilters = () => {
-      setActivityFilter('all');
-      setActivityCategory('all');
+    const activityDisplayAmount = (item: Transaction) => {
+      if ((item.currency ?? activityCurrency) === activityCurrency) return item.amount;
+      if (item.baseCurrency === activityCurrency && Number.isFinite(item.baseAmount)) return item.baseAmount as number;
+      const rate = rateBetweenCurrencies(item.currency ?? activityCurrency, activityCurrency);
+      return rate ? item.amount * rate : 0;
     };
-
+    const activityTotals = items.reduce((totals, item) => {
+      if (item.kind !== 'income' && item.kind !== 'expense') return totals;
+      const amount = activityDisplayAmount(item);
+      if (item.kind === 'income') totals.income += amount;
+      else totals.expenses += amount;
+      return totals;
+    }, { income: 0, expenses: 0 });
+    const categoriesById = new Map([...state.categories.expense, ...state.categories.income].map((category) => [category.id, category]));
+    const activityQuickCategories = activityCategories.map((id) => {
+      const category = categoriesById.get(id);
+      return { id, name: categoryLabels[id] ?? id, icon: category?.icon as IconName ?? 'pricetag-outline' };
+    });
     return <View style={styles.activityView}>
       <View style={styles.activityToolbar}>
         <View style={styles.activitySearch}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={activityQuery} onChangeText={setActivityQuery} placeholder={t('finance.modules.searchActivity')} placeholderTextColor={C.textSubtle} style={styles.activitySearchInput} accessibilityLabel={t('finance.modules.searchActivity')} returnKeyType="search" /></View>
         <Pressable style={[styles.activityFilterButton, filterCount > 0 && styles.activityFilterButtonActive]} onPress={openActivityFilters} accessibilityRole="button" accessibilityLabel={t('finance.activity.filterA11y', { count: filterCount })}><Ionicons name="options-outline" size={19} color={filterCount > 0 ? C.void : C.goldLight} />{filterCount > 0 && <View style={styles.activityFilterBadge}><Text style={styles.activityFilterBadgeText}>{filterCount}</Text></View>}</Pressable>
       </View>
-      {filterCount > 0 && <View style={styles.activityFilterSummary}><View style={styles.activityFilterPulse} /><Text style={styles.activityFilterSummaryText} numberOfLines={1}>{filterLabel} · {selectedCategoryLabel}</Text><Pressable style={styles.activityClearIcon} onPress={clearActivityFilters} hitSlop={4} accessibilityRole="button" accessibilityLabel={t('finance.activity.clearFilters')}><Ionicons name="close" size={16} color={C.gold} /></Pressable></View>}
+      <View style={styles.activityScopeBlock}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.activityBudgetTabs}>
+          {accounts.map((account) => <Pressable key={account.id} style={[styles.activityBudgetTab, activityAccountId === account.id && styles.activityBudgetTabSelected]} onPress={() => { setActivityAccountId(account.id); setActivityCategory('all'); }} accessibilityRole="radio" accessibilityState={{ selected: activityAccountId === account.id }}><View style={[styles.activityBudgetDot, { backgroundColor: account.color }]} /><Text style={[styles.activityBudgetTabText, activityAccountId === account.id && styles.activityBudgetTabTextSelected]} numberOfLines={1}>{account.name}</Text></Pressable>)}
+          <Pressable style={[styles.activityBudgetTab, activityAccountId === 'all' && styles.activityBudgetTabSelected]} onPress={() => { setActivityAccountId('all'); setActivityCategory('all'); }} accessibilityRole="radio" accessibilityState={{ selected: activityAccountId === 'all' }}><Ionicons name="layers-outline" size={13} color={activityAccountId === 'all' ? C.goldLight : C.textSubtle} /><Text style={[styles.activityBudgetTabText, activityAccountId === 'all' && styles.activityBudgetTabTextSelected]}>{t('finance.filters.all')}</Text></Pressable>
+        </ScrollView>
+      </View>
+      <View style={styles.activityPeriodBlock}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.activityPeriodChoices}>
+          {(['all', 'today', 'week', 'month', 'year'] as ActivityPeriod[]).map((period) => <Pressable key={period} style={[styles.activityPeriodChoice, activityPeriod === period && styles.activityPeriodChoiceSelected]} onPress={() => setActivityPeriod(period)} accessibilityRole="radio" accessibilityState={{ selected: activityPeriod === period }} accessibilityLabel={activityPeriodName(period)}>
+            <Text style={[styles.activityPeriodChoiceText, activityPeriod === period && styles.activityPeriodChoiceTextSelected]} numberOfLines={1}>{activityPeriodName(period)}</Text>
+          </Pressable>)}
+        </ScrollView>
+      </View>
       <SectionList
         style={styles.activityList}
         sections={groups.map((group) => ({ title: group.label, data: group.transactions }))}
@@ -691,6 +757,20 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
         keyboardShouldPersistTaps="handled"
         stickySectionHeadersEnabled={false}
         contentContainerStyle={styles.activityListContent}
+        ListHeaderComponent={<View style={styles.activityListHeader}>
+          <View style={styles.activitySummaryStrip}>
+            <View style={styles.activitySummaryMetric}><Text style={styles.activitySummaryLabel}>{t('finance.income')}</Text><Text style={styles.activitySummaryIncome} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>+{money(activityTotals.income, activityCurrency)}</Text></View>
+            <View style={styles.activitySummaryDivider} />
+            <View style={styles.activitySummaryMetric}><Text style={styles.activitySummaryLabel}>{t('finance.expenses')}</Text><Text style={styles.activitySummaryExpense} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>-{money(activityTotals.expenses, activityCurrency)}</Text></View>
+            <View style={styles.activitySummaryDivider} />
+            <View style={styles.activitySummaryMetric}><Text style={styles.activitySummaryLabel}>{t('finance.cashFlow')}</Text><Text style={styles.activitySummaryNet} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>{money(activityTotals.income - activityTotals.expenses, activityCurrency)}</Text></View>
+          </View>
+          <View style={styles.activityQuickCategoryHeader}><Text style={styles.activityQuickCategoryLabel}>{t('finance.category')}</Text><Text style={styles.activityResultsLabel}>{items.length} {t('finance.operations')}</Text></View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.activityQuickCategories}>
+            <Pressable style={[styles.activityQuickCategory, activityCategory === 'all' && styles.activityQuickCategorySelected]} onPress={() => setActivityCategory('all')} accessibilityRole="radio" accessibilityState={{ selected: activityCategory === 'all' }}><Ionicons name="apps-outline" size={14} color={activityCategory === 'all' ? C.void : C.gold} /><Text style={[styles.activityQuickCategoryText, activityCategory === 'all' && styles.activityQuickCategoryTextSelected]}>{t('finance.filters.all')}</Text></Pressable>
+            {activityQuickCategories.map((category) => <Pressable key={category.id} style={[styles.activityQuickCategory, activityCategory === category.id && styles.activityQuickCategorySelected]} onPress={() => setActivityCategory(category.id)} accessibilityRole="radio" accessibilityState={{ selected: activityCategory === category.id }}><Ionicons name={category.icon} size={14} color={activityCategory === category.id ? C.void : C.gold} /><Text style={[styles.activityQuickCategoryText, activityCategory === category.id && styles.activityQuickCategoryTextSelected]} numberOfLines={1}>{category.name}</Text></Pressable>)}
+          </ScrollView>
+        </View>}
         renderSectionHeader={({ section }) => <Text style={styles.activityGroupTitle}>{section.title}</Text>}
         renderItem={({ item }) => {
             const category = [...state.categories.expense, ...state.categories.income].find((entry) => entry.id === item.category);
@@ -704,7 +784,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
               <View style={styles.activityRowAmount}><Text style={positive ? styles.positive : styles.negative} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>{positive ? '+' : '-'}{money(item.amount, item.currency)}</Text><Text style={styles.activityTime}>{new Date(item.date).toLocaleTimeString(translationI18n.resolvedLanguage, { hour: 'numeric', minute: '2-digit' })}</Text></View>
             </View>;
         }}
-        ListEmptyComponent={!availableTransactions.length ? <Empty title={t('finance.activity.emptyTitle')} body={t('finance.activity.emptyBody')} /> : <Empty title={t('finance.modules.noResults')} body={t('finance.modules.noResultsCopy')} />}
+        ListEmptyComponent={!availableTransactions.length ? <Empty fullHeight title={t('finance.activity.emptyTitle')} body={t('finance.activity.emptyBody')} /> : <Empty fullHeight title={t('finance.modules.noResults')} body={t('finance.modules.noResultsCopy')} />}
       />
     </View>;
   };
@@ -733,19 +813,12 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
     </View>
   );
   const renderRecurring = () => <View style={styles.panel}><Choice values={['recurring', 'dates']} value={recurringTab} onChange={(value) => setRecurringTab(value as 'recurring' | 'dates')} labels={{ recurring: t('finance.release.recurringTab'), dates: t('finance.release.datesTab') }} />{recurringTab === 'recurring' ? <>{state.recurring.map((item) => <View key={item.id} style={styles.row}><View style={styles.rowMain}><Text style={styles.cardTitle}>{item.payee || item.description || item.category}</Text><Text style={styles.cardMeta}>{t(`finance.releaseFrequency.${item.frequency}`)} · {dateText(item.nextDate)} · {money(item.amount, item.currency)}</Text></View><Pressable style={styles.smallAction} onPress={() => { setEditingRecurringId(item.id); setRecurring({ accountId: item.accountId, kind: item.kind, amount: String(item.amount), payee: item.payee, category: item.category, frequency: item.frequency, nextDate: item.nextDate, description: item.description }); setRecurringOpen(true); }} accessibilityLabel={t('finance.editAction')}><Ionicons name="pencil-outline" size={17} color={C.gold} /></Pressable><Pressable style={styles.smallAction} onPress={() => finance.updateRecurring({ ...item, active: !item.active })} accessibilityLabel={item.active ? t('finance.release.pause') : t('finance.release.resume')}><Ionicons name={item.active ? 'pause-outline' : 'play-outline'} size={17} color={item.active ? C.gold : C.goldLight} /></Pressable><Pressable style={styles.smallAction} onPress={() => confirmDelete(t('finance.modules.deleteRecurring'), () => finance.updateState((current) => ({ ...current, recurring: current.recurring.filter((entry) => entry.id !== item.id) })))} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View>)}{!state.recurring.length && <Empty title={t('finance.modules.noRecurring')} body={t('finance.modules.noRecurringCopy')} />}<AddAction label={t('finance.modules.addRecurring')} onPress={() => { setEditingRecurringId(null); setRecurring({ accountId: operationalAccounts[0]?.id ?? '', kind: 'expense', amount: '', payee: '', category: 'other', frequency: 'monthly', nextDate: new Date().toISOString(), description: '' }); setRecurringOpen(true); }} /></> : renderReminders()}</View>;
-  const renderDebts = () => <View style={styles.panel}>{state.debts.map((item) => <View key={item.id} style={styles.module}><View style={styles.row}><View style={styles.rowMain}><Text style={styles.cardTitle}>{item.name}</Text><Text style={styles.cardMeta}>{item.creditor} · {dateText(item.dueDate)} · {item.interestRate}% {t('finance.interestReference')}</Text></View><Text style={styles.negative} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>{money(item.balance, item.currency)}</Text></View><View style={styles.track}><View style={[styles.fill, { width: `${Math.max(0, Math.min(100, (1 - item.balance / Math.max(1, item.originalAmount)) * 100))}%`, backgroundColor: item.active ? C.gold : C.green }]} /></View>{item.payments.slice().reverse().map((payment) => <View key={payment.id} style={styles.historyRow}><Text style={styles.cardMeta}>{dateText(payment.date)}</Text><Text style={styles.positive}>−{money(payment.amount, item.currency)}</Text><Pressable style={styles.smallAction} onPress={() => confirmDelete(t('finance.deleteAction'), () => payment.transactionId ? finance.deleteTransaction(payment.transactionId) : finance.updateState((current) => ({ ...current, debts: current.debts.map((debtItem) => debtItem.id === item.id ? { ...debtItem, balance: Math.min(debtItem.originalAmount, debtItem.balance + payment.amount), active: true, payments: debtItem.payments.filter((entry) => entry.id !== payment.id) } : debtItem) })))} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={15} color={C.red} /></Pressable></View>)}<View style={styles.inlineActions}><Pressable style={[styles.inlineButton, !item.active && styles.buttonDisabled]} disabled={!item.active} onPress={() => { setDebtPaymentTarget(item); setDebtPaymentAmount(''); setDebtPaymentAccountId(item.accountId && operationalAccounts.some((accountItem) => accountItem.id === item.accountId) ? item.accountId : operationalAccounts[0]?.id ?? ''); setLinkedActionError(''); }}><Text style={styles.inlineButtonText}>{t('finance.modules.registerPayment')}</Text></Pressable><Pressable style={styles.smallAction} onPress={() => confirmDelete(t('finance.modules.deleteDebt'), () => finance.updateState((current) => ({ ...current, debts: current.debts.filter((entry) => entry.id !== item.id) })))} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View></View>)}{!state.debts.length && <Empty title={t('finance.modules.noDebts')} body={t('finance.modules.noDebtsCopy')} />}<AddAction label={t('finance.modules.addDebt')} onPress={() => { setDebt({ name: '', creditor: '', currency: baseCurrency, amount: '', dueDate: new Date().toISOString(), interest: '0' }); setDebtOpen(true); }} /></View>;
+  const renderDebts = () => <View style={styles.panel}>{state.debts.map((item) => <View key={item.id} style={styles.module}><View style={styles.row}><View style={styles.rowMain}><Text style={styles.cardTitle}>{item.name}</Text><Text style={styles.cardMeta}>{item.creditor} · {dateText(item.dueDate)} · {item.interestRate}% {t('finance.interestReference')}</Text></View><Text style={styles.negative} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>{money(item.balance, item.currency)}</Text></View><View style={styles.track}><View style={[styles.fill, { width: `${Math.max(0, Math.min(100, (1 - item.balance / Math.max(1, item.originalAmount)) * 100))}%`, backgroundColor: item.active ? C.gold : C.green }]} /></View>{item.payments.slice().reverse().map((payment) => <View key={payment.id} style={styles.historyRow}><Text style={styles.cardMeta}>{dateText(payment.date)}</Text><Text style={styles.positive}>−{money(payment.amount, item.currency)}</Text><Pressable style={styles.smallAction} onPress={() => confirmDelete(t('finance.deleteAction'), () => payment.transactionId ? finance.deleteTransaction(payment.transactionId) : finance.updateState((current) => ({ ...current, debts: current.debts.map((debtItem) => debtItem.id === item.id ? { ...debtItem, balance: Math.min(debtItem.originalAmount, debtItem.balance + payment.amount), active: true, payments: debtItem.payments.filter((entry) => entry.id !== payment.id) } : debtItem) })))} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={15} color={C.red} /></Pressable></View>)}<View style={styles.inlineActions}><Pressable style={[styles.inlineButton, !item.active && styles.buttonDisabled]} disabled={!item.active} onPress={() => { setDebtPaymentTarget(item); setDebtPaymentAmount(''); setDebtPaymentAccountId(item.accountId && operationalAccounts.some((accountItem) => accountItem.id === item.accountId) ? item.accountId : operationalAccounts[0]?.id ?? ''); setLinkedActionError(''); }}><Text style={styles.inlineButtonText}>{t('finance.modules.registerPayment')}</Text></Pressable><Pressable style={styles.smallAction} onPress={() => confirmDelete(t('finance.modules.deleteDebt'), () => finance.updateState((current) => ({ ...current, debts: current.debts.filter((entry) => entry.id !== item.id), transactions: current.transactions.filter((transaction) => transaction.debtId !== item.id) })))} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View></View>)}{!state.debts.length && <Empty title={t('finance.modules.noDebts')} body={t('finance.modules.noDebtsCopy')} />}<AddAction label={t('finance.modules.addDebt')} onPress={() => { setDebt({ name: '', creditor: '', currency: baseCurrency, amount: '', dueDate: new Date().toISOString(), interest: '0' }); setDebtOpen(true); }} /></View>;
   const renderSavings = () => <View style={styles.panel}>{state.savingsGoals.map((item) => <View key={item.id} style={styles.module}><View style={styles.row}><View style={styles.rowMain}><Text style={styles.cardTitle}>{item.name}</Text><Text style={styles.cardMeta}>{dateText(item.deadline)} · {Math.min(100, Math.round(item.balance / Math.max(1, item.targetAmount) * 100))}%</Text></View><Text style={styles.positive} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>{money(item.balance, item.currency)}</Text></View><View style={styles.track}><View style={[styles.fill, { width: `${Math.max(0, Math.min(100, item.balance / Math.max(1, item.targetAmount) * 100))}%`, backgroundColor: item.active ? C.gold : C.green }]} /></View><Text style={styles.cardMeta}>{t('finance.modules.goalOf', { target: money(item.targetAmount, item.currency) })}</Text>{item.contributions.slice().reverse().map((contribution) => <View key={contribution.id} style={styles.historyRow}><Text style={styles.cardMeta}>{dateText(contribution.date)}</Text><Text style={styles.positive}>+{money(contribution.amount, item.currency)}</Text><Pressable style={styles.smallAction} onPress={() => confirmDelete(t('finance.deleteAction'), () => contribution.transferId ? finance.deleteTransfer(contribution.transferId) : finance.updateState((current) => ({ ...current, savingsGoals: current.savingsGoals.map((goal) => goal.id === item.id ? { ...goal, balance: Math.max(0, goal.balance - contribution.amount), active: true, contributions: goal.contributions.filter((entry) => entry.id !== contribution.id) } : goal) })))} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={15} color={C.red} /></Pressable></View>)}<View style={styles.inlineActions}><Pressable style={[styles.inlineButton, !item.active && styles.buttonDisabled]} disabled={!item.active} onPress={() => { setSavingsTarget(item); setSavingsAmount(''); setSavingsDestinationAccountId(item.accountId && operationalAccounts.some((accountItem) => accountItem.id === item.accountId) ? item.accountId : operationalAccounts[0]?.id ?? ''); setSavingsSourceAccountId(operationalAccounts.find((accountItem) => accountItem.id !== item.accountId)?.id ?? ''); setLinkedActionError(''); }}><Text style={styles.inlineButtonText}>{t('finance.modules.addContribution')}</Text></Pressable><Pressable style={styles.smallAction} onPress={() => confirmDelete(t('finance.modules.deleteGoal'), () => finance.updateState((current) => ({ ...current, savingsGoals: current.savingsGoals.filter((entry) => entry.id !== item.id) })))} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View></View>)}{!state.savingsGoals.length && <Empty title={t('finance.modules.noGoals')} body={t('finance.modules.noGoalsCopy')} />}<AddAction label={t('finance.modules.addGoal')} onPress={() => { setSavings({ name: '', currency: baseCurrency, accountId: operationalAccounts.find((entry) => entry.type === 'savings')?.id ?? operationalAccounts[0]?.id ?? '', target: '', deadline: new Date().toISOString() }); setSavingsOpen(true); }} /></View>;
-  const renderReminders = () => <View style={styles.panel}>{state.reminders.slice().sort((a, b) => Number(a.completed) - Number(b.completed) || new Date(a.date).getTime() - new Date(b.date).getTime()).map((item) => { const overdue = !item.completed && new Date(item.date).getTime() < Date.now(); return <View key={item.id} style={styles.row}><Pressable onPress={() => finance.updateReminder({ ...item, completed: !item.completed })} style={[styles.reminderCheck, item.completed && styles.reminderCheckDone, overdue && styles.reminderCheckOverdue]}><Ionicons name={item.completed ? 'checkmark' : overdue ? 'alert' : 'notifications-outline'} size={15} color={item.completed ? C.void : overdue ? C.red : C.gold} /></Pressable><View style={styles.rowMain}><Text style={[styles.cardTitle, item.completed && styles.strike]}>{item.title}</Text><Text style={[styles.cardMeta, overdue && styles.overdueText]}>{dateText(item.date)}{item.note ? ` · ${item.note}` : ''}</Text></View><Pressable style={styles.smallAction} onPress={() => { setEditingReminderId(item.id); setReminder({ title: item.title, date: item.date, note: item.note }); setReminderOpen(true); }} accessibilityLabel={t('finance.editAction')}><Ionicons name="pencil-outline" size={17} color={C.gold} /></Pressable><Pressable style={styles.smallAction} onPress={() => confirmDelete(t('finance.modules.deleteReminder'), () => finance.updateState((current) => ({ ...current, reminders: current.reminders.filter((entry) => entry.id !== item.id) })))}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View>; })}{!state.reminders.length && <Empty title={t('finance.modules.noReminders')} body={t('finance.modules.noRemindersCopy')} />}<AddAction label={t('finance.modules.addReminder')} onPress={() => { setEditingReminderId(null); setReminder({ title: '', date: new Date().toISOString(), note: '' }); setReminderOpen(true); }} /></View>;
+  const renderReminders = () => <View style={styles.panel}>{sortedReminders.map((item) => { const overdue = !item.completed && new Date(item.date).getTime() < Date.now(); return <View key={item.id} style={styles.row}><Pressable onPress={() => finance.updateReminder({ ...item, completed: !item.completed })} style={[styles.reminderCheck, item.completed && styles.reminderCheckDone, overdue && styles.reminderCheckOverdue]}><Ionicons name={item.completed ? 'checkmark' : overdue ? 'alert' : 'notifications-outline'} size={15} color={item.completed ? C.void : overdue ? C.red : C.gold} /></Pressable><View style={styles.rowMain}><Text style={[styles.cardTitle, item.completed && styles.strike]}>{item.title}</Text><Text style={[styles.cardMeta, overdue && styles.overdueText]}>{dateText(item.date)}{item.note ? ` · ${item.note}` : ''}</Text></View><Pressable style={styles.smallAction} onPress={() => { setEditingReminderId(item.id); setReminder({ title: item.title, date: item.date, note: item.note }); setReminderOpen(true); }} accessibilityLabel={t('finance.editAction')}><Ionicons name="pencil-outline" size={17} color={C.gold} /></Pressable><Pressable style={styles.smallAction} onPress={() => confirmDelete(t('finance.modules.deleteReminder'), () => finance.updateState((current) => ({ ...current, reminders: current.reminders.filter((entry) => entry.id !== item.id) })))}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View>; })}{!sortedReminders.length && <Empty title={t('finance.modules.noReminders')} body={t('finance.modules.noRemindersCopy')} />}<AddAction label={t('finance.modules.addReminder')} onPress={() => { setEditingReminderId(null); setReminder({ title: '', date: new Date().toISOString(), note: '' }); setReminderOpen(true); }} /></View>;
   const renderCategories = () => {
-    const selectedStoreCategories = categoryType === 'store'
-      ? [...state.store.categories].sort((a, b) => Number(Boolean(a.builtIn)) - Number(Boolean(b.builtIn)) || a.name.localeCompare(b.name))
-      : [];
+    const selectedStoreCategories = categoryType === 'store' ? sortedStoreCategories : [];
     const selectedCategories = categoryType === 'store' ? [] : state.categories[categoryType];
-    const categoryTabs = [
-      { key: 'expense' as const, label: t('finance.expenses') },
-      { key: 'income' as const, label: t('finance.income') },
-      { key: 'store' as const, label: t('finance.workspace.store') },
-    ];
     return (
       <View style={styles.panel}>
         <View style={styles.categoryTabShell}>
@@ -827,9 +900,9 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
             <View style={styles.cashDeleteSpace} />
           </View>
           {cashRows.map((row) => <View key={row.id} style={styles.cashRow}>
-            <TextInput value={row.denomination} onChangeText={(value) => updateCashRow(row.id, 'denomination', value)} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={C.textSubtle} style={[styles.input, styles.cashDenomination]} />
+            <TextInput value={row.denomination} onChangeText={(value) => updateCashRow(row.id, 'denomination', value)} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={C.textSubtle} selectionColor={C.gold} style={[styles.formInput, styles.cashDenomination]} />
             <Text style={styles.cashMultiply}>×</Text>
-            <TextInput value={row.quantity} onChangeText={(value) => updateCashRow(row.id, 'quantity', value)} keyboardType="number-pad" placeholder="0" placeholderTextColor={C.textSubtle} style={[styles.input, styles.cashQuantity]} />
+            <TextInput value={row.quantity} onChangeText={(value) => updateCashRow(row.id, 'quantity', value)} keyboardType="number-pad" placeholder="0" placeholderTextColor={C.textSubtle} selectionColor={C.gold} style={[styles.formInput, styles.cashQuantity]} />
             <Pressable style={styles.cashDelete} onPress={() => setCashRows((current) => current.filter((item) => item.id !== row.id))} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="close-outline" size={17} color={C.red} /></Pressable>
           </View>)}
           <AddAction label={t('finance.toolCalculators.addDenomination')} onPress={() => setCashRows((current) => [...current, { id: uid('cash'), denomination: '', quantity: '' }])} />
@@ -938,20 +1011,8 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
       </View>
     );
   };
-  const visibleBudgets = state.budgets.filter((item) => item.limit > 0);
-  const renderBudget = () => <View style={styles.panel}>{visibleBudgets.map((item) => {
-    const account = state.accounts.find((accountItem) => accountItem.id === item.accountId);
-    const budgetCurrency = account?.currency ?? baseCurrency;
-    const bounds = periodBounds(item.period === 'weekly' ? 'week' : 'month', new Date(), state.settings.firstDayOfWeek);
-    const spent = budgetSpent(item, state.transactions, budgetCurrency, bounds, rateBetweenCurrencies);
-    const accountName = state.accounts.find((accountItem) => accountItem.id === item.accountId)?.name ?? t('finance.modules.unknownAccount');
-    const percentage = Math.min(100, spent / Math.max(1, item.limit) * 100);
-    const category = state.categories.expense.find((entry) => entry.id === item.category);
-    const categoryLabel = item.category === 'all' ? t('finance.filters.all') : category?.name ?? t(`finance.categories.${item.category}`, { defaultValue: item.category });
-    return <View key={item.id} style={styles.module}><View style={styles.row}><View style={styles.rowMain}><Text style={styles.cardTitle}>{categoryLabel}</Text><Text style={styles.cardMeta}>{accountName} · {t(`finance.releaseFrequency.${item.period}`)}</Text></View><Text style={spent > item.limit ? styles.negative : styles.positive} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>{money(spent, budgetCurrency)}</Text><Pressable style={styles.smallAction} onPress={() => confirmDelete(t('finance.modules.deleteBudget'), () => finance.deleteBudget(item.id))} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View><View style={styles.track}><View style={[styles.fill, { width: `${percentage}%`, backgroundColor: percentage >= 100 ? C.red : percentage >= 80 ? C.gold : C.goldLight }]} /></View><Text style={styles.cardMeta}>{t('finance.modules.budgetRemaining', { amount: money(Math.max(0, item.limit - spent), budgetCurrency) })}</Text></View>;
-  })}{!visibleBudgets.length && <Empty title={t('finance.modules.noBudgets')} body={t('finance.modules.noBudgetsCopy')} />}<AddAction label={t('finance.modules.addBudget')} onPress={() => { setBudgetDraft((current) => ({ ...current, accountId: current.accountId || accounts[0]?.id || '' })); setBudgetOpen(true); }} /></View>;
+  const renderBudget = () => <View style={styles.panel}>{budgetSummaries.map(({ item, accountName, budgetCurrency, spent, percentage, categoryLabel }) => <View key={item.id} style={styles.module}><View style={styles.row}><View style={styles.rowMain}><Text style={styles.cardTitle}>{categoryLabel}</Text><Text style={styles.cardMeta}>{accountName} · {t(`finance.releaseFrequency.${item.period}`)}</Text></View><Text style={spent > item.limit ? styles.negative : styles.positive} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>{money(spent, budgetCurrency)}</Text><Pressable style={styles.smallAction} onPress={() => confirmDelete(t('finance.modules.deleteBudget'), () => finance.deleteBudget(item.id))} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View><View style={styles.track}><View style={[styles.fill, { width: `${percentage}%`, backgroundColor: percentage >= 100 ? C.red : percentage >= 80 ? C.gold : C.goldLight }]} /></View><Text style={styles.cardMeta}>{t('finance.modules.budgetRemaining', { amount: money(Math.max(0, item.limit - spent), budgetCurrency) })}</Text></View>)}{!budgetSummaries.length && <Empty title={t('finance.modules.noBudgets')} body={t('finance.modules.noBudgetsCopy')} />}<AddAction label={t('finance.modules.addBudget')} onPress={() => { setBudgetDraft((current) => ({ ...current, accountId: current.accountId || accounts[0]?.id || '' })); setBudgetOpen(true); }} /></View>;
   const content = module === 'accounts' ? renderAccounts() : module === 'activity' ? renderActivity() : module === 'recurring' ? renderRecurring() : module === 'categories' ? renderCategories() : module === 'debt' ? renderDebts() : module === 'savings' ? renderSavings() : module === 'tools' ? renderTools() : module === 'settings' || module === 'notes' ? renderSettings() : renderBudget();
-  const titles = Object.fromEntries((['accounts', 'debt', 'notes', 'tools', 'savings', 'budget', 'activity', 'recurring', 'categories', 'settings'] as FinanceModuleName[]).map((item) => [item, t(`finance.navigation.items.${item}.title`)])) as Record<FinanceModuleName, string>;
   const debtPaymentAccount = accounts.find((item) => item.id === debtPaymentAccountId);
   const debtPaymentReady = Boolean(debtPaymentTarget && debtPaymentAccount && Number(debtPaymentAmount) > 0 && Number(debtPaymentAmount) <= debtPaymentTarget.balance && rateBetweenCurrencies(debtPaymentTarget.currency, debtPaymentAccount.currency));
   const debtPaymentValidationError = linkedActionError
@@ -964,12 +1025,15 @@ export default function FinanceModulesScreen({ module: initialModule, onBack }: 
   const contributionValidationError = linkedActionError
     || (savingsTarget && Number(savingsAmount) > savingsTarget.targetAmount - savingsTarget.balance ? t('finance.contributionExceedsGoal') : '')
     || (savingsTarget && contributionDestination && contributionSource && Number(savingsAmount) > 0 && !rateBetweenCurrencies(contributionDestination.currency, contributionSource.currency) ? t('finance.releaseErrors.missingRate') : '');
-  const activityCategoryOptions = activityCategories.map((id) => {
-    const category = [...state.categories.expense, ...state.categories.income].find((item) => item.id === id);
-    return { id, icon: category?.icon as IconName ?? 'pricetag-outline', label: category?.name ?? t(`finance.categories.${id}`, { defaultValue: id }) };
-  });
+  const activityCategoryOptions = React.useMemo(() => {
+    const categoriesById = new Map([...state.categories.expense, ...state.categories.income].map((item) => [item.id, item]));
+    return activityCategories.map((id) => {
+      const category = categoriesById.get(id);
+      return { id, icon: category?.icon as IconName ?? 'pricetag-outline', label: category?.name ?? t(`finance.categories.${id}`, { defaultValue: id }) };
+    });
+  }, [activityCategories, state.categories.expense, state.categories.income, t]);
   const normalizedActivityCategoryQuery = activityCategoryQuery.trim().toLowerCase();
-  const visibleActivityCategoryOptions = activityCategoryOptions.filter((item) => !normalizedActivityCategoryQuery || `${item.label} ${item.id}`.toLowerCase().includes(normalizedActivityCategoryQuery));
+  const visibleActivityCategoryOptions = React.useMemo(() => activityCategoryOptions.filter((item) => !normalizedActivityCategoryQuery || `${item.label} ${item.id}`.toLowerCase().includes(normalizedActivityCategoryQuery)), [activityCategoryOptions, normalizedActivityCategoryQuery]);
 
   return <SafeAreaView style={[styles.root, styles.rootBackground]} edges={['top', 'bottom']}><View style={styles.header}><BackButton onPress={onBack} /><Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{titles[module]}</Text><View style={styles.headerSpace} /></View>{module === 'activity' ? <View style={[styles.content, styles.moduleContent, styles.moduleActivityContent]}>{content}</View> : <ScrollView contentContainerStyle={[styles.content, styles.moduleContent]} keyboardShouldPersistTaps="handled">{content}</ScrollView>}
     <Modal visible={activityFilterOpen} transparent animationType="fade" onRequestClose={closeActivityFilters} statusBarTranslucent>
@@ -1125,25 +1189,51 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   currencyPickerSheet: { width: '100%', maxWidth: 520, maxHeight: '82%', alignSelf: 'center', borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14', padding: 16, overflow: 'hidden' },
   currencyPickerHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   currencySearch: { height: 44, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 10 },
-  currencySearchInput: { flex: 1, minWidth: 0, height: 43, color: C.goldLight, fontFamily: SANS, fontSize: 11, paddingVertical: 0 },
+  currencySearchInput: { flex: 1, minWidth: 0, height: 43, color: C.goldLight, fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.input, paddingVertical: 0 },
   currencyOption: { minHeight: 52, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.09)', paddingHorizontal: 4, flexDirection: 'row', alignItems: 'center', gap: 10 },
   currencyOptionActive: { backgroundColor: 'rgba(233,200,119,0.055)' },
   currencyOptionMark: { width: 30, height: 30, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.2)', alignItems: 'center', justifyContent: 'center' },
   currencyOptionMarkText: { color: C.gold, fontFamily: SERIF, fontSize: 14 },
   currencyOptionCode: { flex: 1, color: C.goldLight, fontFamily: SANS, fontSize: 11, fontWeight: '600', letterSpacing: 0.8 },
   settingsOptionList: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, overflow: 'hidden', marginBottom: 18 },
+  fullHeightEmpty: { flex: 1, minHeight: 250, justifyContent: 'center', paddingVertical: 24 },
   activityView: { flex: 1, width: '100%', maxWidth: 720, alignSelf: 'center' },
   activityToolbar: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 9 },
+  activityScopeBlock: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.14)', marginBottom: 4 },
+  activityBudgetTabs: { minHeight: 40 },
+  activityBudgetTab: { maxWidth: 170, minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 6, borderBottomWidth: 2, borderBottomColor: 'transparent', paddingHorizontal: 11 },
+  activityBudgetTabSelected: { borderBottomColor: C.gold },
+  activityBudgetDot: { width: 7, height: 7, borderRadius: 4 },
+  activityBudgetTabText: { flexShrink: 1, color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 9.5 },
+  activityBudgetTabTextSelected: { color: C.goldLight, fontWeight: '700' },
+  activityPeriodBlock: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.14)', marginBottom: 6 },
+  activityPeriodChoices: { minHeight: 41 },
+  activityPeriodChoice: { minHeight: 41, alignItems: 'center', justifyContent: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent', paddingHorizontal: 12 },
+  activityPeriodChoiceSelected: { borderBottomColor: C.gold },
+  activityPeriodChoiceText: { color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 9, fontWeight: '600' },
+  activityPeriodChoiceTextSelected: { color: C.goldLight, fontWeight: '700' },
+  activityListHeader: { paddingTop: 2, paddingBottom: 7 },
+  activitySummaryStrip: { minHeight: 70, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.12)', marginBottom: 10 },
+  activitySummaryMetric: { flex: 1, minWidth: 0 },
+  activitySummaryLabel: { color: 'rgba(255,244,208,0.38)', fontFamily: SANS, fontSize: 8, textTransform: 'uppercase' },
+  activitySummaryIncome: { color: C.goldLight, fontFamily: SERIF, fontSize: 13, marginTop: 5 },
+  activitySummaryExpense: { color: C.red, fontFamily: SERIF, fontSize: 13, marginTop: 5 },
+  activitySummaryNet: { color: C.gold, fontFamily: SERIF, fontSize: 13, marginTop: 5 },
+  activitySummaryDivider: { width: StyleSheet.hairlineWidth, height: 30, backgroundColor: C.line, marginHorizontal: 8 },
+  activityQuickCategoryHeader: { minHeight: 26, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  activityQuickCategoryLabel: { color: 'rgba(233,200,119,0.58)', fontFamily: SANS, fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
+  activityResultsLabel: { color: 'rgba(255,244,208,0.32)', fontFamily: SANS, fontSize: 8.5 },
+  activityQuickCategories: { gap: 7, paddingVertical: 6, paddingRight: 8 },
+  activityQuickCategory: { minHeight: 36, maxWidth: 180, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.025)', paddingHorizontal: 10 },
+  activityQuickCategorySelected: { backgroundColor: C.gold, borderColor: C.gold },
+  activityQuickCategoryText: { color: 'rgba(255,244,208,0.56)', fontFamily: SANS, fontSize: 9.5 },
+  activityQuickCategoryTextSelected: { color: C.void, fontWeight: '700' },
   activitySearch: { flex: 1, minWidth: 0, height: 48, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, paddingHorizontal: 13 },
   activitySearchInput: { flex: 1, minWidth: 0, height: 46, color: C.goldLight, fontFamily: SANS, fontSize: 12, paddingVertical: 0 },
   activityFilterButton: { width: 44, height: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', alignItems: 'center', justifyContent: 'center' },
   activityFilterButtonActive: { backgroundColor: C.gold, borderColor: C.gold },
   activityFilterBadge: { position: 'absolute', top: -4, right: -3, minWidth: 17, height: 17, borderRadius: 9, paddingHorizontal: 3, alignItems: 'center', justifyContent: 'center', backgroundColor: C.goldLight, borderWidth: 1, borderColor: C.void },
   activityFilterBadgeText: { color: C.void, fontFamily: SANS, fontSize: 8, fontWeight: '800' },
-  activityFilterSummary: { minHeight: 38, flexDirection: 'row', alignItems: 'center', gap: 8, paddingLeft: 5, marginBottom: 4 },
-  activityFilterPulse: { width: 6, height: 6, borderRadius: 3, backgroundColor: C.gold, shadowColor: C.gold, shadowOpacity: 0.65, shadowRadius: 6 },
-  activityFilterSummaryText: { flex: 1, minWidth: 0, color: 'rgba(255,244,208,0.56)', fontFamily: SANS, fontSize: 10, letterSpacing: 0.25 },
-  activityClearIcon: { width: 44, height: 38, alignItems: 'center', justifyContent: 'center' },
   activityList: { flex: 1, paddingTop: 3 },
   activityListContent: { flexGrow: 1, paddingBottom: 24 },
   activityGroup: { marginBottom: 18 },
@@ -1302,5 +1392,6 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   progressRule: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 3, marginTop: 14 },
   rootBackground: { backgroundColor: C.background },
   aboutCompact: { alignItems: 'center', paddingHorizontal: 12, paddingBottom: 8 },
-  root: { flex: 1, backgroundColor: C.void }, header: { height: 78, paddingTop: 12, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, back: { width: 42 }, backText: { color: C.goldLight, fontSize: 34, fontWeight: '200' }, headerTitle: { flex: 1, textAlign: 'center', color: C.goldLight, fontFamily: SERIF, fontSize: 21 }, headerSpace: { width: 42 }, content: { paddingHorizontal: 18, paddingBottom: 50 }, panel: { width: '100%', maxWidth: 720, alignSelf: 'center', borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.72)', padding: 14, marginBottom: 15 }, row: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)' }, rowMain: { flex: 1, minWidth: 0 }, accountStripe: { width: 5, height: 38, borderRadius: 3 }, cardTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13 }, cardMeta: { color: 'rgba(255,244,208,0.52)', fontFamily: SANS, fontSize: 11, marginTop: 4 }, positive: { color: C.goldLight, fontFamily: SERIF, fontSize: 14 }, negative: { color: C.red, fontFamily: SERIF, fontSize: 14 }, primary: { minHeight: 48, borderRadius: 14, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center', marginTop: 14 }, primaryText: { color: C.void, fontFamily: SANS, fontSize: 11, fontWeight: '700', letterSpacing: 1 }, secondary: { minHeight: 46, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.gold, alignItems: 'center', justifyContent: 'center', marginTop: 10 }, secondaryText: { color: C.gold, fontFamily: SANS, fontSize: 11, fontWeight: '700' }, danger: { minHeight: 46, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.red, alignItems: 'center', justifyContent: 'center', marginTop: 10 }, dangerText: { color: C.red, fontFamily: SANS, fontSize: 11, fontWeight: '700' }, module: { paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, body: { color: 'rgba(255,244,208,0.72)', fontFamily: SANS, fontSize: 13, lineHeight: 20, marginVertical: 10 }, track: { height: 6, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.1)', overflow: 'hidden', marginVertical: 9 }, fill: { height: '100%', borderRadius: 4, backgroundColor: C.gold }, chart: { marginBottom: 14 }, chartTop: { flexDirection: 'row', justifyContent: 'space-between' }, check: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: C.gold, color: C.gold, textAlign: 'center', textAlignVertical: 'center' }, checkDone: { backgroundColor: C.gold, borderColor: C.gold, color: C.void }, strike: { textDecorationLine: 'line-through', opacity: 0.5 }, toolResult: { color: C.goldLight, fontFamily: SERIF, fontSize: 29, marginBottom: 15 }, toolChoices: { gap: 7, paddingBottom: 8 }, toolChoice: { minHeight: 44, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 6 }, toolChoiceActive: { backgroundColor: C.gold, borderColor: C.gold }, toolChoiceText: { color: 'rgba(255,244,208,0.62)', fontFamily: SANS, fontSize: 11 }, toolChoiceTextActive: { color: C.void, fontWeight: '700' }, menuLink: { paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, field: { marginTop: 11 }, fieldLabel: { color: 'rgba(233,200,119,0.72)', fontFamily: SANS, fontSize: 11, letterSpacing: 1, marginBottom: 6 }, input: { minHeight: 48, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', color: C.goldLight, fontFamily: SANS, fontSize: 13, paddingHorizontal: 12, paddingVertical: 10 }, multiline: { minHeight: 80, textAlignVertical: 'top' }, import: { minHeight: 210, textAlignVertical: 'top', marginTop: 12 }, choices: { gap: 7, paddingVertical: 8 }, choice: { minHeight: 44, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingHorizontal: 12, justifyContent: 'center' }, choiceActive: { backgroundColor: 'rgba(233,200,119,0.14)', borderColor: C.gold }, choiceText: { color: 'rgba(255,244,208,0.62)', fontFamily: SANS, fontSize: 11 }, choiceTextActive: { color: C.goldLight }, iconChoices: { gap: 8, paddingVertical: 8 }, iconChoice: { width: 44, height: 44, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', alignItems: 'center', justifyContent: 'center' }, iconChoiceActive: { backgroundColor: C.gold, borderColor: C.gold }, categoryRowIcon: { width: 40, height: 40, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.06)', alignItems: 'center', justifyContent: 'center' }, categoryRowName: { flex: 1 }, empty: { alignItems: 'center', paddingVertical: 28 }, diamond: { width: 22, height: 22, borderWidth: 1, borderColor: C.gold, transform: [{ rotate: '45deg' }], marginBottom: 15 }, emptyTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13 }, emptyBody: { color: 'rgba(255,244,208,0.52)', fontFamily: SANS, fontSize: 11, marginTop: 7, textAlign: 'center' }, modalBackdrop: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.72)' }, modalBackdropTablet: { justifyContent: 'center', padding: 28 }, sheet: { width: '100%', maxWidth: 620, maxHeight: '90%', borderRadius: 25, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14', padding: 18 }, sheetTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 23, marginBottom: 12 }, about: { color: C.gold, fontFamily: SERIF, fontSize: 48, textAlign: 'center', marginTop: 20 }, aboutTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 24, textAlign: 'center', marginBottom: 12 },
+  formSheet: { width: '100%', maxWidth: 620, maxHeight: '90%', borderRadius: 24, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.11)', backgroundColor: '#0A0C14' }, formSheetContent: { paddingHorizontal: 18, paddingBottom: 22 }, formField: { marginTop: 8 }, formFieldLabel: { color: 'rgba(233,200,119,0.54)', fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.label, lineHeight: 14, marginBottom: 1, letterSpacing: 0.25 }, formInput: { minHeight: 43, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.16)', backgroundColor: 'transparent', color: C.goldLight, fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.input, paddingHorizontal: 2, paddingVertical: 8 }, formInputFocused: { borderBottomColor: C.gold }, formMultiline: { minHeight: 82, textAlignVertical: 'top', paddingTop: 10 }, formChoices: { gap: 6, paddingVertical: 7 }, formChoice: { minHeight: 40, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.025)', paddingHorizontal: 11, justifyContent: 'center' }, formChoiceActive: { backgroundColor: 'rgba(233,200,119,0.14)' }, formChoiceText: { color: 'rgba(255,244,208,0.58)', fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.option }, formChoiceTextActive: { color: C.goldLight, fontWeight: '700' },
+  root: { flex: 1, backgroundColor: C.void }, header: { height: 78, paddingTop: 12, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, back: { width: 42 }, backText: { color: C.goldLight, fontSize: 34, fontWeight: '200' }, headerTitle: { flex: 1, textAlign: 'center', color: C.goldLight, fontFamily: SERIF, fontSize: 21 }, headerSpace: { width: 42 }, content: { paddingHorizontal: 18, paddingBottom: 50 }, panel: { width: '100%', maxWidth: 720, alignSelf: 'center', borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.72)', padding: 14, marginBottom: 15 }, row: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)' }, rowMain: { flex: 1, minWidth: 0 }, accountStripe: { width: 5, height: 38, borderRadius: 3 }, cardTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13 }, cardMeta: { color: 'rgba(255,244,208,0.52)', fontFamily: SANS, fontSize: 11, marginTop: 4 }, positive: { color: C.goldLight, fontFamily: SERIF, fontSize: 14 }, negative: { color: C.red, fontFamily: SERIF, fontSize: 14 }, primary: { minHeight: 48, borderRadius: 14, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center', marginTop: 14 }, primaryText: { color: C.void, fontFamily: SANS, fontSize: 11, fontWeight: '700', letterSpacing: 1 }, secondary: { minHeight: 46, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.gold, alignItems: 'center', justifyContent: 'center', marginTop: 10 }, secondaryText: { color: C.gold, fontFamily: SANS, fontSize: 11, fontWeight: '700' }, danger: { minHeight: 46, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.red, alignItems: 'center', justifyContent: 'center', marginTop: 10 }, dangerText: { color: C.red, fontFamily: SANS, fontSize: 11, fontWeight: '700' }, module: { paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, body: { color: 'rgba(255,244,208,0.72)', fontFamily: SANS, fontSize: 13, lineHeight: 20, marginVertical: 10 }, track: { height: 6, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.1)', overflow: 'hidden', marginVertical: 9 }, fill: { height: '100%', borderRadius: 4, backgroundColor: C.gold }, chart: { marginBottom: 14 }, chartTop: { flexDirection: 'row', justifyContent: 'space-between' }, check: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: C.gold, color: C.gold, textAlign: 'center', textAlignVertical: 'center' }, checkDone: { backgroundColor: C.gold, borderColor: C.gold, color: C.void }, strike: { textDecorationLine: 'line-through', opacity: 0.5 }, toolResult: { color: C.goldLight, fontFamily: SERIF, fontSize: 29, marginBottom: 15 }, toolChoices: { gap: 7, paddingBottom: 8 }, toolChoice: { minHeight: 44, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 6 }, toolChoiceActive: { backgroundColor: C.gold, borderColor: C.gold }, toolChoiceText: { color: 'rgba(255,244,208,0.62)', fontFamily: SANS, fontSize: 11 }, toolChoiceTextActive: { color: C.void, fontWeight: '700' }, menuLink: { paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, field: { marginTop: 11 }, fieldLabel: { color: 'rgba(233,200,119,0.72)', fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.label, letterSpacing: 1, marginBottom: 6 }, input: { minHeight: 48, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', color: C.goldLight, fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.input, paddingHorizontal: 12, paddingVertical: 10 }, multiline: { minHeight: 80, textAlignVertical: 'top' }, import: { minHeight: 210, textAlignVertical: 'top', marginTop: 12 }, choices: { gap: 7, paddingVertical: 8 }, choice: { minHeight: 44, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingHorizontal: 12, justifyContent: 'center' }, choiceActive: { backgroundColor: 'rgba(233,200,119,0.14)', borderColor: C.gold }, choiceText: { color: 'rgba(255,244,208,0.62)', fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.option }, choiceTextActive: { color: C.goldLight }, iconChoices: { gap: 8, paddingVertical: 8 }, iconChoice: { width: 44, height: 44, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', alignItems: 'center', justifyContent: 'center' }, iconChoiceActive: { backgroundColor: C.gold, borderColor: C.gold }, categoryRowIcon: { width: 40, height: 40, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.06)', alignItems: 'center', justifyContent: 'center' }, categoryRowName: { flex: 1 }, empty: { alignItems: 'center', paddingVertical: 28 }, diamond: { width: 22, height: 22, borderWidth: 1, borderColor: C.gold, transform: [{ rotate: '45deg' }], marginBottom: 15 }, emptyTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13 }, emptyBody: { color: 'rgba(255,244,208,0.52)', fontFamily: SANS, fontSize: 11, marginTop: 7, textAlign: 'center' }, modalBackdrop: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.72)' }, modalBackdropTablet: { justifyContent: 'center', padding: 28 }, sheet: { width: '100%', maxWidth: 620, maxHeight: '90%', borderRadius: 25, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14', padding: 18 }, sheetTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 23, marginBottom: 12 }, about: { color: C.gold, fontFamily: SERIF, fontSize: 48, textAlign: 'center', marginTop: 20 }, aboutTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 24, textAlign: 'center', marginBottom: 12 },
 }));

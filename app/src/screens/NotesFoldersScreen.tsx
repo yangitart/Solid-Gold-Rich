@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, BackHandler, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Animated as NativeAnimated, BackHandler, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -15,7 +15,43 @@ function BackButton({ onPress }: { onPress: () => void }) {
 }
 
 function Field({ title, value, onChangeText, placeholder, multiline = false }: { title: string; value: string; onChangeText: (value: string) => void; placeholder?: string; multiline?: boolean }) {
-  return <View style={styles.field}><Text style={styles.fieldLabel}>{title}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={C.textSubtle} multiline={multiline} style={[styles.input, multiline && styles.multiline]} /></View>;
+  const [focused, setFocused] = React.useState(false);
+  return <View style={styles.field}><Text style={styles.fieldLabel}>{title}</Text><TextInput value={value} onChangeText={onChangeText} placeholder={placeholder} placeholderTextColor={C.textSubtle} multiline={multiline} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)} selectionColor={C.gold} style={[styles.input, focused && styles.inputFocused, multiline && styles.multiline]} /></View>;
+}
+
+type IconName = React.ComponentProps<typeof Ionicons>['name'];
+type SwipeAction = { icon: IconName; label: string; danger?: boolean; onPress: () => void };
+const AnimatedPressable = NativeAnimated.createAnimatedComponent(Pressable);
+
+function SwipeableRow({ children, actions }: { children: React.ReactNode; actions: SwipeAction[] }) {
+  const translateX = React.useRef(new NativeAnimated.Value(0)).current;
+  const position = React.useRef(0);
+  const gestureStart = React.useRef(0);
+  const actionWidth = 74;
+  const maxTranslate = actionWidth * actions.length;
+  const animateTo = React.useCallback((value: number) => {
+    position.current = value;
+    NativeAnimated.spring(translateX, { toValue: value, useNativeDriver: true, tension: 90, friction: 12 }).start();
+  }, [translateX]);
+  const panResponder = React.useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 10 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+    onMoveShouldSetPanResponderCapture: (_, gesture) => Math.abs(gesture.dx) > 10 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+    onPanResponderGrant: () => { gestureStart.current = position.current; translateX.stopAnimation(); },
+    onPanResponderMove: (_, gesture) => {
+      const next = Math.min(0, Math.max(-maxTranslate, gestureStart.current + gesture.dx));
+      position.current = next;
+      translateX.setValue(next);
+    },
+    onPanResponderRelease: (_, gesture) => {
+      const next = gestureStart.current + gesture.dx;
+      animateTo(next < -maxTranslate / 2 ? -maxTranslate : 0);
+    },
+    onPanResponderTerminate: () => animateTo(0),
+  }), [animateTo, maxTranslate, translateX]);
+  return <View style={styles.swipeRow}>
+    <View style={styles.swipeActions}>{actions.map((action) => <Pressable key={action.label} style={[styles.swipeAction, action.danger ? styles.swipeDeleteAction : styles.swipeEditAction]} onPress={() => { animateTo(0); action.onPress(); }} accessibilityRole="button" accessibilityLabel={action.label}><Ionicons name={action.icon} size={18} color={action.danger ? C.red : C.gold} /><Text style={[styles.swipeActionText, action.danger && styles.swipeDeleteText]} numberOfLines={1}>{action.label}</Text></Pressable>)}</View>
+    <AnimatedPressable style={[styles.swipeContent, { transform: [{ translateX }] }]} {...panResponder.panHandlers} onLongPress={() => animateTo(-maxTranslate)} delayLongPress={450}>{children}</AnimatedPressable>
+  </View>;
 }
 
 export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
@@ -28,7 +64,7 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
   const [folderName, setFolderName] = React.useState('');
   const [editingFolderId, setEditingFolderId] = React.useState<string | null>(null);
   const [folderError, setFolderError] = React.useState('');
-  const [note, setNote] = React.useState({ title: '', body: '', tags: '', folderId: '' });
+  const [note, setNote] = React.useState({ title: '', body: '', folderId: '' });
   const [editingNoteId, setEditingNoteId] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState('');
 
@@ -52,22 +88,25 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
     return () => subscription.remove();
   }, [folderOpen, noteOpen, onBack, selectedFolderId]);
 
-  const selectedFolder = selectedFolderId ? state.noteFolders.find((folder) => folder.id === selectedFolderId) : undefined;
-  const folderNotes = selectedFolderId
+  const selectedFolder = React.useMemo(() => selectedFolderId ? state.noteFolders.find((folder) => folder.id === selectedFolderId) : undefined, [selectedFolderId, state.noteFolders]);
+  const folderNotes = React.useMemo(() => selectedFolderId
     ? state.notes.filter((item) => item.folderId === selectedFolderId)
-    : state.notes.filter((item) => !item.folderId);
-  const visibleNotes = folderNotes
-    .filter((item) => !normalizedSearch(query) || normalizedSearch(`${item.title} ${item.body} ${item.tags.join(' ')}`).includes(normalizedSearch(query)))
-    .sort((a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt));
-
+    : state.notes.filter((item) => !item.folderId), [selectedFolderId, state.notes]);
+  const normalizedQuery = React.useMemo(() => normalizedSearch(query), [query]);
+  const visibleFolders = React.useMemo(() => selectedFolderId ? [] : state.noteFolders
+    .filter((folder) => !normalizedQuery || normalizedSearch(folder.name).includes(normalizedQuery))
+    .sort((a, b) => a.name.localeCompare(b.name)), [normalizedQuery, selectedFolderId, state.noteFolders]);
+  const visibleNotes = React.useMemo(() => folderNotes
+    .filter((item) => !normalizedQuery || normalizedSearch(`${item.title} ${item.body}`).includes(normalizedQuery))
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), [folderNotes, normalizedQuery]);
   const openNewNote = () => {
     setEditingNoteId(null);
-    setNote({ title: '', body: '', tags: '', folderId: selectedFolderId ?? '' });
+    setNote({ title: '', body: '', folderId: selectedFolderId ?? '' });
     setNoteOpen(true);
   };
   const openNote = (item: typeof state.notes[number]) => {
     setEditingNoteId(item.id);
-    setNote({ title: item.title, body: item.body, tags: item.tags.join(', '), folderId: item.folderId ?? '' });
+    setNote({ title: item.title, body: item.body, folderId: item.folderId ?? '' });
     setNoteOpen(true);
   };
 
@@ -75,7 +114,7 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
     if (!note.title.trim() && !note.body.trim()) return;
     const now = new Date().toISOString();
     const existing = editingNoteId ? state.notes.find((item) => item.id === editingNoteId) : undefined;
-    const value = { title: note.title.trim() || t('finance.untitled'), body: note.body.trim(), tags: note.tags.split(',').map((item) => item.trim()).filter(Boolean), folderId: note.folderId || undefined, updatedAt: now };
+    const value = { title: note.title.trim() || t('finance.untitled'), body: note.body.trim(), tags: existing?.tags ?? [], folderId: note.folderId || undefined, updatedAt: now };
     if (existing) finance.updateNote({ ...existing, ...value });
     else finance.addNote({ id: uid('note'), ...value, createdAt: now, pinned: false });
     setNoteOpen(false);
@@ -101,46 +140,48 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
     setFolderName('');
     setEditingFolderId(null);
     setFolderError('');
-    setSelectedFolderId(id);
+    setSelectedFolderId(null);
   };
 
-  const deleteFolder = (id: string) => Alert.alert(t('finance.deleteFolder'), t('finance.deleteFolderCopy'), [
-    { text: t('finance.cancel'), style: 'cancel' },
-    { text: t('finance.deleteAction'), style: 'destructive', onPress: () => { finance.deleteNoteFolder(id); if (selectedFolderId === id) setSelectedFolderId(null); } },
-  ]);
+  const openFolderEditor = (folder: typeof state.noteFolders[number]) => {
+    setEditingFolderId(folder.id);
+    setFolderName(folder.name);
+    setFolderError('');
+    setFolderOpen(true);
+  };
 
-  const deleteNote = (id: string) => Alert.alert(t('finance.deleteNote'), t('finance.deleteNoteCopy'), [
-    { text: t('finance.cancel'), style: 'cancel' },
-    { text: t('finance.deleteAction'), style: 'destructive', onPress: () => { finance.updateState((current) => ({ ...current, notes: current.notes.filter((item) => item.id !== id) })); setNoteOpen(false); setEditingNoteId(null); } },
-  ]);
+  const deleteFolder = (folder: typeof state.noteFolders[number]) => {
+    Alert.alert(t('finance.deleteFolder'), t('finance.modules.cannotUndo'), [
+      { text: t('finance.cancel'), style: 'cancel' },
+      { text: t('finance.deleteAction'), style: 'destructive', onPress: () => { finance.deleteNoteFolder(folder.id); if (selectedFolderId === folder.id) setSelectedFolderId(null); } },
+    ]);
+  };
+
+  const deleteNote = (item: typeof state.notes[number]) => {
+    Alert.alert(t('finance.deleteNote'), t('finance.modules.cannotUndo'), [
+      { text: t('finance.cancel'), style: 'cancel' },
+      { text: t('finance.deleteAction'), style: 'destructive', onPress: () => finance.updateState((current) => ({ ...current, notes: current.notes.filter((noteItem) => noteItem.id !== item.id) })) },
+    ]);
+  };
 
   return (
     <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
-      <View style={styles.header}><BackButton onPress={onBack} /><Text style={styles.headerTitle} numberOfLines={1}>{selectedFolder?.name ?? t('finance.notes')}</Text><Pressable style={styles.headerCompose} onPress={openNewNote} accessibilityLabel={t('finance.newNote')}><Ionicons name="create-outline" size={21} color={C.gold} /></Pressable></View>
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <View style={styles.search}><Ionicons name="search-outline" size={17} color={C.textSubtle} /><TextInput value={query} onChangeText={setQuery} placeholder={t('finance.notesSearch', { defaultValue: 'Search notes' })} placeholderTextColor={C.textSubtle} style={styles.searchInput} /><Text style={styles.searchCount}>{visibleNotes.length}</Text></View>
-        <View style={styles.panel}>
-          {selectedFolder ? (
-            <View style={styles.folderHeader}>
-              <Pressable onPress={() => { setSelectedFolderId(null); setQuery(''); }} style={styles.folderBack} accessibilityLabel={t('finance.folders')}><Ionicons name="chevron-back-outline" size={18} color={C.gold} /><Text style={styles.folderBackText}>{t('finance.folders')}</Text></Pressable>
-              <Text style={styles.cardMeta}>{t('finance.noteCount', { count: folderNotes.length })}</Text>
-            </View>
-          ) : (
-            <>
-              <View style={styles.sectionHeader}><Text style={styles.fieldLabel}>{t('finance.folders')}</Text></View>
-              {state.noteFolders.map((folder) => {
-                const count = state.notes.filter((item) => item.folderId === folder.id).length;
-                return <View key={folder.id} style={styles.folderCard}><Pressable style={styles.folderMain} onPress={() => { setSelectedFolderId(folder.id); setQuery(''); }}><View style={styles.folderIcon}><Ionicons name="folder-outline" size={21} color={C.gold} /></View><View style={styles.folderCardMain}><Text style={styles.cardTitle}>{folder.name}</Text><Text style={styles.cardMeta}>{t('finance.noteCount', { count })}</Text></View></Pressable><Pressable style={styles.ghostAction} onPress={() => { setEditingFolderId(folder.id); setFolderName(folder.name); setFolderError(''); setFolderOpen(true); }} accessibilityLabel={t('finance.editAction')}><Ionicons name="pencil-outline" size={17} color={C.textSubtle} /></Pressable><Pressable style={styles.ghostAction} onPress={() => deleteFolder(folder.id)} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View>;
-              })}
-            </>
-          )}
-
-          {visibleNotes.map((item) => <View key={item.id} style={styles.noteCard}><Pressable style={styles.noteMain} onPress={() => openNote(item)}><View style={styles.noteHeaderMain}><View style={styles.noteTitleRow}><Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text>{item.pinned && <Ionicons name="pin" size={13} color={C.gold} />}</View><Text style={styles.notePreview} numberOfLines={1}>{new Date(item.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {item.body || t('finance.noActivityCopy')}</Text>{Boolean(item.tags.length) && <Text style={styles.tagLine} numberOfLines={1}>{item.tags.map((tag) => `#${tag}`).join('  ')}</Text>}</View></Pressable><Pressable style={styles.ghostAction} onPress={() => finance.updateNote({ ...item, pinned: !item.pinned, updatedAt: new Date().toISOString() })} accessibilityLabel={item.pinned ? t('finance.unpinNote') : t('finance.pinNote')}><Ionicons name={item.pinned ? 'pin' : 'pin-outline'} size={17} color={item.pinned ? C.gold : C.textSubtle} /></Pressable><Pressable style={styles.ghostAction} onPress={() => deleteNote(item.id)} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View>)}
-          {!visibleNotes.length && <View style={styles.empty}><View style={styles.diamond} /><Text style={styles.emptyTitle}>{selectedFolderId || !state.noteFolders.length || state.notes.length === 0 ? t('finance.noNotes') : t('finance.folders')}</Text><Text style={styles.emptyBody}>{selectedFolderId ? t('finance.noActivityCopy') : state.noteFolders.length ? t('finance.noNotesInFolders') : t('finance.noActivityCopy')}</Text></View>}
-
+      <View style={styles.header}>
+        <BackButton onPress={selectedFolderId ? () => { setSelectedFolderId(null); setQuery(''); } : onBack} />
+        <Text style={styles.headerTitle} numberOfLines={1}>{selectedFolder?.name ?? t('finance.notes')}</Text>
+        <View style={styles.headerCompose} />
+      </View>
+      <ScrollView contentContainerStyle={[styles.content, !visibleNotes.length && !visibleFolders.length && styles.contentEmpty]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <View style={styles.search}><Ionicons name="search-outline" size={17} color={C.textSubtle} /><TextInput value={query} onChangeText={setQuery} placeholder={t('finance.notesSearch', { defaultValue: 'Search notes' })} placeholderTextColor={C.textSubtle} style={styles.searchInput} /><Text style={styles.searchCount}>{visibleNotes.length + visibleFolders.length}</Text></View>
+        <View style={[styles.panel, !visibleNotes.length && !visibleFolders.length && styles.panelEmpty]}>
+          {!selectedFolderId && visibleFolders.length > 0 ? <>
+            {visibleFolders.map((folder) => <SwipeableRow key={folder.id} actions={[{ icon: 'create-outline', label: t('finance.renameFolder'), onPress: () => openFolderEditor(folder) }, { icon: 'trash-outline', label: t('finance.deleteAction'), danger: true, onPress: () => deleteFolder(folder) }]}><View style={styles.folderCard}><Pressable style={styles.folderMain} onPress={() => { setSelectedFolderId(folder.id); setQuery(''); }} accessibilityRole="button"><View style={styles.folderIcon}><Ionicons name="folder-outline" size={21} color={C.gold} /></View><View style={styles.folderCardMain}><Text style={styles.cardTitle} numberOfLines={1}>{folder.name}</Text><Text style={styles.cardMeta}>{t('finance.noteCount', { count: state.notes.filter((note) => note.folderId === folder.id).length })}</Text></View><Ionicons name="chevron-forward-outline" size={17} color={C.textSubtle} /></Pressable></View></SwipeableRow>)}
+          </> : null}
+          {visibleNotes.map((item) => <SwipeableRow key={item.id} actions={[{ icon: 'create-outline', label: t('finance.editAction', { defaultValue: 'Editar' }), onPress: () => openNote(item) }, { icon: 'trash-outline', label: t('finance.deleteAction'), danger: true, onPress: () => deleteNote(item) }]}><Pressable style={styles.noteCard} onPress={() => openNote(item)} accessibilityRole="button"><View style={styles.noteMain}><View style={styles.noteHeaderMain}><Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text><Text style={styles.notePreview} numberOfLines={2}>{new Date(item.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {item.body || t('finance.noActivityCopy')}</Text></View></View><Ionicons name="chevron-forward-outline" size={17} color={C.textSubtle} /></Pressable></SwipeableRow>)}
+          {!visibleNotes.length && !visibleFolders.length ? <View style={styles.empty}><View style={styles.diamond} /><Text style={styles.emptyTitle}>{t('finance.noNotes')}</Text><Text style={styles.emptyBody}>{t('finance.noActivityCopy')}</Text></View> : null}
         </View>
       </ScrollView>
-      <View style={styles.bottomToolbar}>{!selectedFolder && <Pressable style={styles.toolbarAction} onPress={() => { setEditingFolderId(null); setFolderName(''); setFolderError(''); setFolderOpen(true); }}><Ionicons name="folder-open-outline" size={19} color={C.gold} /><Text style={styles.toolbarText}>{t('finance.newFolder')}</Text></Pressable>}<Pressable style={styles.composeButton} onPress={openNewNote}><Ionicons name="create-outline" size={22} color={C.void} /></Pressable></View>
+      <View style={styles.bottomToolbar}>{!selectedFolderId && <Pressable style={styles.toolbarAction} onPress={() => { setEditingFolderId(null); setFolderName(''); setFolderError(''); setFolderOpen(true); }}><Ionicons name="folder-open-outline" size={19} color={C.gold} /><Text style={styles.toolbarText}>{t('finance.newFolder')}</Text></Pressable>}<Pressable style={styles.composeButton} onPress={openNewNote}><Ionicons name="create-outline" size={22} color={C.void} /></Pressable></View>
 
       <Modal visible={folderOpen} transparent animationType="fade" onRequestClose={() => setFolderOpen(false)}>
         <KeyboardAvoidingView style={styles.modalBackdrop} behavior="padding" enabled={Platform.OS === 'ios'}>
@@ -151,7 +192,7 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
       <Modal visible={noteOpen} animationType="fade" onRequestClose={() => setNoteOpen(false)}>
         <SafeAreaView style={styles.editorRoot} edges={['top', 'bottom']}><KeyboardAvoidingView style={styles.editorRoot} behavior="padding" enabled={Platform.OS === 'ios'}>
           <View style={styles.editorHeader}><Pressable style={styles.editorHeaderAction} onPress={() => setNoteOpen(false)}><Text style={styles.editorAction}>{t('finance.cancel')}</Text></Pressable><Text style={styles.editorHeading}>{editingNoteId ? t('finance.notes') : t('finance.newNote')}</Text><Pressable style={styles.editorHeaderAction} disabled={!note.title.trim() && !note.body.trim()} onPress={saveNote}><Text style={[styles.editorAction, !note.title.trim() && !note.body.trim() && styles.editorActionDisabled]}>{t('finance.done')}</Text></Pressable></View>
-          <ScrollView contentContainerStyle={styles.editorContent} keyboardShouldPersistTaps="handled"><TextInput value={note.title} onChangeText={(value) => setNote((current) => ({ ...current, title: value }))} placeholder={t('finance.noteTitle')} placeholderTextColor={C.textSubtle} style={styles.editorTitle} /><TextInput value={note.body} onChangeText={(value) => setNote((current) => ({ ...current, body: value }))} placeholder={t('finance.noteBody')} placeholderTextColor={C.textSubtle} multiline style={styles.editorBody} /><Field title={t('finance.tags')} value={note.tags} onChangeText={(value) => setNote((current) => ({ ...current, tags: value }))} placeholder={t('finance.tags')} />{state.noteFolders.length > 0 && <><Text style={styles.fieldLabel}>{t('finance.chooseFolder')}</Text><ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.choices}><Pressable style={[styles.choice, !note.folderId && styles.choiceActive]} onPress={() => setNote((current) => ({ ...current, folderId: '' }))}><Text style={[styles.choiceText, !note.folderId && styles.choiceTextActive]}>{t('finance.rootFolder')}</Text></Pressable>{state.noteFolders.map((folder) => <Pressable key={folder.id} style={[styles.choice, note.folderId === folder.id && styles.choiceActive]} onPress={() => setNote((current) => ({ ...current, folderId: folder.id }))}><Text style={[styles.choiceText, note.folderId === folder.id && styles.choiceTextActive]}>{folder.name}</Text></Pressable>)}</ScrollView></>}{editingNoteId && <Pressable style={styles.deleteEditor} onPress={() => deleteNote(editingNoteId)}><Ionicons name="trash-outline" size={17} color={C.red} /><Text style={styles.deleteEditorText}>{t('finance.deleteNote')}</Text></Pressable>}</ScrollView>
+          <ScrollView contentContainerStyle={styles.editorContent} keyboardShouldPersistTaps="handled"><TextInput value={note.title} onChangeText={(value) => setNote((current) => ({ ...current, title: value }))} placeholder={t('finance.noteTitle')} placeholderTextColor={C.textSubtle} style={styles.editorTitle} /><TextInput value={note.body} onChangeText={(value) => setNote((current) => ({ ...current, body: value }))} placeholder={t('finance.noteBody')} placeholderTextColor={C.textSubtle} multiline style={styles.editorBody} /></ScrollView>
         </KeyboardAvoidingView></SafeAreaView>
       </Modal>
     </SafeAreaView>
@@ -164,11 +205,19 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   backButton: { width: 44, height: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center' },
   headerTitle: { flex: 1, minWidth: 0, marginHorizontal: 8, textAlign: 'center', color: C.goldLight, fontFamily: SERIF, fontSize: 21 },
   headerCompose: { width: 44, height: 44, borderRadius: 14, alignItems: 'center', justifyContent: 'center' },
-  content: { width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: 18, paddingTop: 24, paddingBottom: 96 },
+  content: { width: '100%', maxWidth: 720, alignSelf: 'center', paddingHorizontal: 18, paddingTop: 24, paddingBottom: 96 }, contentEmpty: { flexGrow: 1 },
   search: { height: 48, flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, paddingHorizontal: 14, marginBottom: 20 },
   searchInput: { flex: 1, height: 48, color: C.goldLight, fontFamily: SANS, fontSize: 14, paddingVertical: 0 },
   searchCount: { color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 11 },
-  panel: { overflow: 'hidden', borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.1)', backgroundColor: 'rgba(10,12,20,0.42)', paddingHorizontal: 14 },
+  panel: { overflow: 'hidden', borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.1)', backgroundColor: 'rgba(10,12,20,0.42)', paddingHorizontal: 14 }, panelEmpty: { flex: 1 },
+  swipeRow: { position: 'relative', overflow: 'hidden' },
+  swipeActions: { position: 'absolute', top: 0, right: 0, bottom: 0, flexDirection: 'row' },
+  swipeAction: { width: 74, alignItems: 'center', justifyContent: 'center', gap: 4 },
+  swipeEditAction: { backgroundColor: 'rgba(233,200,119,0.12)' },
+  swipeDeleteAction: { backgroundColor: 'rgba(240,139,136,0.13)' },
+  swipeActionText: { color: C.gold, fontFamily: SANS, fontSize: 8, fontWeight: '700' },
+  swipeDeleteText: { color: C.red },
+  swipeContent: { backgroundColor: C.background },
   sectionHeader: { minHeight: 30, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   fieldLabel: { color: 'rgba(233,200,119,0.7)', fontFamily: SANS, fontSize: 11, letterSpacing: 1, marginBottom: 6 },
   ghostAction: { width: 40, height: 40, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
@@ -176,9 +225,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   folderMain: { flex: 1, minWidth: 0, minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 11 },
   folderIcon: { width: 30, height: 30, alignItems: 'center', justifyContent: 'center' },
   folderCardMain: { flex: 1, minWidth: 0 },
-  folderHeader: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 },
-  folderBack: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 3 },
-  folderBackText: { color: C.gold, fontFamily: SANS, fontSize: 11 },
+  notesHeader: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)' },
   noteCard: { minHeight: 70, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)', paddingVertical: 8, flexDirection: 'row', alignItems: 'center' },
   noteMain: { flex: 1, minWidth: 0, minHeight: 54, justifyContent: 'center' },
   noteHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 },
@@ -188,7 +235,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   cardMeta: { color: 'rgba(255,244,208,0.5)', fontFamily: SANS, fontSize: 11, marginTop: 4 },
   notePreview: { color: 'rgba(255,244,208,0.54)', fontFamily: SANS, fontSize: 12, lineHeight: 18, marginTop: 6 },
   tagLine: { color: 'rgba(233,200,119,0.58)', fontFamily: SANS, fontSize: 10.5, marginTop: 8 },
-  empty: { alignItems: 'center', paddingVertical: 28 },
+  empty: { flexGrow: 1, minHeight: 250, alignItems: 'center', justifyContent: 'center', paddingVertical: 28 },
   diamond: { width: 22, height: 22, borderWidth: 1, borderColor: C.gold, transform: [{ rotate: '45deg' }], marginBottom: 15 },
   emptyTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 12 },
   emptyBody: { color: 'rgba(255,244,208,0.5)', fontFamily: SANS, fontSize: 11, lineHeight: 17, marginTop: 7, textAlign: 'center' },
@@ -198,15 +245,16 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   secondary: { minHeight: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.gold, alignItems: 'center', justifyContent: 'center', marginTop: 10 },
   secondaryText: { color: C.gold, fontFamily: SANS, fontSize: 10, fontWeight: '700' },
   modalBackdrop: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.72)' },
-  sheet: { width: '100%', maxWidth: 620, maxHeight: '90%', borderTopLeftRadius: 25, borderTopRightRadius: 25, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14', padding: 18 },
-  sheetTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 23, marginBottom: 12 },
-  field: { marginTop: 11 },
-  input: { minHeight: 48, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', color: C.goldLight, fontFamily: SANS, fontSize: 13, paddingHorizontal: 12, paddingVertical: 10 },
-  multiline: { minHeight: 90, textAlignVertical: 'top' },
+  sheet: { width: '100%', maxWidth: 620, maxHeight: '90%', borderTopLeftRadius: 24, borderTopRightRadius: 24, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.11)', backgroundColor: '#0A0C14', paddingHorizontal: 18, paddingTop: 20, paddingBottom: 16 },
+  sheetTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 21, marginBottom: 6 },
+  field: { marginTop: 8 },
+  input: { minHeight: 43, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.16)', backgroundColor: 'transparent', color: C.goldLight, fontFamily: SANS, fontSize: 13.5, paddingHorizontal: 2, paddingVertical: 8 },
+  inputFocused: { borderBottomColor: C.gold },
+  multiline: { minHeight: 82, textAlignVertical: 'top', paddingTop: 10 },
   error: { color: '#F08B88', fontFamily: SANS, fontSize: 10, marginTop: 8 },
-  choices: { gap: 7, paddingVertical: 8 },
-  choice: { minHeight: 44, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingHorizontal: 12, justifyContent: 'center' },
-  choiceActive: { backgroundColor: 'rgba(233,200,119,0.14)', borderColor: C.gold },
+  choices: { gap: 6, paddingVertical: 7 },
+  choice: { minHeight: 40, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.025)', paddingHorizontal: 11, justifyContent: 'center' },
+  choiceActive: { backgroundColor: 'rgba(233,200,119,0.14)' },
   choiceText: { color: 'rgba(255,244,208,0.58)', fontFamily: SANS, fontSize: 11 },
   choiceTextActive: { color: C.goldLight },
   bottomToolbar: { position: 'absolute', left: 0, right: 0, bottom: 0, minHeight: 68, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, backgroundColor: 'rgba(9,11,18,0.96)' },
@@ -222,6 +270,4 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   editorContent: { width: '100%', maxWidth: 760, alignSelf: 'center', flexGrow: 1, paddingHorizontal: 20, paddingTop: 22, paddingBottom: 50 },
   editorTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 27, paddingVertical: 8 },
   editorBody: { minHeight: 260, color: 'rgba(255,244,208,0.78)', fontFamily: SANS, fontSize: 15, lineHeight: 23, paddingVertical: 12, textAlignVertical: 'top' },
-  deleteEditor: { minHeight: 48, marginTop: 22, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(240,139,136,0.5)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  deleteEditorText: { color: C.red, fontFamily: SANS, fontSize: 11, fontWeight: '700' },
 }));

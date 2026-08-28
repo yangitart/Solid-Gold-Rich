@@ -88,12 +88,31 @@ const {
   normalizeFinanceState,
   saveFinanceState,
 } = require('../src/stores/financeStorage.ts');
+const {
+  FUTURE_CAPABILITIES,
+  DEVELOPER_SUPPORT_CONFIG,
+  PREMIUM_CONFIG,
+  GOOGLE_IDENTITY_CONFIG,
+  CLOUD_BACKUP_CONFIG,
+  US_BANK_CONNECTION_CONFIG,
+  areAllFutureCapabilitiesHidden,
+} = require('../src/core/future/config.ts');
 
 function account(id, currency = 'USD', openingBalance = 0) {
   return { id, name: id, type: 'cash', currency, openingBalance, color: '#fff', archived: false };
 }
 
 async function run() {
+  assert.equal(areAllFutureCapabilitiesHidden(), true);
+  assert.equal(Object.values(FUTURE_CAPABILITIES).some(Boolean), false);
+  assert.equal(DEVELOPER_SUPPORT_CONFIG.destination, null);
+  assert.equal(PREMIUM_CONFIG.billingProvider, null);
+  assert.equal(GOOGLE_IDENTITY_CONFIG.backendBaseUrl, null);
+  assert.equal(CLOUD_BACKUP_CONFIG.backendBaseUrl, null);
+  assert.equal(US_BANK_CONNECTION_CONFIG.provider, null);
+  assert.equal(US_BANK_CONNECTION_CONFIG.readOnly, true);
+  assert.equal(US_BANK_CONNECTION_CONFIG.allowMoneyMovement, false);
+
   const emptyStateCategories = emptyFinanceState();
   assert.deepEqual(emptyStateCategories.categories.expense.map((item) => item.id), DEFAULT_CATEGORIES.expense.map((item) => item.id));
   assert.deepEqual(emptyStateCategories.categories.income.map((item) => item.id), DEFAULT_CATEGORIES.income.map((item) => item.id));

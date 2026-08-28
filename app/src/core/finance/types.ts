@@ -214,6 +214,7 @@ export type StoreProduct = {
   name: string;
   type: StoreProductType;
   unit: string;
+  unitAbbreviation?: string;
   categoryId: string;
   sku?: string;
   salePrice: number;

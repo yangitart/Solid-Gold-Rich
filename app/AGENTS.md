@@ -28,7 +28,7 @@
 - Los presupuestos, la cuenta activa y las transacciones se guardan localmente con AsyncStorage usando las claves definidas en `src/screens/RichScreen.tsx`.
 - Las categorías de gastos e ingresos se administran desde el módulo `Categories` del menú izquierdo y se usan en el formulario de operaciones.
 - Se conserva la migración de los datos antiguos `@solid-gold/transactions` y `@solid-gold/monthly-budget`.
-- No reintroducir autenticación, huella, foto, captura o compartir salvo petición explícita del usuario.
+- No activar ni exponer autenticación, huella, foto, captura o compartir salvo petición explícita del usuario. El scaffolding futuro descrito abajo no autoriza UI ni comportamiento en runtime.
 - Mantener la interfaz estable: ningún texto o número grande debe desbordarse ni cambiar el tamaño general del layout.
 
 ## Fondo visual
@@ -75,3 +75,45 @@ npx.cmd expo export --platform android
 - Product fields include key, name, type, unit, purchase price, sale price, optional additional sale prices, optional picture URI, fallback icon, category, quantity, reserved quantity, stock minimum, optional expiration, and optional additional information. When a picture exists, show it in the product icon slot; otherwise show the selected icon.
 - Keep product stock derived from stock movements. Reserved quantity reduces sellable stock, services do not consume inventory, and cancelled sales restore product stock.
 - Keep all Store strings in the six locale files. Never add visible English-only labels or scanner/menu copy without updating every `translation_*.json` file.
+
+## Futuro: soporte, premium e integraciones externas (oculto)
+
+- Existe scaffolding interno en `src/core/future/` y contratos sin implementación en `src/domain/future/`. Su presencia no cambia el producto actual.
+- `src/core/future/config.ts` es la fuente de verdad. Todas las banderas deben permanecer en `false` hasta una petición explícita de activación; ningún screen, menú, modal, drawer, deep link, notificación o tarea de fondo puede revelar estas capacidades mientras estén apagadas.
+- No importar el scaffolding futuro desde `src/screens`, `AppContent`, navegación o componentes actuales. Mantenerlo fuera del bundle visible hasta que una función sea aprobada e implementada de extremo a extremo.
+
+### Regalar un café a los desarrolladores
+
+- La futura opción de soporte es voluntaria y no debe bloquear, degradar ni condicionar funciones existentes.
+- `DEVELOPER_SUPPORT_CONFIG.destination` debe permanecer en `null` hasta que el usuario proporcione la cuenta o enlace de destino y autorice mostrarlo.
+- La aplicación nunca debe capturar, procesar ni almacenar tarjetas o credenciales de pago. Usar en el futuro un checkout o enlace externo de un proveedor aprobado.
+- No incluir montos, moneda, proveedor, textos visibles ni enlaces provisionales antes de recibir los datos definitivos.
+
+### Modo premium
+
+- Premium permanece desactivado. Las ideas reservadas son respaldo cifrado en nube, sincronización multidispositivo, importación bancaria automática, pronósticos avanzados, plantillas de reportes y soporte prioritario.
+- No convertir silenciosamente funciones actuales en premium. Cualquier cambio de acceso, precio, prueba o restauración de compras requiere una decisión explícita del usuario.
+- Los derechos premium deben verificarse con el proveedor/backend; no confiar en un booleano editable de AsyncStorage ni guardarlo como autoridad dentro de `FinanceState`.
+
+### Google y respaldo en nube
+
+- El inicio de sesión con Google y el respaldo remoto requieren backend, consentimiento, política de privacidad actualizada, configuración por ambiente y manejo seguro de sesión antes de activarse.
+- Nunca guardar access tokens, refresh tokens, secretos OAuth, claves de cifrado o cookies de sesión en `FinanceState`, AsyncStorage, backups exportados, logs, analytics o el repositorio.
+- No usar variables `EXPO_PUBLIC_*` para secretos. Los secretos y el intercambio de tokens pertenecen al backend; en el cliente solo pueden existir referencias opacas de sesión y credenciales públicas permitidas por el proveedor.
+- Cualquier backup de nube debe cifrarse antes de subirse, tener versión de sobre, control de revisiones, borrado remoto y una estrategia explícita de conflictos/recuperación.
+
+### Vinculación con bancos de Estados Unidos
+
+- Usar en el futuro un agregador bancario aprobado y un backend propio para crear sesiones e intercambiar tokens. Nunca solicitar ni almacenar usuario, contraseña, routing number o número completo de cuenta bancaria.
+- La configuración inicial debe ser solo lectura: `readOnly: true` y `allowMoneyMovement: false`. Mover dinero requiere otro alcance, revisión legal y autorización explícita.
+- En el dispositivo solo se permiten identificadores externos opacos, nombre de institución, tipo de cuenta, moneda y los últimos dígitos permitidos. Los tokens de acceso bancario deben permanecer en backend.
+- La importación futura debe ser idempotente, conservar cursores, detectar duplicados, distinguir pendientes/confirmadas y pedir confirmación antes de mezclar movimientos externos con las finanzas locales.
+
+### Requisitos antes de activar cualquier capacidad futura
+
+- Confirmación explícita del usuario sobre alcance y UI.
+- Proveedor definitivo, backend operativo, ambientes sandbox/producción y secretos fuera del cliente.
+- Modelo de datos versionado, migración reversible y compatibilidad con backups antiguos.
+- Consentimiento, privacidad, eliminación de cuenta/datos, manejo de errores y recuperación offline.
+- Traducciones completas en los seis idiomas, pruebas de dominio/integración y validación Android.
+- Una prueba debe seguir garantizando que todas las banderas estén apagadas mientras estas funciones permanezcan ocultas.

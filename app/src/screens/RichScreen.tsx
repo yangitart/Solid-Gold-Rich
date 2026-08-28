@@ -83,21 +83,6 @@ function HeaderBackButton({ onPress }: { onPress: () => void }) {
 
 const ACCOUNT_COLORS = ['#E9C877', '#B7AD84', '#80B9FF', '#D99BEF', '#F08B88'];
 
-function createDefaultBudget(name: string): BudgetAccount {
-  return {
-    id: 'personal',
-    name,
-    type: 'cash',
-    openingBalance: 0,
-    limit: 0,
-    limitSet: false,
-    currency: 'USD',
-    exchangeRate: 1,
-    color: ACCOUNT_COLORS[0],
-    transactions: [],
-  };
-}
-
 function parseAmount(value: string) {
   const amount = Number(value.replace(/[^0-9.]/g, ''));
   return Number.isFinite(amount) ? amount : 0;
@@ -185,7 +170,7 @@ function ProgressBar({ progress, color }: { progress: number; color: string }) {
   );
 }
 
-export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { onOpenModule?: (module: FinanceModuleName, returnToDrawer?: boolean) => void; drawerReopenSignal?: number }) {
+export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { onOpenModule?: (module: FinanceModuleName, returnToDrawer?: boolean, activityAccountId?: string) => void; drawerReopenSignal?: number }) {
   const { t, i18n } = useTranslation();
   const finance = useFinance();
   const { state: financeState, loaded: financeLoaded, updateState: updateFinanceState } = finance;
@@ -322,15 +307,15 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
     onOpenModule?.('accounts');
   }, [budgets.length, financeLoaded, onOpenModule]);
 
-  const activeBudget = budgets.find((budget) => budget.id === activeBudgetId) ?? budgets[0];
+  const activeBudget = React.useMemo(() => budgets.find((budget) => budget.id === activeBudgetId) ?? budgets[0], [activeBudgetId, budgets]);
   const activeBudgetHasLimit = activeBudget?.limitSet === true && activeBudget.limit > 0;
-  const entryBudget = editingTransaction ? budgets.find((budget) => budget.id === editingTransaction.budgetId) : activeBudget;
+  const entryBudget = React.useMemo(() => editingTransaction ? budgets.find((budget) => budget.id === editingTransaction.budgetId) : activeBudget, [activeBudget, budgets, editingTransaction]);
   const operationCategories = entryKind === 'income' ? financeState.categories.income : financeState.categories.expense;
-  const filteredOperationCategories = operationCategories.filter((category) => {
-    const query = categoryQuery.trim().toLowerCase();
+  const normalizedCategoryQuery = categoryQuery.trim().toLowerCase();
+  const filteredOperationCategories = React.useMemo(() => operationCategories.filter((category) => {
     const label = category.name ?? t(`finance.categories.${category.id}`, { defaultValue: category.id });
-    return !query || label.toLowerCase().includes(query);
-  });
+    return !normalizedCategoryQuery || label.toLowerCase().includes(normalizedCategoryQuery);
+  }), [normalizedCategoryQuery, operationCategories, t]);
   React.useEffect(() => {
     if (entryKind === 'transfer' || operationCategories.some((category) => category.id === entryCategory)) return;
     setEntryCategory(operationCategories.find((category) => category.id === 'other')?.id ?? operationCategories[0]?.id ?? 'other');
@@ -340,14 +325,15 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
     setStatsCalendarMonth(new Date(reference.getFullYear(), reference.getMonth(), 1));
     setSelectedStatsDate(reference.toDateString());
   }, [statsRange]);
-  const activeLimitDefinition = activeBudget ? financeState.budgets.find((item) => item.accountId === activeBudget.id && item.category === 'all') : undefined;
-  const activeLimitRange = activeLimitDefinition?.period === 'custom'
+  const [referenceNow] = React.useState(() => new Date());
+  const activeLimitDefinition = React.useMemo(() => activeBudget ? financeState.budgets.find((item) => item.accountId === activeBudget.id && item.category === 'all') : undefined, [activeBudget, financeState.budgets]);
+  const activeLimitRange = React.useMemo(() => activeLimitDefinition?.period === 'custom'
     ? { start: new Date(activeLimitDefinition.startDate), end: new Date(activeLimitDefinition.endDate) }
-    : periodBounds(activeLimitDefinition?.period === 'weekly' ? 'week' : 'month', new Date(), financeState.settings.firstDayOfWeek);
-  const expenses = activeBudget ? activeBudget.transactions
+    : periodBounds(activeLimitDefinition?.period === 'weekly' ? 'week' : 'month', referenceNow, financeState.settings.firstDayOfWeek), [activeLimitDefinition, financeState.settings.firstDayOfWeek, referenceNow]);
+  const expenses = React.useMemo(() => activeBudget ? activeBudget.transactions
     .filter((item) => item.kind === 'expense' && !item.transferId && inDateRange(item.date, activeLimitRange))
-    .reduce((sum, item) => sum + item.amount, 0) : 0;
-  const balance = activeBudget ? balanceFor(activeBudget) : 0;
+    .reduce((sum, item) => sum + item.amount, 0) : 0, [activeBudget, activeLimitRange]);
+  const balance = React.useMemo(() => activeBudget ? balanceFor(activeBudget) : 0, [activeBudget]);
   const positiveBalance = Math.max(0, balance);
   const budgetProgress = activeBudgetHasLimit ? expenses / activeBudget.limit : 0;
   const baseCurrency = financeState.settings.preferredCurrency || 'USD';
@@ -357,66 +343,70 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
     if (budget.currency === toCurrency) return 1;
     return rateBetweenCurrencies(budget.currency, toCurrency) ?? (toCurrency === baseCurrency ? budget.exchangeRate : undefined);
   }, [baseCurrency, rateBetweenCurrencies]);
-  const toBaseCurrency = (budget: BudgetAccount, value: number) => {
+  const toBaseCurrency = React.useCallback((budget: BudgetAccount, value: number) => {
     const rate = rateForBudget(budget, baseCurrency);
     return rate && rate > 0 ? value * rate : 0;
-  };
-  const transactionToBaseCurrency = (transaction: Transaction, budget: BudgetAccount) => historicalAmountInCurrency({
+  }, [baseCurrency, rateForBudget]);
+  const transactionToBaseCurrency = React.useCallback((transaction: Transaction, budget: BudgetAccount) => historicalAmountInCurrency({
     amount: transaction.amount,
     currency: transaction.currency ?? budget.currency,
     baseAmount: transaction.baseAmount,
     baseCurrency: transaction.baseCurrency,
-  }, baseCurrency, currencyRates) ?? toBaseCurrency(budget, transaction.amount);
-  const missingRateCurrencies = Array.from(new Set(budgets.filter((budget) => budget.currency !== baseCurrency && !rateForBudget(budget, baseCurrency)).map((budget) => budget.currency)));
-  const portfolioBalance = budgets.reduce((sum, budget) => sum + toBaseCurrency(budget, balanceFor(budget)), 0);
+  }, baseCurrency, currencyRates) ?? toBaseCurrency(budget, transaction.amount), [baseCurrency, currencyRates, toBaseCurrency]);
+  const missingRateCurrencies = React.useMemo(() => Array.from(new Set(budgets.filter((budget) => budget.currency !== baseCurrency && !rateForBudget(budget, baseCurrency)).map((budget) => budget.currency))), [baseCurrency, budgets, rateForBudget]);
+  const portfolioBalance = React.useMemo(() => budgets.reduce((sum, budget) => sum + toBaseCurrency(budget, balanceFor(budget)), 0), [budgets, toBaseCurrency]);
   const portfolioPositiveBalance = Math.max(0, portfolioBalance);
-  const allTransactions: PortfolioTransaction[] = accountViews
+  const allTransactions = React.useMemo<PortfolioTransaction[]>(() => accountViews
     .flatMap((budget) => budget.transactions.map((transaction) => ({
       ...transaction,
       budgetId: budget.id,
       budgetName: budget.name,
       budgetColor: budget.color,
     })))
-    .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
-  const now = new Date();
-  const periodRanges = {
-    today: periodBounds('today', now, financeState.settings.firstDayOfWeek),
-    week: periodBounds('week', now, financeState.settings.firstDayOfWeek),
-    month: periodBounds('month', now, financeState.settings.firstDayOfWeek),
-    year: periodBounds('year', now, financeState.settings.firstDayOfWeek),
-  };
-  const periodTotals = (range: { start: Date; end: Date }) => {
-    const items = activeBudget?.transactions.filter((item) => !item.transferId && inDateRange(item.date, range)) ?? [];
-    return {
-      income: items.filter((item) => item.kind === 'income').reduce((sum, item) => sum + item.amount, 0),
-      expenses: items.filter((item) => item.kind === 'expense').reduce((sum, item) => sum + item.amount, 0),
+    .sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime()), [accountViews]);
+  const accountViewsById = React.useMemo(() => new Map(accountViews.map((budget) => [budget.id, budget])), [accountViews]);
+  const periodRanges = React.useMemo(() => ({
+    today: periodBounds('today', referenceNow, financeState.settings.firstDayOfWeek),
+    week: periodBounds('week', referenceNow, financeState.settings.firstDayOfWeek),
+    month: periodBounds('month', referenceNow, financeState.settings.firstDayOfWeek),
+    year: periodBounds('year', referenceNow, financeState.settings.firstDayOfWeek),
+  }), [financeState.settings.firstDayOfWeek, referenceNow]);
+  const periods = React.useMemo(() => {
+    const periodTotals = (range: { start: Date; end: Date }) => {
+      const totals = { income: 0, expenses: 0 };
+      activeBudget?.transactions.forEach((item) => {
+        if (item.transferId || !inDateRange(item.date, range)) return;
+        if (item.kind === 'income') totals.income += item.amount;
+        else totals.expenses += item.amount;
+      });
+      return totals;
     };
-  };
-  const periods = [
-    { key: 'today', label: t('finance.today'), ...periodTotals(periodRanges.today) },
-    { key: 'week', label: t('finance.thisWeek'), ...periodTotals(periodRanges.week) },
-    { key: 'month', label: t('finance.thisMonth'), ...periodTotals(periodRanges.month) },
-    { key: 'year', label: t('finance.yearToDate'), ...periodTotals(periodRanges.year) },
-  ];
-  const portfolioPeriodTotals = (range: { start: Date; end: Date }) => {
-    const items = allTransactions.filter((item) => !item.transferId && inDateRange(item.date, range));
-    return {
-      income: items.filter((item) => item.kind === 'income' && !item.transferId).reduce((sum, item) => {
-        const budget = accountViews.find((candidate) => candidate.id === item.budgetId);
-        return sum + transactionToBaseCurrency(item, budget ?? createDefaultBudget(''));
-      }, 0),
-      expenses: items.filter((item) => item.kind === 'expense').reduce((sum, item) => {
-        const budget = accountViews.find((candidate) => candidate.id === item.budgetId);
-        return sum + transactionToBaseCurrency(item, budget ?? createDefaultBudget(''));
-      }, 0),
+    return [
+      { key: 'today', label: t('finance.today'), ...periodTotals(periodRanges.today) },
+      { key: 'week', label: t('finance.thisWeek'), ...periodTotals(periodRanges.week) },
+      { key: 'month', label: t('finance.thisMonth'), ...periodTotals(periodRanges.month) },
+      { key: 'year', label: t('finance.yearToDate'), ...periodTotals(periodRanges.year) },
+    ];
+  }, [activeBudget, periodRanges, t]);
+  const portfolioPeriods = React.useMemo(() => {
+    const portfolioPeriodTotals = (range: { start: Date; end: Date }) => {
+      const totals = { income: 0, expenses: 0 };
+      allTransactions.forEach((item) => {
+        if (item.transferId || !inDateRange(item.date, range)) return;
+        const budget = accountViewsById.get(item.budgetId);
+        if (!budget) return;
+        if (item.kind === 'income') totals.income += transactionToBaseCurrency(item, budget);
+        else totals.expenses += transactionToBaseCurrency(item, budget);
+      });
+      return totals;
     };
-  };
-  const portfolioPeriods = [
-    { key: 'today', label: t('finance.today'), ...portfolioPeriodTotals(periodRanges.today) },
-    { key: 'week', label: t('finance.thisWeek'), ...portfolioPeriodTotals(periodRanges.week) },
-    { key: 'month', label: t('finance.thisMonth'), ...portfolioPeriodTotals(periodRanges.month) },
-    { key: 'year', label: t('finance.yearToDate'), ...portfolioPeriodTotals(periodRanges.year) },
-  ];
+    return [
+      { key: 'today', label: t('finance.today'), ...portfolioPeriodTotals(periodRanges.today) },
+      { key: 'week', label: t('finance.thisWeek'), ...portfolioPeriodTotals(periodRanges.week) },
+      { key: 'month', label: t('finance.thisMonth'), ...portfolioPeriodTotals(periodRanges.month) },
+      { key: 'year', label: t('finance.yearToDate'), ...portfolioPeriodTotals(periodRanges.year) },
+    ];
+  }, [accountViewsById, allTransactions, periodRanges, t, transactionToBaseCurrency]);
   const statsPeriods = screenMode === 'allActivity' ? portfolioPeriods : periods;
   const statsCurrency = screenMode === 'allActivity' ? baseCurrency : activeBudget?.currency ?? baseCurrency;
   const statsRangeOptions: { key: StatsRange; label: string }[] = [
@@ -426,8 +416,13 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
     { key: 'year', label: t('finance.yearToDate') },
   ];
   const statsRangeBounds = periodRanges[statsRange];
-  const statsTransactions = (screenMode === 'allActivity' ? allTransactions : activeBudget?.transactions ?? [])
-    .filter((item) => !item.transferId && inDateRange(item.date, statsRangeBounds));
+  const statsCalendarRange = React.useMemo(() => ({
+    start: new Date(statsCalendarMonth.getFullYear(), statsCalendarMonth.getMonth(), 1),
+    end: new Date(statsCalendarMonth.getFullYear(), statsCalendarMonth.getMonth() + 1, 1),
+  }), [statsCalendarMonth]);
+  const statsTransactionRange = statsView === 'calendar' ? statsCalendarRange : statsRangeBounds;
+  const statsTransactions = React.useMemo(() => (screenMode === 'allActivity' ? allTransactions : activeBudget?.transactions ?? [])
+    .filter((item) => !item.transferId && inDateRange(item.date, statsTransactionRange)), [activeBudget, allTransactions, screenMode, statsTransactionRange]);
   const selectedStatsPeriod = statsPeriods.find((period) => period.key === statsRange) ?? statsPeriods[2];
   const statsNet = selectedStatsPeriod.income - selectedStatsPeriod.expenses;
   const selectedBudget = selectedTransaction ? accountViews.find((budget) => budget.id === selectedTransaction.budgetId) : undefined;
@@ -437,30 +432,54 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
   const selectedDisplayCurrency = screenMode === 'allActivity'
     ? baseCurrency
     : selectedTransaction?.transaction.currency ?? selectedBudget?.currency ?? baseCurrency;
-  const statsCategoryIds = Array.from(new Set([
-    ...financeState.categories.expense.map((category) => category.id),
-    ...statsTransactions.filter((item) => item.kind === 'expense').map((item) => item.category),
-  ]));
-  const statsCategories = statsCategoryIds.map((categoryId) => {
-    const category = financeState.categories.expense.find((item) => item.id === categoryId) ?? { id: categoryId, icon: 'pricetag-outline' };
-    const total = screenMode === 'allActivity'
-      ? statsTransactions.filter((item) => item.category === category.id && item.kind === 'expense').reduce((sum, item) => {
-        const portfolioItem = item as PortfolioTransaction;
-        const budget = accountViews.find((candidate) => candidate.id === portfolioItem.budgetId);
-        return sum + transactionToBaseCurrency(item, budget ?? createDefaultBudget(''));
-      }, 0)
-      : statsTransactions.filter((item) => item.category === category.id && item.kind === 'expense').reduce((sum, item) => sum + item.amount, 0);
-    return { category: category.id, icon: category.icon, total };
-  }).filter((category) => category.total > 0).sort((a, b) => b.total - a.total);
+  const statsCategories = React.useMemo(() => {
+    if (!statsOpen) return [];
+    const configured = new Map(financeState.categories.expense.map((category) => [category.id, category]));
+    const totals = new Map<string, number>();
+    statsTransactions.forEach((item) => {
+      if (item.kind !== 'expense') return;
+      let value = item.amount;
+      if (screenMode === 'allActivity') {
+        const budget = accountViewsById.get((item as PortfolioTransaction).budgetId);
+        value = budget ? transactionToBaseCurrency(item, budget) : 0;
+      }
+      totals.set(item.category, (totals.get(item.category) ?? 0) + value);
+    });
+    return Array.from(totals, ([categoryId, total]) => ({ category: categoryId, icon: configured.get(categoryId)?.icon ?? 'pricetag-outline', total })).filter((category) => category.total > 0).sort((left, right) => right.total - left.total);
+  }, [accountViewsById, financeState.categories.expense, screenMode, statsOpen, statsTransactions, transactionToBaseCurrency]);
   const statsMaxCategory = Math.max(1, ...statsCategories.map((category) => category.total));
   const statsTotalExpense = statsCategories.reduce((sum, category) => sum + category.total, 0);
-  const statsAmountOf = (item: typeof statsTransactions[number]) => {
+  const statsAmountOf = React.useCallback((item: typeof statsTransactions[number]) => {
     if (screenMode !== 'allActivity') return item.amount;
     const portfolioItem = item as PortfolioTransaction;
-    const budget = accountViews.find((candidate) => candidate.id === portfolioItem.budgetId);
-    return transactionToBaseCurrency(item, budget ?? createDefaultBudget(''));
-  };
-  const statsFlowBuckets = (() => {
+    const budget = accountViewsById.get(portfolioItem.budgetId);
+    return budget ? transactionToBaseCurrency(item, budget) : 0;
+  }, [accountViewsById, screenMode, transactionToBaseCurrency]);
+  const statsInsights = React.useMemo(() => {
+    const dailyExpenses = new Map<string, number>();
+    let income = 0;
+    let expenses = 0;
+    statsTransactions.forEach((item) => {
+      const amount = statsAmountOf(item);
+      if (item.kind === 'income') income += amount;
+      if (item.kind === 'expense') {
+        expenses += amount;
+        const date = new Date(item.date);
+        const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        dailyExpenses.set(key, (dailyExpenses.get(key) ?? 0) + amount);
+      }
+    });
+    const peak = Array.from(dailyExpenses.entries()).sort((left, right) => right[1] - left[1])[0];
+    const days = Math.max(1, Math.ceil((statsTransactionRange.end.getTime() - statsTransactionRange.start.getTime()) / 86400000));
+    return {
+      averageDailyExpense: expenses / days,
+      savingsRate: income > 0 ? ((income - expenses) / income) * 100 : 0,
+      peakExpense: peak?.[1] ?? 0,
+      peakExpenseLabel: peak ? new Date(`${peak[0]}T12:00:00`).toLocaleDateString(language, { weekday: 'short', day: 'numeric', month: 'short' }) : '-',
+    };
+  }, [language, statsAmountOf, statsTransactionRange, statsTransactions]);
+  const statsFlowBuckets = React.useMemo(() => {
+    if (!statsOpen || statsView !== 'charts') return [];
     const buckets: { key: string; label: string; income: number; expenses: number; current: boolean }[] = [];
     const pushBucket = (key: string, label: string, from: Date, to: Date) => {
       const items = statsTransactions.filter((item) => inDateRange(item.date, { start: from, end: to }));
@@ -469,7 +488,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
         label,
         income: items.filter((item) => item.kind === 'income').reduce((sum, item) => sum + statsAmountOf(item), 0),
         expenses: items.filter((item) => item.kind === 'expense').reduce((sum, item) => sum + statsAmountOf(item), 0),
-        current: inDateRange(now.toISOString(), { start: from, end: to }),
+        current: inDateRange(referenceNow.toISOString(), { start: from, end: to }),
       });
     };
     if (statsRange === 'year') {
@@ -493,7 +512,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
       }
     }
     return buckets;
-  })();
+  }, [language, referenceNow, statsAmountOf, statsOpen, statsRange, statsRangeBounds, statsTransactions, statsView]);
   const statsFlowMax = Math.max(1, ...statsFlowBuckets.flatMap((bucket) => [bucket.income, bucket.expenses]));
   const statsFlowHasData = statsFlowBuckets.some((bucket) => bucket.income > 0 || bucket.expenses > 0);
   const statsFlowBarWidth = statsRange === 'year' ? 5 : 8;
@@ -501,11 +520,11 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
   const statsCalendarFirstDay = financeState.settings.firstDayOfWeek ?? 1;
   const statsCalendarOffset = (new Date(statsCalendarMonth.getFullYear(), statsCalendarMonth.getMonth(), 1).getDay() - statsCalendarFirstDay + 7) % 7;
   const statsCalendarDays = new Date(statsCalendarMonth.getFullYear(), statsCalendarMonth.getMonth() + 1, 0).getDate();
-  const statsCalendarCells = Array.from({ length: 42 }, (_, index) => index - statsCalendarOffset + 1);
+  const statsCalendarCells = React.useMemo(() => statsOpen && statsView === 'calendar' ? Array.from({ length: 42 }, (_, index) => index - statsCalendarOffset + 1) : [], [statsCalendarOffset, statsOpen, statsView]);
   const statsCalendarLabels = statsCalendarFirstDay === 1
     ? ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
     : ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-  const selectedStatsItems = statsTransactions.filter((item) => new Date(item.date).toDateString() === selectedStatsDate);
+  const selectedStatsItems = React.useMemo(() => statsOpen && statsView === 'calendar' ? statsTransactions.filter((item) => new Date(item.date).toDateString() === selectedStatsDate) : [], [selectedStatsDate, statsOpen, statsTransactions, statsView]);
   const transferSource = transferOptions.find((budget) => budget.id === transferSourceId);
   const transferTarget = transferOptions.find((budget) => budget.id === transferTargetId);
   const transferHasRate = parseAmount(transferReceivedAmount) > 0 || parseAmount(transferRate) > 0;
@@ -920,12 +939,12 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
         </View>
 
         <View style={styles.fixedSectionHeader}>
-          <Pressable style={styles.sectionHeading} onPress={() => onOpenModule?.('activity')} accessibilityRole="button" accessibilityLabel={t('finance.allActivity')}>
+          <Pressable style={styles.sectionHeading} onPress={() => onOpenModule?.('activity', false, activeBudgetId)} accessibilityRole="button" accessibilityLabel={t('finance.allActivity')}>
             <Text style={styles.sectionEyebrow}>{t('finance.thisBudget')}</Text>
             <Text style={styles.sectionTitle}>{t('finance.operations')}</Text>
            </Pressable>
            <View style={styles.operationHeaderActions}>
-             {activeBudget.transactions.length > 0 && <Pressable style={styles.operationCountBadge} onPress={() => onOpenModule?.('activity')} accessibilityLabel={t('finance.allActivity')}><Ionicons name="receipt-outline" size={17} color={C.gold} /></Pressable>}
+             {activeBudget.transactions.length > 0 && <Pressable style={styles.operationCountBadge} onPress={() => onOpenModule?.('activity', false, activeBudgetId)} accessibilityLabel={t('finance.allActivity')}><Ionicons name="receipt-outline" size={17} color={C.gold} /></Pressable>}
              <Pressable style={styles.statsIconButton} onPress={() => setStatsOpen(true)} accessibilityLabel={t('finance.statistics')}>
                <Ionicons name="analytics-outline" size={18} color={C.gold} />
              </Pressable>
@@ -983,12 +1002,12 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
         </View>
       </View>
       <View style={styles.fixedSectionHeader}>
-        <Pressable style={styles.sectionHeading} onPress={() => onOpenModule?.('activity')} accessibilityRole="button" accessibilityLabel={t('finance.allActivity')}>
+        <Pressable style={styles.sectionHeading} onPress={() => onOpenModule?.('activity', false, 'all')} accessibilityRole="button" accessibilityLabel={t('finance.allActivity')}>
           <Text style={styles.sectionEyebrow}>{t('finance.portfolio')}</Text>
           <Text style={styles.sectionTitle}>{t('finance.allActivity')}</Text>
         </Pressable>
         <View style={styles.operationHeaderActions}>
-          {allTransactions.length > 0 && <Pressable style={styles.operationCountBadge} onPress={() => onOpenModule?.('activity')} accessibilityLabel={t('finance.allActivity')}><Ionicons name="receipt-outline" size={17} color={C.gold} /></Pressable>}
+          {allTransactions.length > 0 && <Pressable style={styles.operationCountBadge} onPress={() => onOpenModule?.('activity', false, 'all')} accessibilityLabel={t('finance.allActivity')}><Ionicons name="receipt-outline" size={17} color={C.gold} /></Pressable>}
           <Pressable style={styles.statsIconButton} onPress={() => setStatsOpen(true)} accessibilityLabel={t('finance.statistics')}>
             <Ionicons name="analytics-outline" size={18} color={C.gold} />
           </Pressable>
@@ -1147,13 +1166,20 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
             </View>
             <ScrollView contentContainerStyle={[styles.statsContent, styles.screenTopSpacing]} showsVerticalScrollIndicator={false}>
               <Text style={styles.managerEyebrow}>{screenMode === 'allActivity' ? t('finance.allActivity') : activeBudget?.name}</Text>
-              <View style={styles.rangeSelector}>{(['charts', 'calendar'] as StatsView[]).map((view) => { const selected = statsView === view; return <Pressable key={view} style={[styles.rangeOption, selected && styles.rangeOptionActive]} onPress={() => setStatsView(view)}><Ionicons name={view === 'charts' ? 'stats-chart-outline' : 'calendar-outline'} size={15} color={selected ? C.void : C.gold} /><Text style={[styles.rangeOptionText, selected && styles.rangeOptionTextActive]}>{t(`finance.release.${view}`)}</Text></Pressable>; })}</View>
-              <View style={styles.rangeSelector}>{statsRangeOptions.map((option) => { const selected = option.key === statsRange; return <Pressable key={option.key} style={[styles.rangeOption, selected && styles.rangeOptionActive]} onPress={() => setStatsRange(option.key)}><Text style={[styles.rangeOptionText, selected && styles.rangeOptionTextActive]} numberOfLines={1}>{option.label}</Text>{selected && <View style={styles.rangeActiveDot} />}</Pressable>; })}</View>
+              <View style={styles.rangeSelector}>{(['charts', 'calendar'] as StatsView[]).map((view) => { const selected = statsView === view; return <Pressable key={view} style={[styles.rangeOption, selected && styles.rangeOptionActive]} onPress={() => setStatsView(view)}><Ionicons name={view === 'charts' ? 'stats-chart-outline' : 'calendar-outline'} size={15} color={selected ? C.goldLight : C.gold} /><Text style={[styles.rangeOptionText, selected && styles.rangeOptionTextActive]}>{t(`finance.release.${view}`)}</Text></Pressable>; })}</View>
+              {statsView === 'charts' && <View style={styles.rangeSelector}>{statsRangeOptions.map((option) => { const selected = option.key === statsRange; return <Pressable key={option.key} style={[styles.rangeOption, selected && styles.rangeOptionActive]} onPress={() => setStatsRange(option.key)}><Text style={[styles.rangeOptionText, selected && styles.rangeOptionTextActive]} numberOfLines={1}>{option.label}</Text>{selected && <View style={styles.rangeActiveDot} />}</Pressable>; })}</View>}
               {missingRateCurrencies.length ? <Pressable style={styles.rateWarning} onPress={() => { setStatsOpen(false); onOpenModule?.('settings'); }} accessibilityRole="button"><Ionicons name="alert-circle-outline" size={18} color={C.gold} /><Text style={styles.rateWarningText}>{t('finance.missingRatesWarning', { currencies: missingRateCurrencies.join(', ') })}</Text><Ionicons name="chevron-forward" size={16} color={C.gold} /></Pressable> : null}
               {statsView === 'charts' ? <>
               <View style={styles.statsSummary}>
                 <View style={styles.statsSummaryTop}><View style={styles.statsSummaryCopy}><Text style={styles.statsSummaryLabel}>{t('finance.cashFlow')}</Text><Text style={[styles.statsSummaryNet, statsNet < 0 ? styles.expenseText : styles.incomeText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.58}>{formatMoney(statsNet, language, statsCurrency)}</Text></View><View style={styles.statsOperationBadge}><Ionicons name="receipt-outline" size={14} color={C.gold} /><Text style={styles.statsOperationCount}>{statsTransactions.length}</Text></View></View>
                 <View style={styles.statsSummaryValues}><View style={styles.statsMetric}><Text style={styles.statsMetricLabel}>{t('finance.income')}</Text><Text style={[styles.statsMetricValue, styles.incomeText]} numberOfLines={1} adjustsFontSizeToFit>+{formatMoney(selectedStatsPeriod.income, language, statsCurrency)}</Text></View><View style={styles.statsMetricDivider} /><View style={styles.statsMetric}><Text style={styles.statsMetricLabel}>{t('finance.expenses')}</Text><Text style={[styles.statsMetricValue, styles.expenseText]} numberOfLines={1} adjustsFontSizeToFit>-{formatMoney(selectedStatsPeriod.expenses, language, statsCurrency)}</Text></View></View>
+              </View>
+              <View style={styles.statsInsights}>
+                <View style={styles.statsInsight}><Text style={styles.statsInsightLabel}>{t('finance.averageDailyExpense')}</Text><Text style={styles.statsInsightValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>{formatMoney(statsInsights.averageDailyExpense, language, statsCurrency)}</Text></View>
+                <View style={styles.statsInsightDivider} />
+                <View style={styles.statsInsight}><Text style={styles.statsInsightLabel}>{t('finance.savingsRate')}</Text><Text style={[styles.statsInsightValue, statsInsights.savingsRate < 0 && styles.expenseText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>{Math.round(statsInsights.savingsRate)}%</Text></View>
+                <View style={styles.statsInsightDivider} />
+                <View style={styles.statsInsight}><Text style={styles.statsInsightLabel}>{t('finance.peakExpenseDay')}</Text><Text style={styles.statsInsightValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>{statsInsights.peakExpense ? statsInsights.peakExpenseLabel : '-'}</Text></View>
               </View>
               {statsRange !== 'today' && <>
               <Text style={styles.managerEyebrow}>{t('finance.flowChart')}</Text>
@@ -1671,11 +1697,16 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   compactGemCanvas: { position: 'absolute', width: 300, height: 288, left: -85, top: -71, transform: [{ scale: 0.39 }] },
   rangeSelector: { height: 46, flexDirection: 'row', borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.035)', padding: 4, marginBottom: 12 },
   rangeOption: { flex: 1, minWidth: 0, borderRadius: 11, alignItems: 'center', justifyContent: 'center' },
-  rangeOptionActive: { backgroundColor: 'rgba(233,200,119,0.14)' },
+  rangeOptionActive: { backgroundColor: 'rgba(233,200,119,0.1)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.42)' },
   rangeOptionText: { maxWidth: '94%', color: 'rgba(255,244,208,0.5)', fontFamily: SANS, fontSize: 9, letterSpacing: 0.15, textAlign: 'center' },
   rangeOptionTextActive: { color: C.goldLight, fontWeight: '700' },
   rangeActiveDot: { position: 'absolute', bottom: 4, width: 3, height: 3, borderRadius: 2, backgroundColor: C.gold },
   statsSummary: { borderRadius: 20, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.62)', padding: 16, marginBottom: 22 },
+  statsInsights: { minHeight: 76, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, marginBottom: 20 },
+  statsInsight: { flex: 1, minWidth: 0, paddingHorizontal: 5 },
+  statsInsightLabel: { color: 'rgba(233,200,119,0.58)', fontFamily: SANS, fontSize: 7.5, lineHeight: 11, letterSpacing: 0.7, textTransform: 'uppercase' },
+  statsInsightValue: { color: C.goldLight, fontFamily: SERIF, fontSize: 13, marginTop: 5 },
+  statsInsightDivider: { width: StyleSheet.hairlineWidth, height: 30, backgroundColor: C.line },
   statsSummaryTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
   statsSummaryCopy: { flex: 1, minWidth: 0 },
   statsSummaryLabel: { color: 'rgba(233,200,119,0.5)', fontFamily: SANS, fontSize: 8, letterSpacing: 1.4 },
@@ -1861,15 +1892,15 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   createCard: { borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.62)', padding: 17, marginTop: 22 },
   createEyebrow: { color: 'rgba(233,200,119,0.55)', fontFamily: SANS, fontSize: 8, letterSpacing: 1.7 },
   createTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 27, marginTop: 7, marginBottom: 8 },
-  inputLabel: { color: 'rgba(255,244,208,0.4)', fontFamily: SANS, fontSize: 8, letterSpacing: 1.3, marginTop: 13, marginBottom: 7 },
-  textInput: { height: 51, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.04)', color: C.goldLight, fontFamily: SANS, fontSize: 12, paddingHorizontal: 14 },
+  inputLabel: { color: 'rgba(233,200,119,0.5)', fontFamily: SANS, fontSize: 8.5, letterSpacing: 0.5, marginTop: 11, marginBottom: 1 },
+  textInput: { height: 43, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.16)', backgroundColor: 'transparent', color: C.goldLight, fontFamily: SANS, fontSize: 13, paddingHorizontal: 2 },
   rateSwap: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 4, paddingTop: 5 },
   rateSwapText: { color: C.gold, fontFamily: SANS, fontSize: 9.5, fontWeight: '600' },
-  inputError: { borderColor: C.red },
+  inputError: { borderBottomColor: C.red },
   inlineError: { color: C.red, fontFamily: SANS, fontSize: 11, lineHeight: 16, marginTop: 7 },
   managerInputRow: { flexDirection: 'row', gap: 9 },
   managerInputColumn: { flex: 1, minWidth: 0 },
-  moneyInputShell: { height: 51, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.04)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12 },
+  moneyInputShell: { height: 45, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.16)', backgroundColor: 'transparent', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 2 },
   moneyInputCurrency: { color: C.gold, fontFamily: SERIF, fontSize: 17, marginRight: 5 },
   moneyInput: { flex: 1, minWidth: 0, color: C.goldLight, fontFamily: SERIF, fontSize: 15, paddingVertical: 0 },
   colorRow: { flexDirection: 'row', gap: 10 },
@@ -1897,15 +1928,15 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   kindOptionActive: { backgroundColor: 'rgba(233,200,119,0.17)', borderWidth: StyleSheet.hairlineWidth, borderColor: C.line },
   kindText: { color: 'rgba(255,244,208,0.36)', fontFamily: SANS, fontSize: 9, letterSpacing: 0.9 },
   kindTextActive: { color: C.goldLight },
-  amountInputShell: { height: 60, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.04)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 15 },
+  amountInputShell: { height: 57, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.22)', backgroundColor: 'transparent', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 2 },
   amountCurrency: { color: C.gold, fontFamily: SANS, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, marginLeft: 9 },
   amountInput: { flex: 1, color: C.goldLight, fontFamily: SERIF, fontSize: 27, paddingVertical: 0 },
   categoryChips: { gap: 7, paddingBottom: 2 },
-  categoryChip: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingHorizontal: 12, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 6 },
-  categoryChipActive: { borderColor: C.gold, backgroundColor: 'rgba(233,200,119,0.13)' },
+  categoryChip: { borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.025)', paddingHorizontal: 12, paddingVertical: 9, flexDirection: 'row', alignItems: 'center', gap: 6 },
+  categoryChipActive: { backgroundColor: 'rgba(233,200,119,0.14)' },
   categoryChipText: { color: 'rgba(255,244,208,0.43)', fontFamily: SANS, fontSize: 9 },
   categoryChipTextActive: { color: C.goldLight },
-  categorySelect: { minHeight: 52, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.04)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 11, gap: 10 },
+  categorySelect: { minHeight: 46, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.16)', backgroundColor: 'transparent', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 2, gap: 9 },
   categorySelectIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(233,200,119,0.1)', alignItems: 'center', justifyContent: 'center' },
   categorySelectText: { flex: 1, color: C.goldLight, fontFamily: SANS, fontSize: 12 },
   categoryPickerBackdrop: { flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.72)' },
@@ -1913,7 +1944,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   categoryPickerHeader: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   categoryPickerTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 21 },
   categoryPickerClose: { width: 40, height: 40, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, alignItems: 'center', justifyContent: 'center' },
-  categorySearch: { minHeight: 45, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8, marginTop: 10 },
+  categorySearch: { minHeight: 45, borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.035)', flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, gap: 8, marginTop: 10 },
   categorySearchInput: { flex: 1, minHeight: 43, color: C.goldLight, fontFamily: SANS, fontSize: 13 },
   categoryPickerList: { marginTop: 8 },
   categoryPickerRow: { minHeight: 52, borderRadius: 13, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 8, gap: 10 },

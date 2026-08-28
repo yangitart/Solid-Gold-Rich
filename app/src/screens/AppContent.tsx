@@ -35,6 +35,7 @@ export function AppContent() {
   const [unlocked, setUnlocked] = useState(false);
   const [moduleScreen, setModuleScreen] =
     useState<FinanceModuleName | null>(null);
+  const [moduleActivityAccountId, setModuleActivityAccountId] = useState<string | undefined>(undefined);
   const [reopenDrawerAfterModule, setReopenDrawerAfterModule] =
     useState(false);
   const [drawerReopenSignal, setDrawerReopenSignal] = useState(0);
@@ -76,8 +77,9 @@ export function AppContent() {
   }, []);
 
   const openModule = useCallback(
-    (module: FinanceModuleName, returnToDrawer = false) => {
+    (module: FinanceModuleName, returnToDrawer = false, activityAccountId?: string) => {
       setReopenDrawerAfterModule(returnToDrawer);
+      setModuleActivityAccountId(module === 'activity' ? activityAccountId : undefined);
       setModuleScreen(module);
     },
     [],
@@ -85,6 +87,7 @@ export function AppContent() {
 
   const closeModule = useCallback(() => {
     setModuleScreen(null);
+    setModuleActivityAccountId(undefined);
     if (reopenDrawerAfterModule)
       setDrawerReopenSignal((current) => current + 1);
     setReopenDrawerAfterModule(false);
@@ -183,6 +186,7 @@ export function AppContent() {
                 <FinanceModulesScreen
                   module={moduleScreen}
                   onBack={closeModule}
+                  initialActivityAccountId={moduleActivityAccountId}
                 />
               )}
             </Animated.View>
