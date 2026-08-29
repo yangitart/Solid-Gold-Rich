@@ -3,8 +3,8 @@ import { registerRootComponent } from 'expo';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import AppRoot from './src/screens/AppRoot';
-import { C } from './src/theme/luxury';
+import AppRoot from './src/application/AppRoot';
+import { C } from './src/shared/theme/luxury';
 
 SplashScreen.preventAutoHideAsync();
 

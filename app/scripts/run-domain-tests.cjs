@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
+const path = require('node:path');
 const Module = require('node:module');
 const ts = require('typescript');
 
@@ -45,6 +46,11 @@ class MockDirectory {
   create() {}
 }
 const originalLoad = Module._load;
+const originalResolveFilename = Module._resolveFilename;
+Module._resolveFilename = function resolveFilename(request, parent, isMain, options) {
+  const resolvedRequest = request.startsWith('@/') ? path.join(__dirname, '..', 'src', request.slice(2)) : request;
+  return originalResolveFilename.call(this, resolvedRequest, parent, isMain, options);
+};
 Module._load = function load(request, parent, isMain) {
   if (request === '@react-native-async-storage/async-storage') return asyncStorage;
   if (request === 'expo-file-system') return { Directory: MockDirectory, File: MockFile, Paths: { document: 'file:///documents', cache: 'file:///cache' } };
@@ -63,7 +69,9 @@ const {
   recordDebtPayment,
   recordSavingsContribution,
   removeTransfer,
-} = require('../src/domain/finance/financeDomain.ts');
+} = require('../src/features/finance/domain/services/financeDomain.ts');
+const { removeNoteFolder } = require('../src/features/notes/domain/useCases/removeNoteFolder.ts');
+const { removeCategory } = require('../src/features/finance/domain/useCases/removeCategory.ts');
 const {
   changeStoreCurrency,
   completeSale,
@@ -73,18 +81,21 @@ const {
   storeReportData,
   storeStatistics,
   voidSale,
-} = require('../src/domain/store/storeDomain.ts');
-const { captureCurrencySnapshot, currencyRate, historicalAmountInCurrency } = require('../src/core/finance/currency.ts');
+} = require('../src/features/store/domain/services/storeDomain.ts');
+const { captureCurrencySnapshot, currencyRate, historicalAmountInCurrency } = require('../src/shared/finance/currency.ts');
 const {
   createStoreBackup,
+  bytesToBase64,
+  createAppArchive,
   createAppBackup,
   isolateStoreBackupForImport,
+  parseAppArchive,
   parseAppBackup,
   parseStoreBackup,
   restoreAppBackupToDevice,
   restoreStoreBackup,
   restoreStoreBackupToDevice,
-} = require('../src/domain/store/storeBackup.ts');
+} = require('../src/features/store/infrastructure/backups/storeBackup.ts');
 const {
   DEFAULT_CATEGORIES,
   DEFAULT_STORE_CATEGORIES,
@@ -92,7 +103,7 @@ const {
   loadFinanceState,
   normalizeFinanceState,
   saveFinanceState,
-} = require('../src/stores/financeStorage.ts');
+} = require('../src/features/finance/infrastructure/storage/financeStorage.ts');
 const {
   FUTURE_CAPABILITIES,
   DEVELOPER_SUPPORT_CONFIG,
@@ -101,7 +112,7 @@ const {
   CLOUD_BACKUP_CONFIG,
   US_BANK_CONNECTION_CONFIG,
   areAllFutureCapabilitiesHidden,
-} = require('../src/core/future/config.ts');
+} = require('../src/legacy/future/config.ts');
 
 function account(id, currency = 'USD', openingBalance = 0) {
   return { id, name: id, type: 'cash', currency, openingBalance, color: '#fff', archived: false };
@@ -214,6 +225,35 @@ async function run() {
   assert.equal(contributed.savingsGoals[0].balance, 40);
   assert.equal(contributed.transfers.length, 1);
   assert.equal(recordSavingsContribution(contributed, { goalId: 'save', sourceAccountId: 'cash', destinationAccountId: 'savings', amount: 40, sourceAmount: 40, date: jan31, transferId: 'save-tr', contributionId: 'save-c' }).transfers.length, 1);
+
+  const foldersState = emptyFinanceState();
+  foldersState.noteFolders = [
+    { id: 'root-folder', name: 'Root', createdAt: jan31, updatedAt: jan31 },
+    { id: 'child-folder', name: 'Child', parentFolderId: 'root-folder', createdAt: jan31, updatedAt: jan31 },
+    { id: 'grandchild-folder', name: 'Grandchild', parentFolderId: 'child-folder', createdAt: jan31, updatedAt: jan31 },
+    { id: 'empty-folder', name: 'Empty', createdAt: jan31, updatedAt: jan31 },
+  ];
+  foldersState.notes = [
+    { id: 'root-note', title: 'Root note', body: 'Root body', tags: [], folderId: 'root-folder', createdAt: jan31, updatedAt: jan31, pinned: false },
+    { id: 'child-note', title: 'Child note', body: 'Child body', tags: [], folderId: 'child-folder', createdAt: jan31, updatedAt: jan31, pinned: false },
+    { id: 'grandchild-note', title: 'Grandchild note', body: 'Grandchild body', tags: [], folderId: 'grandchild-folder', createdAt: jan31, updatedAt: jan31, pinned: false },
+  ];
+  const originalTransactions = foldersState.transactions;
+  const originalCategories = foldersState.categories;
+  const afterRootFolderDelete = removeNoteFolder(foldersState, 'root-folder');
+  assert.equal(afterRootFolderDelete.noteFolders.some((folder) => folder.id === 'root-folder'), false);
+  assert.equal(afterRootFolderDelete.noteFolders.find((folder) => folder.id === 'child-folder').parentFolderId, undefined);
+  assert.equal(afterRootFolderDelete.noteFolders.find((folder) => folder.id === 'grandchild-folder').parentFolderId, 'child-folder');
+  assert.equal(afterRootFolderDelete.notes.find((note) => note.id === 'root-note').folderId, undefined);
+  assert.equal(afterRootFolderDelete.notes.find((note) => note.id === 'child-note').folderId, 'child-folder');
+  assert.equal(afterRootFolderDelete.notes.find((note) => note.id === 'grandchild-note').body, 'Grandchild body');
+  assert.strictEqual(afterRootFolderDelete.transactions, originalTransactions);
+  assert.strictEqual(afterRootFolderDelete.categories, originalCategories);
+  const afterChildFolderDelete = removeNoteFolder(afterRootFolderDelete, 'child-folder');
+  assert.equal(afterChildFolderDelete.noteFolders.find((folder) => folder.id === 'grandchild-folder').parentFolderId, undefined);
+  assert.equal(afterChildFolderDelete.notes.find((note) => note.id === 'child-note').folderId, undefined);
+  assert.equal(removeNoteFolder(afterChildFolderDelete, 'missing-folder'), afterChildFolderDelete);
+  assert.equal(removeNoteFolder(afterChildFolderDelete, 'empty-folder').noteFolders.some((folder) => folder.id === 'empty-folder'), false);
 
   let storeState = emptyFinanceState();
   storeState.store.products = [{ id: 'p', key: 'P1', name: 'Product', type: 'product', unit: 'unit', categoryId: 'general', salePrice: 12, purchasePrice: 5, additionalSalePrices: [], initialStock: 0, reservedQuantity: 0, stockMinimum: 1, active: true }];
@@ -378,6 +418,11 @@ async function run() {
   assert.equal(serializedAppBackup.includes('file:///product.jpg'), false);
   assert.equal(serializedAppBackup.includes('aW1hZ2U='), true);
   const restoredApp = await restoreAppBackupToDevice(parseAppBackup(serializedAppBackup));
+  const appArchive = await createAppArchive(completeState);
+  assert.ok(appArchive.length > 4);
+  const restoredArchive = await restoreAppBackupToDevice(parseAppArchive(bytesToBase64(appArchive)));
+  assert.ok(restoredArchive.store.products[0].picture.startsWith('file:///documents/product-images/photo-product-'));
+  assert.equal(fileContents.get(restoredArchive.store.products[0].picture), 'aW1hZ2U=');
   const { store: expectedStore, ...expectedPersonalData } = completeState;
   const { store: restoredAppStore, ...restoredPersonalData } = restoredApp;
   assert.deepEqual(restoredPersonalData, expectedPersonalData);

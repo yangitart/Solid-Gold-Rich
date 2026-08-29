@@ -2,7 +2,7 @@ const fs = require('fs');
 const path = require('path');
 
 const locales = ['en', 'es', 'pt', 'fr', 'de', 'it'];
-const localeDirectory = path.join(__dirname, '..', 'src', 'core', 'locales');
+const localeDirectory = path.join(__dirname, '..', 'src', 'shared', 'i18n');
 
 function completeTranslation(root) {
   const finance = root.finance ?? {};

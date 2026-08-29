@@ -11,10 +11,11 @@
 
 - Esta carpeta contiene una app Expo/React Native orientada principalmente a Android.
 - La entrada nativa de la app es `index.js`, registrada con `registerRootComponent`; no usa Expo Router ni rutas web.
-- `src/screens/AppRoot.tsx` coordina la pantalla de carga (`BootScreen`) y el panel principal (`RichScreen`).
-- La composicion visual de `RichScreen` es estable y no debe redisenarse sin peticion explicita; las funciones nuevas se abren desde los accesos del encabezado en `src/screens/FinanceModulesScreen.tsx`.
-- `FinanceProvider` mantiene el modelo financiero versionado para cuentas, transferencias, presupuestos, recurrentes, deudas, ahorros, recordatorios, notas y respaldos locales.
-- `src/components/AuroraBackground.tsx` proporciona el fondo oscuro con gradientes animados. No hay partículas ni polvo dorado de fondo.
+- `src/application/AppRoot.tsx` es la raíz de composición e inyecta las dependencias definidas en `src/application/composition/dependencies.ts`; `src/application/AppContent.tsx` coordina la pantalla de carga (`BootScreen`) y el panel principal (`RichScreen`).
+- El código se organiza por capas: `src/application/` para arranque y servicios globales, `src/features/` para funcionalidades, `src/shared/` para recursos compartidos y `src/legacy/` para scaffolding futuro todavía inactivo. El alias `@/` apunta a `src/`.
+- La composición visual de `RichScreen` es estable y no debe rediseñarse sin petición explícita; las funciones nuevas se abren desde los accesos del encabezado en `src/features/finance/presentation/screens/FinanceModulesScreen.tsx`.
+- `src/features/finance/application/FinanceContext.tsx` mantiene el modelo financiero versionado y persiste mediante el puerto `FinanceRepository`; no acoplar la presentación directamente a AsyncStorage.
+- `src/shared/ui/AuroraBackground.tsx` proporciona el fondo oscuro con gradientes animados. No hay partículas ni polvo dorado de fondo.
 - El nombre público es `Solid Gold Rich` y el package Android es `com.escobar.solidgold`. No cambiar ninguno sin autorización explícita.
 - No recrear archivos de documentación de Play Store que el usuario haya eliminado. No modificar archivos generados dentro de `dist/` o `android/`.
 
@@ -23,9 +24,9 @@
 - Es un gestor de patrimonio y presupuestos con estética oscura, dorada y premium.
 - El usuario puede crear varias cuentas de presupuesto, elegir una cuenta activa y registrar ingresos o gastos por categoría.
 - El panel muestra saldo, flujo de caja, actividad reciente, actividad global, límites de gasto y totales por período.
-- El modal de estadísticas de `src/screens/RichScreen.tsx` ofrece vista de gráficos y calendario, filtros de hoy/semana/mes/año, flujo de ingresos y gastos, categoría principal y desglose por categorías. La vista de actividad global convierte los importes a la moneda base.
-- El diamante de `src/components/Gem.tsx` evoluciona según el saldo positivo de la cuenta activa. Tocar el diamante solo activa su animación.
-- Los presupuestos, la cuenta activa y las transacciones se guardan localmente con AsyncStorage usando las claves definidas en `src/screens/RichScreen.tsx`.
+- El modal de estadísticas de `src/features/finance/presentation/screens/RichScreen.tsx` ofrece vista de gráficos y calendario, filtros de hoy/semana/mes/año, flujo de ingresos y gastos, categoría principal y desglose por categorías. La vista de actividad global convierte los importes a la moneda base.
+- El diamante de `src/shared/ui/Gem.tsx` evoluciona según el saldo positivo de la cuenta activa. Tocar el diamante solo activa su animación.
+- Los datos financieros se guardan localmente mediante `src/features/finance/infrastructure/storage/financeRepository.ts` y `financeStorage.ts`; conservar las claves y migraciones históricas.
 - Las categorías de gastos e ingresos se administran desde el módulo `Categories` del menú izquierdo y se usan en el formulario de operaciones.
 - Se conserva la migración de los datos antiguos `@solid-gold/transactions` y `@solid-gold/monthly-budget`.
 - No activar ni exponer autenticación, huella, foto, captura o compartir salvo petición explícita del usuario. El scaffolding futuro descrito abajo no autoriza UI ni comportamiento en runtime.
@@ -40,7 +41,7 @@
 - Usar i18next y detectar únicamente el idioma configurado del teléfono mediante `expo-localization/getLocales`; no consultar GPS ni pedir permisos de ubicación.
 - Idiomas actuales: inglés, español, portugués, francés, alemán e italiano. Inglés es el fallback.
 - Todo texto visible nuevo debe usar claves de traducción.
-- Al agregar o renombrar una clave, actualizar todos los archivos `src/core/locales/translation_*.json`.
+- Al agregar o renombrar una clave, actualizar todos los archivos `src/shared/i18n/translation_*.json`.
 
 ## Peso y dependencias
 
@@ -56,7 +57,7 @@ Ejecutar desde esta carpeta:
 
 ```powershell
 npx.cmd tsc --noEmit
-npx.cmd eslint src/screens src/components src/core/locales
+npx.cmd eslint src
 npx.cmd expo-doctor
 npx.cmd expo export --platform android
 ```
@@ -67,8 +68,8 @@ npx.cmd expo export --platform android
 
 ## Store workspace
 
-- The app has a separate Store workspace backed by `FinanceState.store` (schema version 4); do not mix store products, stock movements, or sales with personal accounts and transactions.
-- `src/screens/StoreScreen.tsx` is the single Store entry point. Its left menu stays limited to Inventory, Employees, Clients, Services, Sales, and Settings.
+- The app has a separate Store workspace backed by `FinanceState.store` inside the version 7 finance state; do not mix store products, stock movements, or sales with personal accounts and transactions.
+- `src/features/store/presentation/screens/StoreScreen.tsx` is the single Store entry point. Its left menu stays limited to Inventory, Employees, Clients, Services, Sales, and Settings.
 - The workspace switch is an icon-only action at the bottom of the right quick menu. Do not re-add a large text toggle to the left drawer.
 - Inventory uses a fixed search field for product name, key, and SKU. The floating `+` opens the single responsive product form directly; there is no add-method chooser or scanner flow.
 - Built-in store product categories use stable IDs and must always resolve their visible names through i18n. Whenever a category is added or renamed, update all six `translation_*.json` files and run `npm run check:i18n`; never ship a new category with a hardcoded display name.
@@ -78,9 +79,9 @@ npx.cmd expo export --platform android
 
 ## Futuro: soporte, premium e integraciones externas (oculto)
 
-- Existe scaffolding interno en `src/core/future/` y contratos sin implementación en `src/domain/future/`. Su presencia no cambia el producto actual.
-- `src/core/future/config.ts` es la fuente de verdad. Todas las banderas deben permanecer en `false` hasta una petición explícita de activación; ningún screen, menú, modal, drawer, deep link, notificación o tarea de fondo puede revelar estas capacidades mientras estén apagadas.
-- No importar el scaffolding futuro desde `src/screens`, `AppContent`, navegación o componentes actuales. Mantenerlo fuera del bundle visible hasta que una función sea aprobada e implementada de extremo a extremo.
+- Existe scaffolding interno en `src/legacy/future/`. Su presencia no cambia el producto actual.
+- `src/legacy/future/config.ts` es la fuente de verdad. Todas las banderas deben permanecer en `false` hasta una petición explícita de activación; ningún screen, menú, modal, drawer, deep link, notificación o tarea de fondo puede revelar estas capacidades mientras estén apagadas.
+- No importar el scaffolding futuro desde `src/application/`, `src/features/` ni componentes compartidos. Mantenerlo fuera del bundle visible hasta que una función sea aprobada e implementada de extremo a extremo.
 
 ### Regalar un café a los desarrolladores
 

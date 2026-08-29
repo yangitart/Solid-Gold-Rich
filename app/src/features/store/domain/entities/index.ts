@@ -1,0 +1,18 @@
+export type {
+  PaymentMethod,
+  StoreAccount,
+  StoreCashMovement,
+  StoreCategory,
+  StoreClient,
+  StoreEmployee,
+  StorePayFrequency,
+  StorePayMode,
+  StoreProduct,
+  StoreProductType,
+  StoreSale,
+  StoreSaleItem,
+  StoreSaleStatus,
+  StoreState,
+  StoreStockMovement,
+  StoreStockMovementType,
+} from './Store';
