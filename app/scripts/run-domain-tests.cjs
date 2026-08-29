@@ -57,16 +57,21 @@ const {
   budgetSpent,
   filterActivityTransactions,
   generateDueRecurring,
+  inDateRange,
+  periodBounds,
+  previousPeriodBounds,
   recordDebtPayment,
   recordSavingsContribution,
   removeTransfer,
 } = require('../src/domain/finance/financeDomain.ts');
 const {
+  changeStoreCurrency,
   completeSale,
   filterStoreProducts,
   filterStoreSales,
   productStock,
   storeReportData,
+  storeStatistics,
   voidSale,
 } = require('../src/domain/store/storeDomain.ts');
 const { captureCurrencySnapshot, currencyRate, historicalAmountInCurrency } = require('../src/core/finance/currency.ts');
@@ -124,6 +129,21 @@ async function run() {
   assert.ok(Math.abs(cupSnapshot.baseAmount - (100 / 670)) < 1e-12);
   assert.equal(cupSnapshot.baseCurrency, 'USD');
   assert.equal(historicalAmountInCurrency({ amount: 100, currency: 'CUP', ...cupSnapshot }, 'USD', { USD: 1, CUP: 1 / 500 }), cupSnapshot.baseAmount);
+
+  const marchRange = periodBounds('month', new Date(2026, 2, 15, 12), 1);
+  const februaryRange = previousPeriodBounds('month', marchRange);
+  assert.deepEqual([februaryRange.start.getFullYear(), februaryRange.start.getMonth(), februaryRange.start.getDate()], [2026, 1, 1]);
+  assert.deepEqual([februaryRange.end.getFullYear(), februaryRange.end.getMonth(), februaryRange.end.getDate()], [2026, 2, 1]);
+  const januaryRange = periodBounds('month', new Date(2026, 0, 8, 12), 1);
+  const decemberRange = previousPeriodBounds('month', januaryRange);
+  assert.deepEqual([decemberRange.start.getFullYear(), decemberRange.start.getMonth(), decemberRange.start.getDate()], [2025, 11, 1]);
+  const yearRange = previousPeriodBounds('year', periodBounds('year', new Date(2026, 6, 1, 12), 1));
+  assert.deepEqual([yearRange.start.getFullYear(), yearRange.end.getFullYear()], [2025, 2026]);
+  const weekRange = periodBounds('week', new Date(2026, 7, 28, 12), 1);
+  const previousWeekRange = previousPeriodBounds('week', weekRange);
+  assert.equal(previousWeekRange.end.getTime(), weekRange.start.getTime());
+  assert.equal(previousWeekRange.end.getTime() - previousWeekRange.start.getTime(), weekRange.end.getTime() - weekRange.start.getTime());
+  assert.equal(inDateRange(weekRange.end.toISOString(), weekRange), false);
 
   const balances = emptyFinanceState();
   balances.accounts = [account('a', 'USD', 100)];
@@ -246,6 +266,50 @@ async function run() {
   assert.deepEqual(filterStoreSales(filterState, { query: 'rapida', period: 'week', firstDayOfWeek: 1, today: filterToday }).map((item) => item.id), ['week-sale']);
   assert.deepEqual(filterStoreSales(filterState, { query: '', period: 'today', firstDayOfWeek: 1, today: filterToday }).map((item) => item.id), ['week-sale']);
   assert.deepEqual(filterStoreSales(filterState, { query: '', period: 'month', firstDayOfWeek: 1, today: filterToday }).map((item) => item.id), ['week-sale']);
+
+  const currencyState = emptyFinanceState();
+  currencyState.store.currency = 'USD';
+  currencyState.store.businessAccount = { id: 'store-business', name: 'Business', currency: 'USD', balance: 10 };
+  currencyState.store.products = [{ id: 'currency-product', key: 'MONEY', name: 'Money product', type: 'product', unit: 'unit', categoryId: 'general', salePrice: 10, purchasePrice: 4, additionalSalePrices: [9, 8], initialStock: 0, reservedQuantity: 0, stockMinimum: 1, active: true }];
+  currencyState.store.stockMovements = [{ id: 'currency-stock', productId: 'currency-product', type: 'entry', quantity: 3, date: jan31, note: 'Keep stock', personalTransactionId: 'linked-purchase' }];
+  currencyState.store.sales = [{ id: 'currency-sale', date: jan31, items: [{ productId: 'currency-product', name: 'Money product', type: 'product', quantity: 1, unitPrice: 10, total: 10 }], total: 10, status: 'completed', note: 'Keep sale' }, { id: 'void-sale', date: jan31, items: [{ productId: 'currency-product', name: 'Money product', type: 'product', quantity: 4, unitPrice: 10, total: 40 }], total: 40, status: 'void', note: 'Ignore void sale' }, { id: 'next-period-sale', date: '2025-02-01T00:00:00.000Z', items: [{ productId: 'currency-product', name: 'Money product', type: 'product', quantity: 1, unitPrice: 99, total: 99 }], total: 99, status: 'completed', note: 'Next period' }];
+  currencyState.store.cashMovements = [{ id: 'currency-cash', type: 'funding', amount: 10, date: jan31, note: 'Keep cash', transferId: 'linked-transfer' }, { id: 'currency-outflow', type: 'purchase', amount: -4, date: jan31, note: 'Purchase' }];
+  currencyState.store.employees = [{ id: 'currency-employee', name: 'Employee', salary: 20, payFrequency: 'monthly', payMode: 'manual', active: true, createdAt: jan31 }];
+  const storeStats = storeStatistics(currencyState, { start: new Date('2025-01-01T00:00:00.000Z'), end: new Date('2025-02-01T00:00:00.000Z') });
+  assert.equal(storeStats.saleCount, 1);
+  assert.equal(storeStats.salesRevenue, 10);
+  assert.equal(storeStats.cashOutflow, 4);
+  assert.equal(storeStats.netFlow, 6);
+  assert.equal(storeStats.averageSale, 10);
+  assert.equal(storeStats.itemsSold, 1);
+  assert.equal(storeStats.inventoryValue, 12);
+  assert.equal(storeStats.activeProducts, 1);
+  assert.equal(storeStats.lowStock, 0);
+  assert.deepEqual(storeStats.topProducts.map((product) => [product.productId, product.quantity, product.total]), [['currency-product', 1, 10]]);
+  const currencyChange = changeStoreCurrency(currencyState, 'CUP', { USD: 1, CUP: 0.04 });
+  assert.equal(currencyChange.error, undefined);
+  assert.equal(currencyChange.rate, 25);
+  assert.equal(currencyChange.state.store.currency, 'CUP');
+  assert.equal(currencyChange.state.store.businessAccount.currency, 'CUP');
+  assert.equal(currencyChange.state.store.businessAccount.balance, 150);
+  assert.equal(currencyChange.state.store.products[0].salePrice, 250);
+  assert.equal(currencyChange.state.store.products[0].purchasePrice, 100);
+  assert.deepEqual(currencyChange.state.store.products[0].additionalSalePrices, [225, 200]);
+  assert.equal(currencyChange.state.store.sales[0].items[0].unitPrice, 250);
+  assert.equal(currencyChange.state.store.sales[0].items[0].total, 250);
+  assert.equal(currencyChange.state.store.sales[0].total, 250);
+  assert.equal(currencyChange.state.store.cashMovements[0].amount, 250);
+  assert.equal(currencyChange.state.store.employees[0].salary, 500);
+  assert.equal(currencyChange.state.store.stockMovements[0].quantity, 3);
+  assert.equal(currencyChange.state.store.stockMovements[0].date, jan31);
+  assert.equal(currencyChange.state.store.stockMovements[0].personalTransactionId, 'linked-purchase');
+  assert.equal(currencyChange.state.store.cashMovements[0].transferId, 'linked-transfer');
+  const currencyRoundTrip = changeStoreCurrency(currencyChange.state, 'USD', { USD: 1, CUP: 0.04 }).state;
+  assert.equal(currencyRoundTrip.store.products[0].salePrice, 10);
+  assert.equal(currencyRoundTrip.store.sales[0].total, 10);
+  assert.equal(currencyRoundTrip.store.businessAccount.balance, 6);
+  assert.strictEqual(changeStoreCurrency(currencyState, 'EUR', { USD: 1 }).state, currencyState);
+  assert.equal(changeStoreCurrency(currencyState, 'EUR', { USD: 1 }).error, 'missing-rate');
 
   const emptyStoreBackup = await createStoreBackup(emptyFinanceState().store);
   assert.equal(emptyStoreBackup.kind, 'solid-gold-rich-store');

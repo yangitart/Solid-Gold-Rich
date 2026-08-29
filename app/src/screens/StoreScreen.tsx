@@ -1,6 +1,7 @@
 import React from 'react';
-import { Alert, BackHandler, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, BackHandler, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as DocumentPicker from 'expo-document-picker';
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -10,8 +11,8 @@ import Animated, { Easing, FadeIn, FadeOut, SlideInLeft, useReducedMotion } from
 import { useFinance } from '../stores/FinanceContext';
 import type { PaymentMethod, StoreCategory, StoreClient, StoreEmployee, StorePayFrequency, StorePayMode, StoreProduct, StoreProductType, StoreSale, StoreSaleItem, StoreStockMovementType } from '../core/finance/types';
 import { captureCurrencySnapshot, currencyRate } from '../core/finance/currency';
-import { accountBalance, withStoreBalance } from '../domain/finance/financeDomain';
-import { availableStock, completeSale as completeStoreSale, filterStoreProducts, filterStoreSales, productStock, storeReportData, validateSale, voidSale as voidStoreSale, type StoreSalePeriod, type StoreStockFilter } from '../domain/store/storeDomain';
+import { accountBalance, periodBounds, previousPeriodBounds, withStoreBalance } from '../domain/finance/financeDomain';
+import { availableStock, changeStoreCurrency, completeSale as completeStoreSale, filterStoreProducts, filterStoreSales, productStock, storeReportData, storeStatistics, validateSale, voidSale as voidStoreSale, type StoreSalePeriod, type StoreStockFilter } from '../domain/store/storeDomain';
 import { createStoreBackup, isolateStoreBackupForImport, parseStoreBackup, restoreStoreBackupToDevice } from '../domain/store/storeBackup';
 import { normalizeFinanceState } from '../stores/financeStorage';
 import { FormActions, FormField, ResponsiveSheet, SearchableSelect, SegmentedControl, type SelectOption } from '../components/FormKit';
@@ -20,13 +21,14 @@ import DateSelect from '../components/DateSelect';
 import { C, SANS, SERIF, createThemeStyles } from '../theme/luxury';
 import { createStoreReportPdf, createStoreReportXlsx, filterStoreReportState, type ReportExportLabels, type StoreReportRange } from '../domain/store/reportExports';
 
-type StoreView = 'inventory' | 'sales' | 'employees' | 'clients' | 'services' | 'reports' | 'movements' | 'settings';
+type StoreView = 'inventory' | 'sales' | 'employees' | 'clients' | 'services' | 'reports' | 'movements' | 'statistics' | 'settings';
 type DirectoryKind = 'employees' | 'clients';
 type StoreReportKind = 'export' | 'transactionsPerDay' | 'totalTransactions' | 'topProductsServices' | 'topClients';
 type StockFilter = StoreStockFilter;
 type StockAction = 'entry' | 'exit' | 'adjustment';
 type SalePeriod = StoreSalePeriod;
 type ReportRangeMode = 'all' | 'month' | 'custom';
+type StoreStatsRange = 'today' | 'week' | 'month' | 'year';
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const numeric = (value: string) => Number(value.trim().replace(',', '.'));
@@ -74,6 +76,7 @@ export default function StoreScreen() {
   const store = state.store;
   const currency = store.currency || state.settings.preferredCurrency || 'USD';
   const reduceMotion = useReducedMotion();
+  const compactStoreStats = useWindowDimensions().width < 360;
   const [view, setView] = React.useState<StoreView>('inventory');
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [productQuery, setProductQuery] = React.useState('');
@@ -126,12 +129,12 @@ export default function StoreScreen() {
   const [directoryNote, setDirectoryNote] = React.useState('');
   const [directoryActive, setDirectoryActive] = React.useState(true);
   const [directoryError, setDirectoryError] = React.useState('');
-  const [storeName, setStoreName] = React.useState(store.name);
   const [storeCurrency, setStoreCurrency] = React.useState(currency);
   const [movementQuery, setMovementQuery] = React.useState('');
   const [movementType, setMovementType] = React.useState<'all' | 'income' | 'expense'>('all');
   const [reportKind, setReportKind] = React.useState<StoreReportKind | null>(null);
   const [reportRangeMode, setReportRangeMode] = React.useState<ReportRangeMode>('all');
+  const [storeStatsRange, setStoreStatsRange] = React.useState<StoreStatsRange>('month');
   const [reportMonth, setReportMonth] = React.useState(() => isoAtNoon(new Date()));
   const [reportStartDate, setReportStartDate] = React.useState(() => isoAtNoon(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
   const [reportEndDate, setReportEndDate] = React.useState(() => isoAtNoon(new Date()));
@@ -170,17 +173,63 @@ export default function StoreScreen() {
       ? t(`finance.storeCategories.${id}`, { defaultValue: category.name })
       : category?.name ?? t('finance.store.generalCategory');
   }, [store.categories, t]);
-  const productUnitLabel = React.useCallback((product: StoreProduct) => product.unitAbbreviation || t(`finance.unitOptions.${product.unit}`, { defaultValue: product.unit }), [t]);
   const stockFor = React.useCallback((productId: string) => productStock(state, productId), [state]);
   const inventoryValue = React.useMemo(() => store.products.reduce((total, product) => total + (product.type === 'product' ? stockFor(product.id) * product.purchasePrice : 0), 0), [store.products, stockFor]);
-  const hasStoreHistory = store.cashMovements.length > 0
-    || store.sales.length > 0
-    || store.stockMovements.length > 0
-    || store.products.some((item) => item.purchasePrice > 0 || item.salePrice > 0 || item.additionalSalePrices.some((price) => price > 0));
   const availableFor = React.useCallback((product: StoreProduct) => availableStock(state, product), [state]);
   const selectedSale = React.useMemo(() => store.sales.find((sale) => sale.id === selectedSaleId) ?? null, [selectedSaleId, store.sales]);
   const filtersActive = Boolean(categoryFilter || statusFilter || stockFilter);
   const [today] = React.useState(() => localDay(new Date()));
+  const storeStatsBounds = React.useMemo(() => periodBounds(storeStatsRange, today, state.settings.firstDayOfWeek), [state.settings.firstDayOfWeek, storeStatsRange, today]);
+  const storeStatsData = React.useMemo(() => storeStatistics(state, storeStatsBounds), [state, storeStatsBounds]);
+  const storeStatsPreviousBounds = React.useMemo(() => previousPeriodBounds(storeStatsRange, storeStatsBounds), [storeStatsBounds, storeStatsRange]);
+  const storePreviousStatsData = React.useMemo(() => storeStatistics(state, storeStatsPreviousBounds), [state, storeStatsPreviousBounds]);
+  const storeStatsSalesChange = storePreviousStatsData.salesRevenue > 0 ? (storeStatsData.salesRevenue - storePreviousStatsData.salesRevenue) / storePreviousStatsData.salesRevenue * 100 : null;
+  const storeStatsNetChange = storePreviousStatsData.netFlow !== 0 ? (storeStatsData.netFlow - storePreviousStatsData.netFlow) / Math.abs(storePreviousStatsData.netFlow) * 100 : null;
+  const storeStatsRangeLabel = React.useMemo(() => {
+    const end = new Date(storeStatsBounds.end.getTime() - 1);
+    const options: Intl.DateTimeFormatOptions = { day: 'numeric', month: 'short', ...(storeStatsBounds.start.getFullYear() !== end.getFullYear() ? { year: 'numeric' } : {}) };
+    return `${storeStatsBounds.start.toLocaleDateString(state.settings.language, options)} – ${end.toLocaleDateString(state.settings.language, options)}`;
+  }, [state.settings.language, storeStatsBounds]);
+  const storeStatsFlowBuckets = React.useMemo(() => {
+    const language = state.settings.language;
+    const buckets: { key: string; label: string; sales: number; outflow: number }[] = [];
+    const pushBucket = (key: string, label: string, start: Date, end: Date) => {
+      const includes = (date: string) => { const value = new Date(date).getTime(); return value >= start.getTime() && value < end.getTime(); };
+      buckets.push({
+        key,
+        label,
+        sales: storeStatsData.sales.filter((sale) => includes(sale.date)).reduce((sum, sale) => sum + sale.total, 0),
+        outflow: storeStatsData.movements.filter((movement) => movement.amount < 0 && includes(movement.date)).reduce((sum, movement) => sum - movement.amount, 0),
+      });
+    };
+    if (storeStatsRange === 'today') {
+      for (let hour = 0; hour < 24; hour += 6) {
+        const start = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hour);
+        const end = new Date(today.getFullYear(), today.getMonth(), today.getDate(), hour + 6);
+        pushBucket(String(hour), String(hour).padStart(2, '0'), start, end);
+      }
+    } else if (storeStatsRange === 'year') {
+      const year = storeStatsBounds.start.getFullYear();
+      for (let month = 0; month < 12; month += 1) {
+        pushBucket(String(month), new Date(year, month, 1).toLocaleDateString(language, { month: 'narrow' }), new Date(year, month, 1), new Date(year, month + 1, 1));
+      }
+    } else {
+      const step = storeStatsRange === 'week' ? 1 : 7;
+      const cursor = new Date(storeStatsBounds.start);
+      while (cursor < storeStatsBounds.end) {
+        const start = new Date(cursor.getFullYear(), cursor.getMonth(), cursor.getDate());
+        const end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + step);
+        const boundedEnd = end > storeStatsBounds.end ? storeStatsBounds.end : end;
+        const lastIncluded = new Date(boundedEnd.getTime() - 1);
+        const label = storeStatsRange === 'week' ? start.toLocaleDateString(language, { weekday: 'narrow' }) : `${start.getDate()}–${lastIncluded.getDate()}`;
+        pushBucket(start.toISOString(), label, start, boundedEnd);
+        cursor.setDate(cursor.getDate() + step);
+      }
+    }
+    return buckets;
+  }, [state.settings.language, storeStatsBounds, storeStatsData.movements, storeStatsData.sales, storeStatsRange, today]);
+  const storeStatsFlowMax = Math.max(1, ...storeStatsFlowBuckets.flatMap((bucket) => [bucket.sales, bucket.outflow]));
+  const storeStatsTopMax = Math.max(1, ...storeStatsData.topProducts.map((product) => product.total));
 
   React.useEffect(() => setDirectoryQuery(''), [view]);
 
@@ -309,8 +358,8 @@ export default function StoreScreen() {
   const productValidation = () => {
     const errors: Record<string, string> = {};
     const key = productDraft.key.trim();
-    if (!key) errors.key = t('finance.store.errors.key');
-    else if (store.products.some((item) => item.id !== editingProduct?.id && item.key.toLocaleLowerCase() === key.toLocaleLowerCase())) errors.key = t('finance.store.errors.duplicateKey');
+    if (productDraft.type === 'product' && !key) errors.key = t('finance.store.errors.key');
+    else if (key && store.products.some((item) => item.id !== editingProduct?.id && item.key.toLocaleLowerCase() === key.toLocaleLowerCase())) errors.key = t('finance.store.errors.duplicateKey');
     if (!productDraft.name.trim()) errors.name = t('finance.store.errors.name');
     if (customUnitOpen) {
       if (!productDraft.unit.trim()) errors.unitName = t('finance.storeUnits.fullNameRequired');
@@ -319,7 +368,7 @@ export default function StoreScreen() {
       else if (Array.from(abbreviation).length > 4) errors.unitAbbreviation = t('finance.storeUnits.abbreviationTooLong');
     } else if (!productDraft.unit.trim()) errors.unit = t('finance.storeUnits.required');
     const salePrice = numeric(productDraft.salePrice);
-    if (!Number.isFinite(salePrice) || salePrice < 0) errors.salePrice = t('finance.store.errors.price');
+    if (!productDraft.salePrice.trim() || !Number.isFinite(salePrice) || salePrice < 0) errors.salePrice = t('finance.store.errors.price');
     const numberFields = [productDraft.purchasePrice || '0', productDraft.stock || '0', productDraft.reservedQuantity || '0', productDraft.stockMinimum || '0', ...productDraft.additionalSalePrices.filter((value) => value.trim())];
     if (numberFields.some((value) => !Number.isFinite(numeric(value)) || numeric(value) < 0)) errors.numbers = t('finance.store.errors.stock');
     const available = editingProduct ? stockFor(editingProduct.id) : numeric(productDraft.stock || '0');
@@ -368,15 +417,16 @@ export default function StoreScreen() {
     }
     const now = new Date().toISOString();
     const id = editingProduct?.id ?? uid('store-product');
+    const productKey = productDraft.type === 'service' ? editingProduct?.key || id : productDraft.key.trim();
     const product: StoreProduct = {
       id,
-      key: productDraft.key.trim(),
+      key: productKey,
       name: productDraft.name.trim(),
       type: productDraft.type,
       unit: productDraft.unit.trim() || 'unit',
       unitAbbreviation: customUnitOpen ? productDraft.unitAbbreviation.trim() : undefined,
       categoryId: productDraft.categoryId,
-      sku: editingProduct?.sku ?? productDraft.key.trim(),
+      sku: editingProduct?.sku ?? productKey,
       salePrice: numeric(productDraft.salePrice),
       purchasePrice,
       additionalSalePrices: productDraft.additionalSalePrices.filter((value) => value.trim()).map(numeric),
@@ -571,15 +621,25 @@ export default function StoreScreen() {
     setAddOpen(false);
   };
 
-  const saveSettings = () => {
-    if (hasStoreHistory && storeCurrency !== currency) return;
-    finance.updateState((current) => ({ ...current, store: { ...current.store, name: storeName.trim(), currency: storeCurrency, businessAccount: { ...current.store.businessAccount, name: storeName.trim() || current.store.businessAccount.name, currency: storeCurrency } } }));
-  };
-
   const openSettings = () => {
-    setStoreName(store.name);
     setStoreCurrency(currency);
     switchView('settings');
+  };
+
+  const requestStoreCurrencyChange = (nextCurrency: string) => {
+    const target = nextCurrency.trim().toUpperCase();
+    if (!target || target === currency) { setStoreCurrency(currency); return; }
+    const rates = state.settings.exchangeRates ?? { USD: 1 };
+    if (currencyRate(currency, target, rates) === undefined) {
+      setStoreCurrency(currency);
+      Alert.alert(t('finance.storeCurrency.changeTitle'), t('finance.releaseErrors.missingRate'));
+      return;
+    }
+    setStoreCurrency(target);
+    Alert.alert(t('finance.storeCurrency.changeTitle'), t('finance.storeCurrency.confirmCopy', { from: currency, to: target }), [
+      { text: t('finance.cancel'), style: 'cancel', onPress: () => setStoreCurrency(currency) },
+      { text: t('finance.storeCurrency.confirm'), onPress: () => finance.updateState((current) => changeStoreCurrency(current, target, current.settings.exchangeRates ?? { USD: 1 }).state) },
+    ], { cancelable: false });
   };
 
   const reportLanguage = state.settings.language ?? 'en';
@@ -649,7 +709,7 @@ export default function StoreScreen() {
     if (backupBusy) return;
     setBackupBusy(true);
     try {
-      const result = await DocumentPicker.getDocumentAsync({ type: 'application/json', copyToCacheDirectory: true, multiple: false });
+      const result = await DocumentPicker.getDocumentAsync({ type: ['application/json', 'text/json', 'text/plain', 'application/octet-stream'], copyToCacheDirectory: true, multiple: false });
       if (result.canceled || !result.assets[0]) return;
       const backup = parseStoreBackup(await new File(result.assets[0].uri).text());
       Alert.alert(t('finance.storeBackup.importStore'), t('finance.storeBackup.importConfirmCopy'), [
@@ -679,7 +739,7 @@ export default function StoreScreen() {
   const renderProduct = ({ item }: { item: StoreProduct }) => {
     const stock = stockFor(item.id); const available = availableFor(item); const low = item.type === 'product' && stock <= item.stockMinimum;
     const expired = Boolean(item.expirationDate && localDay(item.expirationDate) < today);
-    return <View style={[styles.productRow, !item.active && styles.inactive]}><Pressable style={styles.productMain} onPress={() => openProduct(item)} accessibilityRole="button"><View style={styles.productIcon}><ProductPicture product={item} /></View><View style={styles.rowMain}><Text style={styles.rowTitle} numberOfLines={1}>{item.name}</Text><Text style={styles.rowMeta} numberOfLines={1}>{item.key} · {categoryNameFor(item.categoryId)} · {money(item.salePrice, currency)}</Text>{expired ? <Text style={styles.dangerMeta} numberOfLines={1}>{t('finance.storeFilters.expired')}</Text> : null}</View></Pressable>{item.type === 'product' ? <View style={styles.stockSide}><Text style={[styles.stockValue, low && styles.dangerMeta]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{available} {productUnitLabel(item)}</Text><Pressable style={styles.iconButton} onPress={() => { setStockProduct(item); setStockAction('entry'); setStockQuantity(''); setStockNote(''); setStockError(''); }} accessibilityRole="button" accessibilityLabel={t('finance.store.adjustStock')}><Ionicons name="swap-vertical-outline" size={18} color={C.gold} /></Pressable></View> : <Text style={styles.rowMeta} numberOfLines={1}>{t('finance.store.service')}</Text>}</View>;
+    return <View style={[styles.productRow, !item.active && styles.inactive]}><Pressable style={styles.productMain} onPress={() => openProduct(item)} accessibilityRole="button"><View style={styles.productIcon}><ProductPicture product={item} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{item.name}</Text><Text style={styles.rowMeta} numberOfLines={1}>{item.key} · {categoryNameFor(item.categoryId)} · {money(item.salePrice, currency)}</Text>{expired ? <Text style={styles.dangerMeta} numberOfLines={1}>{t('finance.storeFilters.expired')}</Text> : null}</View></Pressable>{item.type === 'product' ? <View style={styles.stockSide}><Text style={[styles.stockValue, low && styles.dangerMeta]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{available}</Text><Pressable style={styles.iconButton} onPress={() => { setStockProduct(item); setStockAction('entry'); setStockQuantity(''); setStockNote(''); setStockError(''); }} accessibilityRole="button" accessibilityLabel={t('finance.store.adjustStock')}><Ionicons name="swap-vertical-outline" size={18} color={C.gold} /></Pressable></View> : <Text style={styles.rowMeta} numberOfLines={1}>{t('finance.store.service')}</Text>}</View>;
   };
 
   const renderProducts = () => <View style={styles.flex}><View style={styles.toolbar}><View style={styles.search}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={productQuery} onChangeText={setProductQuery} placeholder={t('finance.storeFilters.search')} placeholderTextColor={C.textSubtle} style={styles.searchInput} accessibilityLabel={t('finance.storeFilters.search')} /><Pressable style={[styles.filterButton, filtersActive && styles.filterButtonActive]} onPress={() => setFilterOpen(true)} accessibilityRole="button" accessibilityLabel={t('finance.storeFilters.filters')}><Ionicons name="options-outline" size={19} color={filtersActive ? C.void : C.gold} /></Pressable>{view === 'inventory' ? <Pressable style={styles.filterButton} onPress={() => { setFundingAccountId('none'); setFundingAmount(''); setFundingNote(''); setFundingError(''); setAddOpen(true); }} accessibilityRole="button" accessibilityLabel={t('finance.storeFunding.tab')}><Ionicons name="add-circle-outline" size={19} color={C.gold} /></Pressable> : null}</View></View><FlatList data={visibleProducts} keyExtractor={(item) => item.id} renderItem={renderProduct} contentContainerStyle={[styles.list, !visibleProducts.length && styles.listEmpty]} keyboardShouldPersistTaps="handled" ListEmptyComponent={<Empty title={t('finance.store.noProducts')} copy={filtersActive || productQuery ? t('finance.storeFilters.noResults') : t('finance.store.noProductsCopy')} icon="cube-outline" />} /></View>;
@@ -713,12 +773,63 @@ export default function StoreScreen() {
     return <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">{reportKind ? <Pressable style={styles.backRow} onPress={() => setReportKind(null)}><Ionicons name="arrow-back" size={18} color={C.gold} /><Text style={styles.link}>{t('finance.store.reportBack')}</Text></Pressable> : null}<View style={styles.reportPeriodCard}><Text style={styles.reportPeriodTitle}>{t('finance.workspace.reportPeriod')}</Text><SegmentedControl options={[{ value: 'all', label: t('finance.workspace.reportRangeAll') }, { value: 'month', label: t('finance.store.salePeriod.month') }, { value: 'custom', label: t('finance.workspace.reportRangeCustom') }]} value={reportRangeMode} onChange={(value) => setReportRangeMode(value as ReportRangeMode)} />{reportRangeMode === 'month' ? <DateSelect label={t('finance.workspace.reportMonth')} value={reportMonth} onChange={setReportMonth} firstDayOfWeek={state.settings.firstDayOfWeek} /> : null}{reportRangeMode === 'custom' ? <View style={styles.reportDateRow}><View style={styles.reportDateColumn}><DateSelect label={t('finance.workspace.reportStartDate')} value={reportStartDate} onChange={setReportStartDate} firstDayOfWeek={state.settings.firstDayOfWeek} /></View><View style={styles.reportDateColumn}><DateSelect label={t('finance.workspace.reportEndDate')} value={reportEndDate} onChange={setReportEndDate} firstDayOfWeek={state.settings.firstDayOfWeek} /></View></View> : null}{reportRangeError ? <Text style={styles.error}>{reportRangeError}</Text> : reportRange ? <Text style={styles.reportRangeLabel}>{reportRange.label}</Text> : null}</View>{reportKind === 'export' ? <View style={styles.reportExportCard}><View style={styles.reportExportHeader}><View style={styles.reportIcon}><Ionicons name="download-outline" size={20} color={C.gold} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{t('finance.store.reportExportTitle')}</Text><Text style={styles.rowMeta}>{t('finance.store.reportExportCopy')}</Text></View></View><View style={styles.reportExportActions}><Pressable style={styles.exportButton} onPress={() => void exportReport('pdf')} disabled={backupBusy || Boolean(reportRangeError)}><Ionicons name="document-text-outline" size={17} color={C.void} /><Text style={styles.exportButtonText}>{t('finance.store.reportExportPdf')}</Text></Pressable><Pressable style={styles.exportButtonSecondary} onPress={() => void exportReport('xlsx')} disabled={backupBusy || Boolean(reportRangeError)}><Ionicons name="grid-outline" size={17} color={C.gold} /><Text style={styles.exportButtonSecondaryText}>{t('finance.store.reportExportExcel')}</Text></Pressable></View></View> : null}{!reportKind ? options.map((option) => <Pressable key={option.kind} style={styles.reportOption} onPress={() => setReportKind(option.kind)}><View style={styles.reportIcon}><Ionicons name={option.icon} size={20} color={C.gold} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{option.title}</Text><Text style={styles.rowMeta}>{option.copy}</Text></View><Ionicons name="chevron-forward" size={17} color="rgba(255,244,208,0.28)" /></Pressable>) : null}{reportKind === 'totalTransactions' && sales.length ? <View style={styles.metric}><Text style={styles.metricNumber} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{sales.length}</Text><Text style={styles.rowMeta}>{t('finance.store.reportTransactions')}</Text><Text style={styles.metricAmount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{money(total, currency)}</Text></View> : null}{reportKind === 'transactionsPerDay' ? daily.map(([date, value]) => <ReportRow key={date} title={new Date(`${date}T12:00:00`).toLocaleDateString()} copy={`${value.count} ${t('finance.store.reportTransactions')}`} amount={money(value.total, currency)} />) : null}{reportKind === 'topProductsServices' ? topProducts.map(([id, value]) => <ReportRow key={id} title={value.name} copy={`${value.quantity} ${t('finance.store.reportUnits')}`} amount={money(value.total, currency)} />) : null}{reportKind === 'topClients' ? topClients.map(([id, value]) => <ReportRow key={id} title={store.clients.find((item) => item.id === id)?.name ?? t('finance.store.inactiveClient')} copy={`${value.count} ${t('finance.store.reportTransactions')}`} amount={money(value.total, currency)} />) : null}{reportKind && ((reportKind === 'totalTransactions' && !sales.length) || (reportKind === 'transactionsPerDay' && !daily.length) || (reportKind === 'topProductsServices' && !topProducts.length) || (reportKind === 'topClients' && !topClients.length)) ? <Empty title={t('finance.store.reportNoData')} copy={t('finance.store.reportNoDataCopy')} icon="bar-chart-outline" /> : null}</ScrollView>;
   };
 
-  const renderSettings = () => <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"><Pressable style={styles.backRow} onPress={() => switchView('inventory')}><Ionicons name="arrow-back" size={18} color={C.gold} /><Text style={styles.link}>{t('finance.back')}</Text></Pressable><View style={styles.settingsHero}><View style={styles.settingsHeroIcon}><Ionicons name="settings-outline" size={24} color={C.gold} /></View><View style={styles.rowMain}><Text style={styles.settingsHeroTitle}>{store.name || t('finance.store.business')}</Text><Text style={styles.settingsHeroCopy}>{t('finance.storeBackup.businessBalance')}: {money(store.businessAccount.balance, currency)}</Text></View></View><Text style={styles.sectionTitle}>{t('finance.store.sectionIdentity')}</Text><View style={styles.settingsCard}><FormField label={t('finance.store.businessName')} value={storeName} onChangeText={setStoreName} placeholder={t('finance.store.storeNamePlaceholder')} required /><SearchableSelect label={t('finance.store.currency')} value={storeCurrency} options={currencyOptions} onChange={setStoreCurrency} placeholder={currency} searchPlaceholder={t('finance.searchCurrency')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} disabled={hasStoreHistory} />{hasStoreHistory ? <Text style={styles.helper}>{t('finance.store.currencyLocked')}</Text> : null}<Pressable style={[styles.primaryButton, (!storeName.trim() || backupBusy) && styles.buttonDisabled]} onPress={saveSettings} disabled={!storeName.trim() || backupBusy}><Text style={styles.primaryButtonText}>{t('finance.store.saveSettings')}</Text></Pressable></View><Text style={styles.sectionTitle}>{t('finance.storeBackup.backupTitle')}</Text><Text style={styles.helper}>{t('finance.storeBackup.backupCopy')}</Text><View style={styles.settingsActionRow}><Pressable style={styles.settingsAction} onPress={() => void exportStore()} disabled={backupBusy}><Ionicons name="cloud-download-outline" size={18} color={C.gold} /><Text style={styles.settingsActionText}>{t('finance.storeBackup.exportStore')}</Text></Pressable><Pressable style={styles.settingsAction} onPress={() => void importStore()} disabled={backupBusy}><Ionicons name="cloud-upload-outline" size={18} color={C.gold} /><Text style={styles.settingsActionText}>{t('finance.storeBackup.importStore')}</Text></Pressable></View></ScrollView>;
+  const renderStatistics = () => <ScrollView contentContainerStyle={[styles.content, styles.storeStatsContent]} showsVerticalScrollIndicator={false}>
+    <View style={styles.storeStatsRange}>{(['today', 'week', 'month', 'year'] as StoreStatsRange[]).map((range) => { const selected = storeStatsRange === range; const label = range === 'today' ? t('finance.today') : range === 'week' ? t('finance.thisWeek') : range === 'month' ? t('finance.thisMonth') : t('finance.yearToDate'); return <Pressable key={range} style={[styles.storeStatsRangeOption, selected && styles.storeStatsRangeOptionActive]} onPress={() => setStoreStatsRange(range)} accessibilityRole="radio" accessibilityState={{ selected }}><Text style={[styles.storeStatsRangeText, selected && styles.storeStatsRangeTextActive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>{label}</Text></Pressable>; })}</View>
+    <Text style={styles.storeStatsRangeLabel}>{storeStatsRangeLabel}</Text>
 
-  const title = view === 'movements' ? t('finance.store.viewMovements') : view === 'settings' ? t('finance.store.settings') : t(`finance.store.${view}`);
-  const content = view === 'inventory' || view === 'services' ? renderProducts() : view === 'sales' ? renderSales() : view === 'reports' ? renderReports() : view === 'movements' ? renderMovements() : view === 'settings' ? renderSettings() : renderDirectory(view);
+    <LinearGradient colors={['rgba(233,200,119,0.15)', 'rgba(10,12,20,0.78)']} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.storeStatsHero}>
+      <View style={styles.storeStatsHeroTop}><View style={styles.rowMain}><Text style={styles.storeStatsLabel}>{t('finance.storeStats.netFlow')}</Text><Text style={[styles.storeStatsNet, storeStatsData.netFlow < 0 ? styles.negative : styles.positive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.55}>{money(storeStatsData.netFlow, currency)}</Text></View><View style={styles.storeStatsBadge}><Ionicons name="receipt-outline" size={15} color={C.gold} /><Text style={styles.storeStatsBadgeValue}>{storeStatsData.saleCount}</Text><Text style={styles.storeStatsBadgeLabel}>{t('finance.store.reportTransactions')}</Text></View></View>
+      <Text style={styles.storeStatsComparisonTitle}>{t('finance.storeStats.vsPrevious')}</Text>
+      <View style={[styles.storeStatsComparisonRow, compactStoreStats && styles.storeStatsComparisonRowNarrow]}>
+        <View style={[styles.storeStatsComparison, compactStoreStats && styles.storeStatsComparisonNarrow]}><Ionicons name={storeStatsSalesChange !== null && storeStatsSalesChange < 0 ? 'trending-down-outline' : 'trending-up-outline'} size={15} color={storeStatsSalesChange !== null && storeStatsSalesChange < 0 ? C.red : C.gold} /><View style={styles.rowMain}><Text style={styles.storeStatsComparisonLabel}>{t('finance.storeStats.salesRevenue')}</Text><Text style={[styles.storeStatsComparisonValue, storeStatsSalesChange !== null && storeStatsSalesChange < 0 && styles.negative]}>{storeStatsSalesChange === null ? t('finance.storeStats.noPreviousData') : `${storeStatsSalesChange >= 0 ? '+' : ''}${Math.round(storeStatsSalesChange)}%`}</Text></View></View>
+        <View style={[styles.storeStatsComparison, compactStoreStats && styles.storeStatsComparisonNarrow]}><Ionicons name={storeStatsNetChange !== null && storeStatsNetChange < 0 ? 'trending-down-outline' : 'trending-up-outline'} size={15} color={storeStatsNetChange !== null && storeStatsNetChange < 0 ? C.red : C.gold} /><View style={styles.rowMain}><Text style={styles.storeStatsComparisonLabel}>{t('finance.storeStats.netFlow')}</Text><Text style={[styles.storeStatsComparisonValue, storeStatsNetChange !== null && storeStatsNetChange < 0 && styles.negative]}>{storeStatsNetChange === null ? t('finance.storeStats.noPreviousData') : `${storeStatsNetChange >= 0 ? '+' : ''}${Math.round(storeStatsNetChange)}%`}</Text></View></View>
+      </View>
+      <View style={styles.storeStatsHeroMetrics}><View style={styles.storeStatsHeroMetric}><Text style={styles.storeStatsMetricLabel}>{t('finance.storeStats.salesRevenue')}</Text><Text style={[styles.storeStatsHeroValue, styles.positive]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.58}>{money(storeStatsData.salesRevenue, currency)}</Text></View><View style={styles.movementMetricDivider} /><View style={styles.storeStatsHeroMetric}><Text style={styles.storeStatsMetricLabel}>{t('finance.storeStats.cashOutflow')}</Text><Text style={[styles.storeStatsHeroValue, styles.negative]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.58}>{money(storeStatsData.cashOutflow, currency)}</Text></View></View>
+    </LinearGradient>
+
+    <View style={styles.storeStatsMetricGrid}>
+      <View style={[styles.storeStatsMetricCard, compactStoreStats && styles.storeStatsMetricCardWide]}><View style={styles.storeStatsMetricIcon}><Ionicons name="calculator-outline" size={17} color={C.gold} /></View><Text style={styles.storeStatsMetricLabel}>{t('finance.storeStats.averageSale')}</Text><Text style={styles.storeStatsMetricValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.58}>{money(storeStatsData.averageSale, currency)}</Text></View>
+      <View style={[styles.storeStatsMetricCard, compactStoreStats && styles.storeStatsMetricCardWide]}><View style={styles.storeStatsMetricIcon}><Ionicons name="bag-handle-outline" size={17} color={C.gold} /></View><Text style={styles.storeStatsMetricLabel}>{t('finance.storeStats.itemsSold')}</Text><Text style={styles.storeStatsMetricValue}>{storeStatsData.itemsSold}</Text></View>
+      <View style={[styles.storeStatsMetricCard, compactStoreStats && styles.storeStatsMetricCardWide]}><View style={styles.storeStatsMetricIcon}><Ionicons name="cube-outline" size={17} color={C.gold} /></View><Text style={styles.storeStatsMetricLabel}>{t('finance.storeStats.inventoryValue')}</Text><Text style={styles.storeStatsMetricValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.58}>{money(storeStatsData.inventoryValue, currency)}</Text></View>
+      <View style={[styles.storeStatsMetricCard, compactStoreStats && styles.storeStatsMetricCardWide]}><View style={styles.storeStatsMetricIcon}><Ionicons name="layers-outline" size={17} color={C.gold} /></View><Text style={styles.storeStatsMetricLabel}>{t('finance.store.activeProducts')}</Text><Text style={styles.storeStatsMetricValue}>{storeStatsData.activeProducts}</Text><Text style={[styles.storeStatsMetricMeta, storeStatsData.lowStock > 0 && styles.negative]}>{storeStatsData.lowStock} {t('finance.store.lowStock').toLocaleLowerCase()}</Text></View>
+    </View>
+
+    <Text style={styles.sectionTitle}>{t('finance.storeStats.salesFlow')}</Text>
+    <View style={styles.storeStatsChartCard}>
+      {storeStatsFlowBuckets.some((bucket) => bucket.sales > 0 || bucket.outflow > 0) ? <><View style={styles.storeStatsChart}>{storeStatsFlowBuckets.map((bucket) => <View key={bucket.key} style={styles.storeStatsFlowColumn}><View style={styles.storeStatsFlowBars}><View style={[styles.storeStatsFlowBar, { height: bucket.sales > 0 ? Math.max(7, bucket.sales / storeStatsFlowMax * 72) : 0, backgroundColor: C.gold }]} /><View style={[styles.storeStatsFlowBar, { height: bucket.outflow > 0 ? Math.max(7, bucket.outflow / storeStatsFlowMax * 72) : 0, backgroundColor: C.red }]} /></View><Text style={styles.storeStatsFlowLabel} numberOfLines={1}>{bucket.label}</Text></View>)}</View><View style={styles.flowLegend}><View style={styles.flowLegendItem}><View style={[styles.flowLegendChip, { backgroundColor: C.gold }]} /><Text style={styles.flowLegendText}>{t('finance.storeStats.salesRevenue')}</Text></View><View style={styles.flowLegendItem}><View style={[styles.flowLegendChip, { backgroundColor: C.red }]} /><Text style={styles.flowLegendText}>{t('finance.storeStats.cashOutflow')}</Text></View></View></> : <View style={styles.storeStatsEmpty}><Ionicons name="stats-chart-outline" size={22} color={C.textSubtle} /><Text style={styles.rowMeta}>{t('finance.storeStats.noData')}</Text></View>}
+    </View>
+
+    <Text style={styles.sectionTitle}>{t('finance.storeStats.topProducts')}</Text>
+    <View style={styles.storeStatsChartCard}>{storeStatsData.topProducts.map((product, index) => <View key={product.productId} style={[styles.storeStatsProductRow, index === 0 && styles.storeStatsProductRowTop]}><View style={[styles.storeStatsRank, index === 0 && styles.storeStatsRankTop]}><Text style={[styles.storeStatsRankText, index === 0 && styles.storeStatsRankTextTop]}>{index + 1}</Text></View><View style={styles.rowMain}><Text style={[styles.rowTitle, index === 0 && styles.storeStatsProductNameTop]} numberOfLines={2}>{product.name}</Text><Text style={styles.rowMeta}>{product.quantity} {t('finance.store.reportUnits')}</Text><View style={styles.storeStatsProductTrack}><LinearGradient colors={[C.gold, C.goldMid]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.storeStatsProductFill, { width: `${product.total / storeStatsTopMax * 100}%` }]} /></View></View><Text style={styles.amount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{money(product.total, currency)}</Text></View>)}{!storeStatsData.topProducts.length ? <View style={styles.storeStatsEmpty}><Ionicons name="podium-outline" size={22} color={C.textSubtle} /><Text style={styles.rowMeta}>{t('finance.storeStats.noData')}</Text></View> : null}</View>
+  </ScrollView>;
+
+  const renderSettings = () => <ScrollView contentContainerStyle={[styles.content, styles.settingsContent]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+    <Text style={styles.sectionTitle}>{t('finance.storeCurrency.sectionTitle')}</Text>
+    <View style={styles.settingsCard}>
+      <SearchableSelect label={t('finance.store.currency')} value={storeCurrency} options={currencyOptions} onChange={requestStoreCurrencyChange} placeholder={currency} searchPlaceholder={t('finance.searchCurrency')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} disabled={backupBusy} />
+      <Text style={styles.settingsBackupCopy}>{t('finance.storeCurrency.conversionCopy')}</Text>
+    </View>
+
+    <Text style={styles.sectionTitle}>{t('finance.storeBackup.backupTitle')}</Text>
+    <View style={styles.settingsCard}>
+      <Text style={styles.settingsBackupCopy}>{t('finance.storeBackup.backupCopy')}</Text>
+      <Pressable style={[styles.settingsAction, backupBusy && styles.buttonDisabled]} onPress={() => void exportStore()} disabled={backupBusy} accessibilityRole="button" accessibilityState={{ disabled: backupBusy }}>
+        <View style={styles.settingsActionIcon}><Ionicons name="share-outline" size={20} color={C.gold} /></View>
+        <View style={styles.rowMain}><Text style={styles.settingsActionText}>{t('finance.storeBackup.exportStore')}</Text><Text style={styles.settingsActionCopy}>{t('finance.storeBackup.exportStoreCopy')}</Text></View>
+        <Ionicons name="chevron-forward-outline" size={18} color={C.textSubtle} />
+      </Pressable>
+      <Pressable style={[styles.settingsAction, styles.settingsActionLast, backupBusy && styles.buttonDisabled]} onPress={() => void importStore()} disabled={backupBusy} accessibilityRole="button" accessibilityState={{ disabled: backupBusy }}>
+        <View style={styles.settingsActionIcon}><Ionicons name="document-attach-outline" size={20} color={C.gold} /></View>
+        <View style={styles.rowMain}><Text style={styles.settingsActionText}>{t('finance.storeBackup.importStore')}</Text><Text style={styles.settingsActionCopy}>{t('finance.storeBackup.importStoreCopy')}</Text></View>
+        <Ionicons name="chevron-forward-outline" size={18} color={C.textSubtle} />
+      </Pressable>
+    </View>
+  </ScrollView>;
+
+  const title = view === 'movements' ? t('finance.store.viewMovements') : view === 'statistics' ? t('finance.storeStats.title') : view === 'settings' ? t('finance.store.settings') : t(`finance.store.${view}`);
+  const content = view === 'inventory' || view === 'services' ? renderProducts() : view === 'sales' ? renderSales() : view === 'reports' ? renderReports() : view === 'movements' ? renderMovements() : view === 'statistics' ? renderStatistics() : view === 'settings' ? renderSettings() : renderDirectory(view);
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}><View style={styles.root}>
-    <View style={styles.header}><Pressable style={styles.headerButton} onPress={() => setDrawerOpen(true)} accessibilityRole="button" accessibilityLabel={t('finance.menu')}><MenuGlyph /></Pressable><Text style={styles.headerTitle} numberOfLines={1}>{title}</Text><View style={styles.headerSpacer} /></View>
+    <View style={styles.header}>{view === 'statistics' ? <Pressable style={styles.headerButton} onPress={() => switchView('inventory')} accessibilityRole="button" accessibilityLabel={t('finance.back')}><Ionicons name="arrow-back" size={20} color={C.gold} /></Pressable> : <Pressable style={styles.headerButton} onPress={() => setDrawerOpen(true)} accessibilityRole="button" accessibilityLabel={t('finance.menu')}><MenuGlyph /></Pressable>}<Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>{view === 'statistics' ? <Pressable style={styles.headerButton} onPress={() => setDrawerOpen(true)} accessibilityRole="button" accessibilityLabel={t('finance.menu')}><MenuGlyph /></Pressable> : <Pressable style={styles.headerButton} onPress={() => switchView('statistics')} accessibilityRole="button" accessibilityLabel={t('finance.storeStats.title')}><Ionicons name="stats-chart-outline" size={20} color={C.gold} /></Pressable>}</View>
     <Animated.View key={view} entering={FadeIn.duration(reduceMotion ? 0 : 190).easing(Easing.out(Easing.cubic))} exiting={FadeOut.duration(reduceMotion ? 0 : 120)} style={styles.flex}>{content}</Animated.View>
     <Pressable style={[styles.workspaceFab, view === 'inventory' || view === 'services' || view === 'sales' ? styles.workspaceFabStacked : styles.workspaceFabSolo]} onPress={switchWorkspace} accessibilityRole="button" accessibilityLabel={t('finance.workspace.personal')}><Ionicons name="wallet-outline" size={20} color={C.gold} /></Pressable>
     {(view === 'inventory' || view === 'services' || view === 'sales') ? <Pressable style={styles.fab} onPress={view === 'sales' ? openSale : () => openProduct()} accessibilityRole="button" accessibilityLabel={view === 'sales' ? t('finance.store.newSale') : t('finance.store.addProduct')}><Ionicons name="add" size={25} color={C.gold} /></Pressable> : null}
@@ -755,7 +866,7 @@ export default function StoreScreen() {
       <FormField label={t('finance.storeFunding.note')} value={fundingNote} onChangeText={setFundingNote} />
     </ResponsiveSheet>
 
-    <ResponsiveSheet visible={productOpen} title={editingProduct ? (productDraft.type === 'service' ? t('finance.store.service') : t('finance.store.editProduct')) : (productDraft.type === 'service' ? t('finance.store.service') : t('finance.store.newProduct'))} onClose={() => setProductOpen(false)} closeLabel={t('finance.close')} footer={<FormActions cancelLabel={t('finance.cancel')} saveLabel={t('finance.store.saveProduct')} onCancel={() => setProductOpen(false)} onSave={() => commitProduct(false)} disabled={Object.keys(productValidation()).length > 0} destructiveLabel={editingProduct ? (editingProduct.active ? t('finance.store.deactivate') : t('finance.store.activate')) : undefined} onDestructive={editingProduct ? () => { finance.updateState((current) => ({ ...current, store: { ...current.store, products: current.store.products.map((item) => item.id === editingProduct.id ? { ...item, active: !item.active } : item) } })); setProductOpen(false); } : undefined} />}>
+    <ResponsiveSheet visible={productOpen} title={editingProduct ? (productDraft.type === 'service' ? t('finance.store.service') : t('finance.store.editProduct')) : (productDraft.type === 'service' ? t('finance.store.service') : t('finance.store.newProduct'))} onClose={() => setProductOpen(false)} closeLabel={t('finance.close')} footer={<FormActions cancelLabel={t('finance.cancel')} saveLabel={t('finance.store.saveProduct')} onCancel={() => setProductOpen(false)} onSave={() => commitProduct(false)} destructiveLabel={editingProduct ? (editingProduct.active ? t('finance.store.deactivate') : t('finance.store.activate')) : undefined} onDestructive={editingProduct ? () => { finance.updateState((current) => ({ ...current, store: { ...current.store, products: current.store.products.map((item) => item.id === editingProduct.id ? { ...item, active: !item.active } : item) } })); setProductOpen(false); } : undefined} />}>
       <StoreProductForm
         draft={productDraft}
         errors={productErrors}
@@ -874,8 +985,15 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   saleProduct: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, cartRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, quantityButton: { width: 44, height: 44, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, alignItems: 'center', justifyContent: 'center' }, quantityText: { color: C.gold, fontSize: 20 }, quantityValue: { minWidth: 22, color: C.goldLight, fontFamily: SANS, fontSize: 12, textAlign: 'center' }, priceLink: { color: C.gold, fontFamily: SANS, fontSize: 10, marginTop: 4 }, totalRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, marginTop: 8 }, totalLabel: { color: C.goldLight, fontFamily: SANS, fontSize: 12, fontWeight: '700' }, totalValue: { color: C.goldLight, fontFamily: SERIF, fontSize: 22 }, error: { color: '#F08B88', fontFamily: SANS, fontSize: 11, marginTop: 10 },
   reportPeriodCard: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, padding: 14, marginBottom: 10 }, reportPeriodTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 17, marginBottom: 2 }, reportDateRow: { flexDirection: 'row', gap: 8 }, reportDateColumn: { flex: 1, minWidth: 0 }, reportRangeLabel: { color: 'rgba(255,244,208,0.56)', fontFamily: SANS, fontSize: 10, marginTop: 10 }, reportOption: { minHeight: 74, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, reportIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: 'rgba(233,200,119,0.09)', alignItems: 'center', justifyContent: 'center' }, reportRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, backRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 }, metric: { minHeight: 220, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, alignItems: 'center', justifyContent: 'center', marginTop: 16 }, metricNumber: { color: C.goldLight, fontFamily: SERIF, fontSize: 44 }, metricAmount: { color: C.gold, fontFamily: SERIF, fontSize: 22, marginTop: 10 }, detail: { paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, dangerButton: { minHeight: 48, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: '#F08B88', alignItems: 'center', justifyContent: 'center', marginTop: 16 },
   reportExportCard: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, padding: 14, marginBottom: 8 }, reportExportHeader: { flexDirection: 'row', alignItems: 'center', gap: 10 }, reportExportActions: { flexDirection: 'row', gap: 8, marginTop: 13 }, exportButton: { flex: 1, minHeight: 44, borderRadius: 12, backgroundColor: C.gold, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }, exportButtonText: { color: C.void, fontFamily: SANS, fontSize: 10, fontWeight: '800' }, exportButtonSecondary: { flex: 1, minHeight: 44, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.gold, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 }, exportButtonSecondaryText: { color: C.gold, fontFamily: SANS, fontSize: 10, fontWeight: '800' },
+  storeStatsContent: { width: '100%', maxWidth: 720, alignSelf: 'center' }, storeStatsRange: { height: 48, flexDirection: 'row', borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, padding: 4 }, storeStatsRangeOption: { flex: 1, minWidth: 0, borderRadius: 11, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 }, storeStatsRangeOptionActive: { backgroundColor: 'rgba(233,200,119,0.12)', borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.42)' }, storeStatsRangeText: { maxWidth: '100%', color: C.textSubtle, fontFamily: SANS, fontSize: 9, textAlign: 'center' }, storeStatsRangeTextActive: { color: C.goldLight, fontWeight: '700' }, storeStatsRangeLabel: { color: C.textSubtle, fontFamily: SANS, fontSize: 9.5, textAlign: 'center', marginTop: 8, textTransform: 'capitalize' },
+  storeStatsHero: { borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.22)', padding: 16, marginTop: 12, overflow: 'hidden' }, storeStatsHeroTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 }, storeStatsLabel: { color: C.textSubtle, fontFamily: SANS, fontSize: 8.5, fontWeight: '700', letterSpacing: 1.1, textTransform: 'uppercase' }, storeStatsNet: { width: '100%', fontFamily: SERIF, fontSize: 29, marginTop: 6 }, storeStatsBadge: { maxWidth: '42%', minHeight: 42, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(9,11,18,0.72)', flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9 }, storeStatsBadgeValue: { color: C.goldLight, fontFamily: SERIF, fontSize: 15 }, storeStatsBadgeLabel: { flexShrink: 1, color: C.textSubtle, fontFamily: SANS, fontSize: 8 }, storeStatsComparisonTitle: { color: C.textSubtle, fontFamily: SANS, fontSize: 8, letterSpacing: 0.7, textTransform: 'uppercase', marginTop: 11 }, storeStatsComparisonRow: { flexDirection: 'row', gap: 8, marginTop: 6 }, storeStatsComparison: { flex: 1, minWidth: 0, minHeight: 48, borderRadius: 12, backgroundColor: 'rgba(9,11,18,0.48)', flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 9 }, storeStatsComparisonValue: { color: C.gold, fontFamily: SANS, fontSize: 10, fontWeight: '700', marginTop: 2 }, storeStatsComparisonLabel: { color: C.textSubtle, fontFamily: SANS, fontSize: 8.5 }, storeStatsHeroMetrics: { flexDirection: 'row', alignItems: 'center', marginTop: 13, paddingTop: 13, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line }, storeStatsHeroMetric: { flex: 1, minWidth: 0 }, storeStatsHeroValue: { fontFamily: SERIF, fontSize: 15, marginTop: 5 },
+  storeStatsComparisonRowNarrow: { flexDirection: 'column' },
+  storeStatsComparisonNarrow: { flex: 0, width: '100%' },
+  storeStatsMetricGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginTop: 9 }, storeStatsMetricCard: { width: '48.5%', minHeight: 118, borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, padding: 12, justifyContent: 'space-between' }, storeStatsMetricCardWide: { width: '100%' }, storeStatsMetricIcon: { width: 32, height: 32, borderRadius: 10, backgroundColor: 'rgba(233,200,119,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 6 }, storeStatsMetricLabel: { color: C.textSubtle, fontFamily: SANS, fontSize: 8.5, lineHeight: 12, textTransform: 'uppercase' }, storeStatsMetricValue: { width: '100%', color: C.goldLight, fontFamily: SERIF, fontSize: 17, marginTop: 5 }, storeStatsMetricMeta: { color: C.textSubtle, fontFamily: SANS, fontSize: 9, marginTop: 3 },
+  storeStatsChartCard: { borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.62)', paddingHorizontal: 13, overflow: 'hidden' }, storeStatsChart: { minHeight: 112, flexDirection: 'row', alignItems: 'flex-end', paddingTop: 16 }, storeStatsFlowColumn: { flex: 1, minWidth: 0, alignItems: 'center', gap: 5 }, storeStatsFlowBars: { width: '100%', height: 80, flexDirection: 'row', alignItems: 'flex-end', justifyContent: 'center', gap: 3, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, storeStatsFlowBar: { width: 7, borderRadius: 4 }, storeStatsFlowLabel: { width: '100%', height: 14, color: C.textSubtle, fontFamily: SANS, fontSize: 7.5, textAlign: 'center' }, flowLegend: { flexDirection: 'row', flexWrap: 'wrap', gap: 16, paddingTop: 12, paddingBottom: 13 }, flowLegendItem: { flexDirection: 'row', alignItems: 'center', gap: 6 }, flowLegendChip: { width: 8, height: 8, borderRadius: 4 }, flowLegendText: { color: C.textSubtle, fontFamily: SANS, fontSize: 9 }, storeStatsEmpty: { minHeight: 116, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  storeStatsProductRow: { minHeight: 78, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 10 }, storeStatsProductRowTop: { marginHorizontal: -13, paddingHorizontal: 13, backgroundColor: 'rgba(233,200,119,0.055)' }, storeStatsRank: { width: 28, height: 28, borderRadius: 9, backgroundColor: 'rgba(233,200,119,0.1)', alignItems: 'center', justifyContent: 'center' }, storeStatsRankTop: { backgroundColor: C.gold }, storeStatsRankText: { color: C.gold, fontFamily: SERIF, fontSize: 13 }, storeStatsRankTextTop: { color: C.void, fontWeight: '800' }, storeStatsProductNameTop: { color: C.goldLight, fontFamily: SERIF, fontSize: 15 }, storeStatsProductTrack: { height: 4, borderRadius: 2, backgroundColor: C.line, overflow: 'hidden', marginTop: 7 }, storeStatsProductFill: { height: 4, borderRadius: 2 },
   viewIntro: { flexDirection: 'row', alignItems: 'center', gap: 11, marginBottom: 14 }, viewIntroIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: 'rgba(233,200,119,0.1)', alignItems: 'center', justifyContent: 'center' }, viewIntroTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 18 }, viewIntroCopy: { color: 'rgba(255,244,208,0.48)', fontFamily: SANS, fontSize: 10, lineHeight: 15, marginTop: 3 }, movementSummary: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, padding: 12, marginBottom: 12 }, movementMetric: { flex: 1, minWidth: 0 }, movementMetricLabel: { color: 'rgba(233,200,119,0.55)', fontFamily: SANS, fontSize: 8, letterSpacing: 0.6, marginBottom: 4 }, movementMetricValue: { color: C.goldLight, fontFamily: SERIF, fontSize: 13 }, movementMetricValueNegative: { color: C.red, fontFamily: SERIF, fontSize: 13 }, movementMetricDivider: { width: StyleSheet.hairlineWidth, height: 28, backgroundColor: C.line, marginHorizontal: 7 }, movementList: { marginTop: 16 }, movementRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 8 }, movementIcon: { width: 40, height: 40, borderRadius: 13, alignItems: 'center', justifyContent: 'center' }, movementIconIncome: { backgroundColor: 'rgba(233,200,119,0.1)' }, movementIconExpense: { backgroundColor: 'rgba(240,139,136,0.1)' },
-  settingsHero: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, padding: 15, marginBottom: 8 }, settingsHeroIcon: { width: 48, height: 48, borderRadius: 16, backgroundColor: 'rgba(233,200,119,0.12)', alignItems: 'center', justifyContent: 'center' }, settingsHeroTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 20 }, settingsHeroCopy: { color: 'rgba(255,244,208,0.5)', fontFamily: SANS, fontSize: 10, marginTop: 4 }, settingsCard: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, padding: 14 }, primaryButton: { minHeight: 48, borderRadius: 13, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center', marginTop: 13 }, primaryButtonText: { color: C.void, fontFamily: SANS, fontSize: 11, fontWeight: '800', letterSpacing: 0.6 }, buttonDisabled: { opacity: 0.38 }, settingsActionRow: { flexDirection: 'row', gap: 9, marginTop: 12 }, settingsAction: { flex: 1, minHeight: 76, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 7, gap: 7 }, settingsActionText: { color: C.gold, fontFamily: SANS, fontSize: 10, fontWeight: '700', textAlign: 'center' },
+  settingsContent: { width: '100%', maxWidth: 720, alignSelf: 'center' }, settingsCard: { borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.72)', padding: 14 }, buttonDisabled: { opacity: 0.38 }, settingsBackupCopy: { color: 'rgba(255,244,208,0.52)', fontFamily: SANS, fontSize: 11, lineHeight: 17, paddingBottom: 8 }, settingsAction: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 12, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)', paddingVertical: 9 }, settingsActionLast: { borderBottomWidth: 0 }, settingsActionIcon: { width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center' }, settingsActionText: { color: C.goldLight, fontFamily: SANS, fontSize: 12.5, fontWeight: '600' }, settingsActionCopy: { color: C.textSubtle, fontFamily: SANS, fontSize: 10.5, lineHeight: 15, marginTop: 4 },
   empty: { flex: 1, minHeight: 220, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }, emptyIcon: { width: 50, height: 50, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, alignItems: 'center', justifyContent: 'center', marginBottom: 13 }, emptyTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13, textAlign: 'center' }, emptyCopy: { maxWidth: 280, color: 'rgba(255,244,208,0.48)', fontFamily: SANS, fontSize: 11, lineHeight: 17, textAlign: 'center', marginTop: 7 },
   fab: { position: 'absolute', right: 31, bottom: 25, width: 46, height: 46, borderRadius: 23, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }, workspaceFab: { position: 'absolute', right: 32, width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }, workspaceFabStacked: { bottom: 81 }, workspaceFabSolo: { bottom: 25 },
 }));

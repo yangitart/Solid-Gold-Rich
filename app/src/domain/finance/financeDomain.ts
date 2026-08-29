@@ -66,6 +66,13 @@ export function periodBounds(period: 'today' | 'week' | 'month' | 'year', refere
   return { start, end };
 }
 
+export function previousPeriodBounds(period: 'today' | 'week' | 'month' | 'year', current: DateRange): DateRange {
+  if (period === 'month') return { start: new Date(current.start.getFullYear(), current.start.getMonth() - 1, 1), end: new Date(current.start) };
+  if (period === 'year') return { start: new Date(current.start.getFullYear() - 1, 0, 1), end: new Date(current.start) };
+  const duration = current.end.getTime() - current.start.getTime();
+  return { start: new Date(current.start.getTime() - duration), end: new Date(current.start) };
+}
+
 export function inDateRange(date: string, range: DateRange) {
   const timestamp = new Date(date).getTime();
   return timestamp >= range.start.getTime() && timestamp < range.end.getTime();

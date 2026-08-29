@@ -1,7 +1,10 @@
 import type { FinanceState, StoreCashMovement, StoreProduct, StoreProductType, StoreSale, StoreStockMovement } from '../../core/finance/types';
+import { currencyRate, type CurrencyRates } from '../../core/finance/currency';
 import { withStoreBalance } from '../finance/financeDomain';
 
 export type StoreActionResult = { state: FinanceState; error?: 'duplicate' | 'missing-product' | 'insufficient-stock' | 'already-void' };
+export type StoreCurrencyChangeResult = { state: FinanceState; rate?: number; error?: 'missing-rate' };
+export type StoreStatisticsRange = { start: Date; end: Date };
 export type StoreStockFilter = '' | 'low' | 'out' | 'expired' | 'expiring';
 export type StoreSalePeriod = 'all' | 'today' | 'week' | 'month';
 
@@ -14,17 +17,79 @@ function localDate(value: string | Date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
 
+function firstById<T extends { id: string }>(items: readonly T[]) {
+  const index = new Map<string, T>();
+  items.forEach((item) => {
+    if (!index.has(item.id)) index.set(item.id, item);
+  });
+  return index;
+}
+
+function productStockIndex(state: Pick<FinanceState, 'store'>) {
+  const productsById = firstById(state.store.products);
+  const movementTotals = new Map<string, { total: number; hasInitial: boolean }>();
+  state.store.stockMovements.forEach((movement) => {
+    const current = movementTotals.get(movement.productId) ?? { total: 0, hasInitial: false };
+    current.total += movement.quantity;
+    current.hasInitial ||= movement.type === 'initial';
+    movementTotals.set(movement.productId, current);
+  });
+  const stockByProductId = new Map<string, number>();
+  productsById.forEach((product, productId) => {
+    if (product.type === 'service') {
+      stockByProductId.set(productId, 0);
+      return;
+    }
+    const movements = movementTotals.get(productId);
+    stockByProductId.set(productId, (movements?.hasInitial ? 0 : product.initialStock) + (movements?.total ?? 0));
+  });
+  return stockByProductId;
+}
+
+function availableStockFromIndex(stockByProductId: ReadonlyMap<string, number>, product: StoreProduct) {
+  return Math.max(0, (stockByProductId.get(product.id) ?? 0) - product.reservedQuantity);
+}
+
 export function storeBalance(state: Pick<FinanceState, 'store'>) {
   return state.store.cashMovements.reduce((total, item) => total + item.amount, 0);
 }
 
+export function changeStoreCurrency(state: FinanceState, targetCurrency: string, rates: CurrencyRates): StoreCurrencyChangeResult {
+  const sourceCurrency = state.store.currency.toUpperCase();
+  const target = targetCurrency.trim().toUpperCase();
+  const rate = currencyRate(sourceCurrency, target, rates);
+  if (rate === undefined) return { state, error: 'missing-rate' };
+  if (sourceCurrency === target) return { state, rate };
+
+  const convert = (amount: number) => amount * rate;
+  return {
+    rate,
+    state: withStoreBalance({
+      ...state,
+      store: {
+        ...state.store,
+        currency: target,
+        businessAccount: { ...state.store.businessAccount, currency: target },
+        products: state.store.products.map((product) => ({
+          ...product,
+          purchasePrice: convert(product.purchasePrice),
+          salePrice: convert(product.salePrice),
+          additionalSalePrices: product.additionalSalePrices.map(convert),
+        })),
+        sales: state.store.sales.map((sale) => ({
+          ...sale,
+          total: convert(sale.total),
+          items: sale.items.map((item) => ({ ...item, unitPrice: convert(item.unitPrice), total: convert(item.total) })),
+        })),
+        cashMovements: state.store.cashMovements.map((movement) => ({ ...movement, amount: convert(movement.amount) })),
+        employees: state.store.employees.map((employee) => ({ ...employee, salary: convert(employee.salary) })),
+      },
+    }),
+  };
+}
+
 export function productStock(state: Pick<FinanceState, 'store'>, productId: string) {
-  const product = state.store.products.find((item) => item.id === productId);
-  if (!product || product.type === 'service') return 0;
-  const movements = state.store.stockMovements.filter((item) => item.productId === productId);
-  const legacyOpening = movements.some((item) => item.type === 'initial') ? 0 : product.initialStock;
-  return legacyOpening + movements
-    .reduce((total, movement) => total + movement.quantity, 0);
+  return productStockIndex(state).get(productId) ?? 0;
 }
 
 export function storeReportData(state: Pick<FinanceState, 'store'>) {
@@ -52,6 +117,45 @@ export function storeReportData(state: Pick<FinanceState, 'store'>) {
   return { sales, daily, topProducts, topClients, total: sales.reduce((sum, sale) => sum + sale.total, 0) };
 }
 
+export function storeStatistics(state: Pick<FinanceState, 'store'>, range: StoreStatisticsRange) {
+  const inRange = (value: string) => {
+    const timestamp = new Date(value).getTime();
+    return timestamp >= range.start.getTime() && timestamp < range.end.getTime();
+  };
+  const sales = state.store.sales.filter((sale) => sale.status === 'completed' && inRange(sale.date));
+  const movements = state.store.cashMovements.filter((movement) => inRange(movement.date));
+  const salesRevenue = sales.reduce((sum, sale) => sum + sale.total, 0);
+  const cashOutflow = movements.reduce((sum, movement) => sum + (movement.amount < 0 ? -movement.amount : 0), 0);
+  const netFlow = movements.reduce((sum, movement) => sum + movement.amount, 0);
+  const itemsSold = sales.reduce((sum, sale) => sum + sale.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0);
+  const topProductsMap = sales.reduce((map, sale) => {
+    sale.items.forEach((item) => {
+      const current = map.get(item.productId) ?? { productId: item.productId, name: item.name, quantity: 0, total: 0 };
+      map.set(item.productId, { ...current, quantity: current.quantity + item.quantity, total: current.total + item.total });
+    });
+    return map;
+  }, new Map<string, { productId: string; name: string; quantity: number; total: number }>());
+  const topProducts = Array.from(topProductsMap.values()).sort((left, right) => right.total - left.total || right.quantity - left.quantity).slice(0, 5);
+  const stockByProductId = productStockIndex(state);
+  const activeProducts = state.store.products.filter((product) => product.active).length;
+  const lowStock = state.store.products.filter((product) => product.active && product.type === 'product' && availableStockFromIndex(stockByProductId, product) <= product.stockMinimum).length;
+  const inventoryValue = state.store.products.reduce((sum, product) => sum + (product.type === 'product' ? (stockByProductId.get(product.id) ?? 0) * product.purchasePrice : 0), 0);
+  return {
+    sales,
+    movements,
+    salesRevenue,
+    cashOutflow,
+    netFlow,
+    saleCount: sales.length,
+    averageSale: sales.length ? salesRevenue / sales.length : 0,
+    itemsSold,
+    topProducts,
+    activeProducts,
+    lowStock,
+    inventoryValue,
+  };
+}
+
 export function availableStock(state: Pick<FinanceState, 'store'>, product: StoreProduct) {
   return Math.max(0, productStock(state, product.id) - product.reservedQuantity);
 }
@@ -64,16 +168,18 @@ export function filterStoreProducts(
   const today = localDate(filters.today ?? new Date());
   const expiringLimit = new Date(today);
   expiringLimit.setDate(expiringLimit.getDate() + 30);
+  const stockByProductId = productStockIndex(state);
+  const categoriesById = firstById(state.store.categories);
   return state.store.products.filter((product) => {
     if (product.type !== filters.type) return false;
-    const category = state.store.categories.find((item) => item.id === product.categoryId)?.name ?? '';
+    const category = categoriesById.get(product.categoryId)?.name ?? '';
     const matchesQuery = !query || normalizedSearch(`${product.name} ${product.key} ${product.sku ?? ''} ${category}`).includes(query);
     const matchesCategory = !filters.categoryId || product.categoryId === filters.categoryId;
     const matchesStatus = !filters.status || (filters.status === 'active' ? product.active : !product.active);
     if (!matchesQuery || !matchesCategory || !matchesStatus) return false;
     if (!filters.stock) return true;
     if (product.type === 'service') return false;
-    const available = availableStock(state, product);
+    const available = availableStockFromIndex(stockByProductId, product);
     const expiration = product.expirationDate ? localDate(product.expirationDate) : null;
     if (filters.stock === 'low') return available > 0 && available <= product.stockMinimum;
     if (filters.stock === 'out') return available <= 0;
@@ -92,10 +198,13 @@ export function filterStoreSales(
   weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() - filters.firstDayOfWeek + 7) % 7));
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekEnd.getDate() + 7);
+  const clientsById = firstById(state.store.clients);
+  const employeesById = firstById(state.store.employees);
+  const productsById = firstById(state.store.products);
   return state.store.sales.filter((sale) => {
-    const client = state.store.clients.find((item) => item.id === sale.clientId)?.name ?? '';
-    const employee = state.store.employees.find((item) => item.id === sale.employeeId)?.name ?? '';
-    const searchable = normalizedSearch(`${client} ${employee} ${sale.note} ${sale.paymentMethod ?? ''} ${sale.status} ${sale.items.map((item) => { const product = state.store.products.find((entry) => entry.id === item.productId); return `${item.name} ${product?.key ?? ''} ${product?.sku ?? ''}`; }).join(' ')}`);
+    const client = sale.clientId === undefined ? '' : clientsById.get(sale.clientId)?.name ?? '';
+    const employee = sale.employeeId === undefined ? '' : employeesById.get(sale.employeeId)?.name ?? '';
+    const searchable = normalizedSearch(`${client} ${employee} ${sale.note} ${sale.paymentMethod ?? ''} ${sale.status} ${sale.items.map((item) => { const product = productsById.get(item.productId); return `${item.name} ${product?.key ?? ''} ${product?.sku ?? ''}`; }).join(' ')}`);
     if (query && !searchable.includes(query)) return false;
     if (filters.period === 'all') return true;
     const date = localDate(sale.date);
@@ -112,10 +221,12 @@ export function appendCashMovement(state: FinanceState, movement: StoreCashMovem
 
 export function validateSale(state: FinanceState, sale: StoreSale): StoreActionResult['error'] {
   if (state.store.sales.some((item) => item.id === sale.id)) return 'duplicate';
+  const productsById = firstById(state.store.products.filter((product) => product.active));
+  const stockByProductId = productStockIndex(state);
   for (const line of sale.items) {
-    const product = state.store.products.find((item) => item.id === line.productId && item.active);
+    const product = productsById.get(line.productId);
     if (!product) return 'missing-product';
-    if (product.type === 'product' && line.quantity > availableStock(state, product)) return 'insufficient-stock';
+    if (product.type === 'product' && line.quantity > availableStockFromIndex(stockByProductId, product)) return 'insufficient-stock';
   }
   return undefined;
 }

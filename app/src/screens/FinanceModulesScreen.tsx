@@ -15,7 +15,7 @@ import { C, FORM_TYPOGRAPHY, SANS, SERIF, createThemeStyles } from '../theme/lux
 import DateSelect from '../components/DateSelect';
 import { SearchableSelect } from '../components/FormKit';
 import { captureCurrencySnapshot, currencyRate as resolveCurrencyRate } from '../core/finance/currency';
-import { accountBalance as resolveAccountBalance, accountHasHistory, budgetSpent, filterActivityTransactions, inDateRange, periodBounds, recordDebtPayment, recordSavingsContribution, transactionMatchesActivityFilter, type FinanceActivityFilter } from '../domain/finance/financeDomain';
+import { accountHasHistory, budgetSpent, filterActivityTransactions, inDateRange, periodBounds, recordDebtPayment, recordSavingsContribution, transactionMatchesActivityFilter, type FinanceActivityFilter } from '../domain/finance/financeDomain';
 import { createAppBackup, parseAppBackup, restoreAppBackupToDevice } from '../domain/store/storeBackup';
 
 export type FinanceModuleName = 'accounts' | 'debt' | 'notes' | 'tools' | 'savings' | 'budget' | 'activity' | 'recurring' | 'categories' | 'settings';
@@ -275,7 +275,19 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
     setCurrencyRate(display.value);
     setCurrencyRateError('');
   }, [comparisonRateCurrency, configuredRateCurrency, friendlyRate]);
-  const accountBalance = React.useCallback((item: Account) => resolveAccountBalance(state, item.id), [state]);
+  const accountBalancesById = React.useMemo(() => {
+    const balances = new Map<string, number>();
+    state.accounts.forEach((account) => {
+      if (!balances.has(account.id)) balances.set(account.id, account.openingBalance);
+    });
+    state.transactions.forEach((transaction) => {
+      if (transaction.status === 'void' || !balances.has(transaction.accountId)) return;
+      const current = balances.get(transaction.accountId) as number;
+      balances.set(transaction.accountId, transaction.kind === 'income' || transaction.kind === 'adjustment' ? current + transaction.amount : current - transaction.amount);
+    });
+    return balances;
+  }, [state.accounts, state.transactions]);
+  const accountBalance = React.useCallback((item: Account) => accountBalancesById.get(item.id) ?? 0, [accountBalancesById]);
   const activityScopedTransactions = React.useMemo(() => state.transactions.filter((item) => activityAccountId === 'all' || item.accountId === activityAccountId), [activityAccountId, state.transactions]);
   const activityCategories = React.useMemo(() => {
     const configured = activityFilter === 'all'
@@ -702,7 +714,9 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
     const grouped = new Map<string, Transaction[]>();
     items.forEach((item) => {
       const key = localDayKey(item.date);
-      grouped.set(key, [...(grouped.get(key) ?? []), item]);
+      const transactions = grouped.get(key);
+      if (transactions) transactions.push(item);
+      else grouped.set(key, [item]);
     });
     const groups: ActivityGroup[] = Array.from(grouped.entries()).map(([key, transactions]) => ({
       key,
@@ -790,20 +804,22 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
   };
   const renderAccounts = () => (
     <View style={styles.panel}>
-      {accounts.map((item) => (
-        <Pressable key={item.id} style={styles.row} onPress={() => openAccountEditor(item)}>
+      {accounts.map((item) => {
+        const balance = accountBalance(item);
+        const equivalentRate = item.currency === baseCurrency ? undefined : rateBetweenCurrencies(item.currency, baseCurrency);
+        return <Pressable key={item.id} style={styles.row} onPress={() => openAccountEditor(item)}>
           <View style={[styles.accountStripe, { backgroundColor: item.color }]} />
           <View style={styles.rowMain}>
             <Text style={styles.cardTitle}>{item.name}</Text>
             <Text style={styles.cardMeta}>{t(`finance.accountTypes.${item.type}`)} · {item.currency}{item.currency !== baseCurrency ? ` · ${friendlyRateText(item.currency, baseCurrency)}` : ''}</Text>
           </View>
           <View style={styles.accountAmount}>
-            <Text style={styles.positive} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>{money(accountBalance(item), item.currency)}</Text>
-            {item.currency !== baseCurrency && Boolean(rateBetweenCurrencies(item.currency, baseCurrency)) && <Text style={styles.cardMeta} numberOfLines={1}>≈ {money(accountBalance(item) * (rateBetweenCurrencies(item.currency, baseCurrency) as number), baseCurrency)}</Text>}
+            <Text style={styles.positive} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.68}>{money(balance, item.currency)}</Text>
+            {equivalentRate && <Text style={styles.cardMeta} numberOfLines={1}>≈ {money(balance * equivalentRate, baseCurrency)}</Text>}
           </View>
           <Ionicons name="chevron-forward-outline" size={17} color="rgba(255,244,208,0.35)" />
-        </Pressable>
-      ))}
+        </Pressable>;
+      })}
       {!accounts.length && <Empty title={t('finance.release.noAccounts')} body={t('finance.release.noAccountsCopy')} />}
       <AddAction label={t('finance.release.addAccount')} onPress={openNewAccount} />
       {state.accounts.some((item) => item.archived) && <View style={styles.module}>
