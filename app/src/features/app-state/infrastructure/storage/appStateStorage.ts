@@ -235,7 +235,6 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       unitAbbreviation: Array.from(text(item.unitAbbreviation).trim()).slice(0, 4).join('') || undefined,
        categoryId: categoryIdFor(item.categoryId, item.category),
        providerId: text(item.providerId) || undefined,
-       clientId: text(item.clientId) || undefined,
       sku: text(item.sku) || undefined,
       salePrice: Math.max(0, number(item.salePrice)),
       purchasePrice: Math.max(0, purchasePrice),

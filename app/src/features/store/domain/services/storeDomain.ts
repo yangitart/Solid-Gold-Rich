@@ -144,6 +144,7 @@ export function storeStatistics(state: StoreStateContainer, range: StoreStatisti
   const topProducts = Array.from(topProductsMap.values()).sort((left, right) => right.total - left.total || right.quantity - left.quantity).slice(0, 5);
   const stockByProductId = productStockIndex(state);
   const activeProducts = state.store.products.filter((product) => product.active).length;
+  const archivedProducts = state.store.products.filter((product) => !product.active).length;
   const lowStock = state.store.products.filter((product) => product.active && product.type === 'product' && availableStockFromIndex(stockByProductId, product) <= product.stockMinimum).length;
   const inventoryValue = state.store.products.reduce((sum, product) => sum + (product.type === 'product' ? (stockByProductId.get(product.id) ?? 0) * product.purchasePrice : 0), 0);
   return {
@@ -157,6 +158,7 @@ export function storeStatistics(state: StoreStateContainer, range: StoreStatisti
     itemsSold,
     topProducts,
     activeProducts,
+    archivedProducts,
     lowStock,
     inventoryValue,
   };

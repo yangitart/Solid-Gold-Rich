@@ -347,7 +347,7 @@ async function run() {
   const currencyState = emptyFinanceState();
   currencyState.store.currency = 'USD';
   currencyState.store.businessAccount = { id: 'store-business', name: 'Business', currency: 'USD', balance: 10 };
-  currencyState.store.products = [{ id: 'currency-product', key: 'MONEY', name: 'Money product', type: 'product', unit: 'unit', categoryId: 'general', salePrice: 10, purchasePrice: 4, additionalSalePrices: [9, 8], initialStock: 0, reservedQuantity: 0, stockMinimum: 1, active: true }];
+  currencyState.store.products = [{ id: 'currency-product', key: 'MONEY', name: 'Money product', type: 'product', unit: 'unit', categoryId: 'general', salePrice: 10, purchasePrice: 4, additionalSalePrices: [9, 8], initialStock: 0, reservedQuantity: 0, stockMinimum: 1, active: true }, { id: 'archived-product', key: 'OLD', name: 'Archived product', type: 'product', unit: 'unit', categoryId: 'general', salePrice: 2, purchasePrice: 1, additionalSalePrices: [], initialStock: 0, reservedQuantity: 0, stockMinimum: 0, active: false }];
   currencyState.store.stockMovements = [{ id: 'currency-stock', productId: 'currency-product', type: 'entry', quantity: 3, date: jan31, note: 'Keep stock', personalTransactionId: 'linked-purchase' }];
   currencyState.store.sales = [{ id: 'currency-sale', date: jan31, items: [{ productId: 'currency-product', name: 'Money product', type: 'product', quantity: 1, unitPrice: 10, total: 10 }], total: 10, status: 'completed', note: 'Keep sale' }, { id: 'void-sale', date: jan31, items: [{ productId: 'currency-product', name: 'Money product', type: 'product', quantity: 4, unitPrice: 10, total: 40 }], total: 40, status: 'void', note: 'Ignore void sale' }, { id: 'next-period-sale', date: '2025-02-01T00:00:00.000Z', items: [{ productId: 'currency-product', name: 'Money product', type: 'product', quantity: 1, unitPrice: 99, total: 99 }], total: 99, status: 'completed', note: 'Next period' }];
   currencyState.store.cashMovements = [{ id: 'currency-cash', type: 'funding', amount: 10, date: jan31, note: 'Keep cash', transferId: 'linked-transfer' }, { id: 'currency-outflow', type: 'purchase', amount: -4, date: jan31, note: 'Purchase' }];
@@ -361,6 +361,7 @@ async function run() {
   assert.equal(storeStats.itemsSold, 1);
   assert.equal(storeStats.inventoryValue, 12);
   assert.equal(storeStats.activeProducts, 1);
+  assert.equal(storeStats.archivedProducts, 1);
   assert.equal(storeStats.lowStock, 0);
   assert.deepEqual(storeStats.topProducts.map((product) => [product.productId, product.quantity, product.total]), [['currency-product', 1, 10]]);
   const currencyChange = changeStoreCurrency(currencyState, 'CUP', { USD: 1, CUP: 0.04 });

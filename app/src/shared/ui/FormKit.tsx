@@ -76,12 +76,13 @@ export function SegmentedControl({ options, value, onChange, label }: { options:
   })}</View></View>;
 }
 
-export function SearchableSelect({ label, value, options, onChange, placeholder, searchPlaceholder, closeLabel, emptyLabel, emptyAction, required, error, disabled }: { label: string; value: string; options: SelectOption[]; onChange: (value: string) => void; placeholder: string; searchPlaceholder: string; closeLabel: string; emptyLabel: string; emptyAction?: { label: string; onPress: (query: string) => void }; required?: boolean; error?: string; disabled?: boolean }) {
+export function SearchableSelect({ label, value, options, onChange, placeholder, searchPlaceholder, closeLabel, emptyLabel, emptyAction, required, error, disabled }: { label: string; value: string; options: SelectOption[]; onChange: (value: string) => void; placeholder: string; searchPlaceholder: string; closeLabel: string; emptyLabel: string; emptyAction?: { label: string | ((query: string) => string); onPress: (query: string) => void }; required?: boolean; error?: string; disabled?: boolean }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState('');
   const selected = React.useMemo(() => options.find((option) => option.value === value), [options, value]);
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visible = React.useMemo(() => options.filter((option) => !normalizedQuery || `${option.label} ${option.description ?? ''}`.toLocaleLowerCase().includes(normalizedQuery)), [normalizedQuery, options]);
+  const emptyActionLabel = emptyAction ? (typeof emptyAction.label === 'function' ? emptyAction.label(query.trim()) : emptyAction.label) : '';
   const close = () => { setOpen(false); setQuery(''); };
   return <View style={styles.field}>
     <Text style={styles.label} numberOfLines={2}>{label}{required ? <Text style={styles.required}> *</Text> : null}</Text>
@@ -92,7 +93,7 @@ export function SearchableSelect({ label, value, options, onChange, placeholder,
       <View style={styles.options}>{visible.map((option) => {
         const active = value === option.value;
         return <Pressable key={option.value} style={[styles.option, active && styles.optionActive]} onPress={() => { onChange(option.value); close(); }} accessibilityRole="radio" accessibilityState={{ selected: active }}>{option.icon ? <View style={styles.optionIcon}><Ionicons name={option.icon} size={18} color={active ? C.goldLight : C.gold} /></View> : null}<View style={styles.optionCopy}><Text style={styles.optionLabel} numberOfLines={2}>{option.label}</Text>{option.description ? <Text style={styles.optionDescription} numberOfLines={2}>{option.description}</Text> : null}</View><View style={[styles.check, active && styles.checkActive]}>{active ? <Ionicons name="checkmark" size={14} color={C.void} /> : null}</View></Pressable>;
-      })}{!visible.length ? <><Text style={styles.empty} numberOfLines={3}>{emptyLabel}</Text>{emptyAction && normalizedQuery ? <Pressable style={styles.emptyAction} onPress={() => { emptyAction.onPress(query.trim()); close(); }} accessibilityRole="button" accessibilityLabel={emptyAction.label}><View style={styles.optionIcon}><Ionicons name="add-circle-outline" size={19} color={C.gold} /></View><View style={styles.optionCopy}><Text style={styles.optionLabel} numberOfLines={2}>{emptyAction.label}</Text><Text style={styles.optionDescription} numberOfLines={2}>{query.trim()}</Text></View><Ionicons name="chevron-forward" size={17} color={C.textSubtle} /></Pressable> : null}</> : null}</View>
+      })}{!visible.length ? emptyAction && normalizedQuery ? <Pressable style={styles.emptyAction} onPress={() => { emptyAction.onPress(query.trim()); close(); }} accessibilityRole="button" accessibilityLabel={emptyActionLabel}><View style={styles.optionIcon}><Ionicons name="add-circle-outline" size={19} color={C.gold} /></View><View style={styles.optionCopy}><Text style={styles.optionLabel} numberOfLines={2}>{emptyActionLabel}</Text></View><Ionicons name="add" size={18} color={C.gold} /></Pressable> : <Text style={styles.empty} numberOfLines={3}>{emptyLabel}</Text> : null}</View>
     </ResponsiveSheet>
   </View>;
 }

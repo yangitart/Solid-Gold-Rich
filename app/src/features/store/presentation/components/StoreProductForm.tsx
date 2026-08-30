@@ -16,7 +16,6 @@ export type ProductFormDraft = {
   unitAbbreviation: string;
   categoryId: string;
   providerId: string;
-  clientId: string;
   purchasePrice: string;
   salePrice: string;
   additionalSalePrices: string[];
@@ -45,7 +44,6 @@ type ProductFormProps = {
   moreOpen: boolean;
   categoryOptions: SelectOption[];
   providerOptions: SelectOption[];
-  clientOptions: SelectOption[];
   unitOptions: SelectOption[];
   purchaseAccountOptions: SelectOption[];
   purchaseAccountId: string;
@@ -57,7 +55,6 @@ type ProductFormProps = {
   onCategoryChange: (value: string) => void;
   onAddCategory: (name: string) => void;
   onProviderChange: (value: string) => void;
-  onClientChange: (value: string) => void;
   onPurchaseAccountChange: (value: string) => void;
   onManageCategories: () => void;
   onIconChange: (icon: IconName) => void;
@@ -86,7 +83,6 @@ export default function StoreProductForm({
   moreOpen,
   categoryOptions,
   providerOptions,
-  clientOptions,
   unitOptions,
   purchaseAccountOptions,
   purchaseAccountId,
@@ -98,7 +94,6 @@ export default function StoreProductForm({
   onCategoryChange,
   onAddCategory,
   onProviderChange,
-  onClientChange,
   onPurchaseAccountChange,
   onManageCategories,
   onIconChange,
@@ -115,11 +110,10 @@ export default function StoreProductForm({
     <Section icon="barcode-outline" title={t('finance.store.sectionIdentity')} showHeader={false}>
       <FormField label={service ? t('finance.store.service') : t('finance.store.productName')} value={draft.name} onChangeText={(value) => onChangeText('name', value, ['name'])} required error={errors.name} />
       {!service ? <FormField label={t('finance.store.productKey')} value={draft.key} onChangeText={(value) => onChangeText('key', value, ['key'])} required error={errors.key} /> : null}
-      <SearchableSelect label={t('finance.store.category')} value={draft.categoryId} options={categoryOptions} onChange={onCategoryChange} placeholder={t('finance.store.generalCategory')} searchPlaceholder={t('finance.search')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} emptyAction={{ label: t('finance.addCategory'), onPress: onAddCategory }} required error={errors.category} />
+      <SearchableSelect label={t('finance.store.category')} value={draft.categoryId} options={categoryOptions} onChange={onCategoryChange} placeholder={t('finance.store.generalCategory')} searchPlaceholder={t('finance.search')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} emptyAction={{ label: (query) => `${t('finance.store.addCategory')} “${query}”`, onPress: onAddCategory }} required error={errors.category} />
       <Pressable style={styles.manageCategories} onPress={onManageCategories} accessibilityRole="button"><View style={styles.manageCategoriesIcon}><Ionicons name="settings-outline" size={17} color={C.gold} /></View><Text style={styles.manageCategoriesText}>{t('finance.store.manageCategories')}</Text><Ionicons name="chevron-forward" size={17} color={C.textSubtle} /></Pressable>
       <SearchableSelect label={t('finance.store.unit')} value={customUnitOpen ? '__custom__' : draft.unit} options={unitOptions} onChange={onUnitChange} placeholder={t('finance.store.unit')} searchPlaceholder={t('finance.search')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} required error={errors.unit} />
       <SearchableSelect label={t('finance.store.provider')} value={draft.providerId ?? ''} options={providerOptions} onChange={onProviderChange} placeholder={t('finance.store.noneSelected')} searchPlaceholder={t('finance.search')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} />
-      <SearchableSelect label={t('finance.store.client')} value={draft.clientId ?? ''} options={clientOptions} onChange={onClientChange} placeholder={t('finance.store.noneSelected')} searchPlaceholder={t('finance.search')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} />
       {customUnitOpen ? <View style={styles.customUnitFields}>
         <FormField label={t('finance.storeUnits.fullName')} value={draft.unit} onChangeText={(value) => onChangeText('unit', value, ['unit', 'unitName'])} placeholder={t('finance.storeUnits.fullNamePlaceholder')} required error={errors.unit || errors.unitName} />
         <FormField label={t('finance.storeUnits.abbreviation')} value={draft.unitAbbreviation} onChangeText={(value) => onChangeText('unitAbbreviation', value, ['unitAbbreviation'])} placeholder={t('finance.storeUnits.abbreviationPlaceholder')} required maxLength={4} error={errors.unitAbbreviation} />

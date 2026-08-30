@@ -23,7 +23,6 @@ export type StoreProduct = {
   unitAbbreviation?: string;
   categoryId: string;
   providerId?: string;
-  clientId?: string;
   sku?: string;
   salePrice: number;
   purchasePrice: number;
