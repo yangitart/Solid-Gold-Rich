@@ -25,6 +25,16 @@ export function isTransferTransaction(item: { transferId?: string; kind: string 
   return Boolean(item.transferId) || item.kind === 'transfer';
 }
 
+export function transactionImportKey(item: Pick<Transaction, 'accountId' | 'kind' | 'amount' | 'currency' | 'date' | 'payee' | 'category' | 'paymentMethod' | 'status' | 'reference' | 'description'>) {
+  return [item.accountId, item.kind, item.amount, item.currency, item.date, item.payee, item.category, item.paymentMethod, item.status, item.reference, item.description]
+    .map((value) => String(value ?? '').trim().toLocaleLowerCase())
+    .join('\u001f');
+}
+
+export function resolveImportedFinanceState(current: FinanceState, imported: FinanceState, preserveStore: boolean) {
+  return preserveStore ? { ...imported, store: current.store } : imported;
+}
+
 export function isCashFlowTransaction(item: Transaction) {
   return item.status !== 'void' && !isTransferTransaction(item) && (item.kind === 'expense' || item.kind === 'income');
 }

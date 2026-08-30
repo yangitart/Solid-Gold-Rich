@@ -69,6 +69,8 @@ const {
   recordDebtPayment,
   recordSavingsContribution,
   removeTransfer,
+  resolveImportedFinanceState,
+  transactionImportKey,
 } = require('../src/features/finance/domain/services/financeDomain.ts');
 const { removeNoteFolder } = require('../src/features/notes/domain/useCases/removeNoteFolder.ts');
 const { applyPrefixToCurrentLine, continueListAfterNewline, countNotesByFolderTree, insertDividerAfterCurrentLine } = require('../src/features/notes/domain/services/noteText.ts');
@@ -172,6 +174,14 @@ async function run() {
   assert.deepEqual(filterActivityTransactions(activityItems, { filter: 'transfer', category: 'all', query: '' }).map((item) => item.id), ['standalone-transfer']);
   assert.deepEqual(filterActivityTransactions(activityItems, { filter: 'income', category: 'all', query: 'cafe' }).map((item) => item.id), ['accented']);
   assert.deepEqual(filterActivityTransactions(activityItems, { filter: 'all', category: 'all', query: 'ref-25' }).map((item) => item.id), ['accented']);
+  assert.equal(transactionImportKey(activityItems[0]), transactionImportKey({ ...activityItems[0], id: 'same-operation-different-id' }));
+  assert.notEqual(transactionImportKey(activityItems[0]), transactionImportKey({ ...activityItems[0], amount: 26 }));
+  const localImportState = emptyFinanceState();
+  localImportState.store.name = 'Local store';
+  const incomingImportState = emptyFinanceState();
+  incomingImportState.store.name = 'Backup store';
+  assert.equal(resolveImportedFinanceState(localImportState, incomingImportState, true).store.name, 'Local store');
+  assert.equal(resolveImportedFinanceState(localImportState, incomingImportState, false).store.name, 'Backup store');
   const spent = budgetSpent({ id: 'b', accountId: 'a', category: 'food', period: 'monthly', startDate: '', endDate: '', limit: 100, rollover: false, rolloverAmount: 0 }, [
     { ...balances.transactions[0], id: 'expense', kind: 'expense', category: 'food', amount: 10, date: '2026-01-10T12:00:00.000Z' },
     { ...balances.transactions[0], id: 'transfer', kind: 'transfer', category: 'food', amount: 99, date: '2026-01-10T12:00:00.000Z', transferId: 'x' },

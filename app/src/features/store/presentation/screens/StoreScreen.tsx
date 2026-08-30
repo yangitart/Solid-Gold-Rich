@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, BackHandler, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, BackHandler, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -12,6 +12,7 @@ import { accountBalance, periodBounds, previousPeriodBounds, withStoreBalance } 
 import { availableStock, changeStoreCurrency, completeSale as completeStoreSale, filterStoreProducts, filterStoreSales, productStock, storeReportData, storeStatistics, validateSale, voidSale as voidStoreSale, type StoreSalePeriod, type StoreStockFilter } from '@/features/store/domain/services/storeDomain';
 import type { FinanceRepository } from '@/features/finance/application/ports/FinanceRepository';
 import type { BackupRepository } from '@/features/store/application/ports/BackupRepository';
+import type { StoreBackup } from '@/features/store/application/ports/BackupTypes';
 import type { ImageStorage } from '@/features/store/application/ports/ImageStorage';
 import type { ReportExportLabels, ReportRepository, StoreReportRange } from '@/features/store/application/ports/ReportRepository';
 import type { FileService } from '@/application/ports/FileService';
@@ -142,6 +143,8 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const [fundingNote, setFundingNote] = React.useState('');
   const [fundingError, setFundingError] = React.useState('');
   const [backupBusy, setBackupBusy] = React.useState(false);
+  const [importBusy, setImportBusy] = React.useState(false);
+  const [pendingStoreBackup, setPendingStoreBackup] = React.useState<StoreBackup | null>(null);
 
   const nextPayDate = (value: string, frequency: StorePayFrequency) => { const date = new Date(value); if (frequency === 'weekly') date.setDate(date.getDate() + 7); else if (frequency === 'biweekly') date.setDate(date.getDate() + 14); else date.setMonth(date.getMonth() + 1); return date.toISOString(); };
 
@@ -703,31 +706,36 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const importStore = async () => {
     if (backupBusy) return;
     setBackupBusy(true);
+    setImportBusy(true);
     try {
       const result = await fileService.pick(['application/json', 'text/json', 'text/plain', 'application/octet-stream']);
       if (!result) return;
-      const backup = backupRepository.parseStoreJson(await fileService.readText(result.uri));
-      Alert.alert(t('finance.storeBackup.importStore'), t('finance.storeBackup.importConfirmCopy'), [
-        { text: t('finance.cancel'), style: 'cancel' },
-        { text: t('finance.storeBackup.importStore'), style: 'destructive', onPress: () => { void (async () => {
-          setBackupBusy(true);
-          try {
-            const restoredStore = backupRepository.isolateStore(await backupRepository.restoreStore(backup));
-            finance.updateState((current) => ({ ...current, store: financeRepository.normalize({ ...current, store: restoredStore }).store }));
-            setSelectedSaleId(null);
-            switchView('inventory');
-            Alert.alert(t('finance.storeBackup.backupImported'), t('finance.storeBackup.backupImportedCopy'));
-          } catch {
-            Alert.alert(t('finance.storeBackup.backupFailed'), t('finance.storeBackup.backupInvalid'));
-          } finally {
-            setBackupBusy(false);
-          }
-        })(); } },
-      ]);
+      setPendingStoreBackup(backupRepository.parseStoreJson(await fileService.readText(result.uri)));
     } catch {
       Alert.alert(t('finance.storeBackup.backupFailed'), t('finance.storeBackup.backupInvalid'));
     } finally {
       setBackupBusy(false);
+      setImportBusy(false);
+    }
+  };
+
+  const confirmStoreImport = async () => {
+    const backup = pendingStoreBackup;
+    if (!backup) return;
+    setPendingStoreBackup(null);
+    setBackupBusy(true);
+    setImportBusy(true);
+    try {
+      const restoredStore = backupRepository.isolateStore(await backupRepository.restoreStore(backup));
+      finance.updateState((current) => ({ ...current, store: financeRepository.normalize({ ...current, store: restoredStore }).store }));
+      setSelectedSaleId(null);
+      switchView('inventory');
+      Alert.alert(t('finance.storeBackup.backupImported'), t('finance.storeBackup.backupImportedCopy'));
+    } catch {
+      Alert.alert(t('finance.storeBackup.backupFailed'), t('finance.storeBackup.backupInvalid'));
+    } finally {
+      setBackupBusy(false);
+      setImportBusy(false);
     }
   };
 
@@ -837,6 +845,8 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     <Pressable style={[styles.workspaceFab, view === 'inventory' || view === 'services' || view === 'sales' ? styles.workspaceFabStacked : styles.workspaceFabSolo]} onPress={switchWorkspace} accessibilityRole="button" accessibilityLabel={t('finance.workspace.personal')}><Ionicons name="wallet-outline" size={20} color={C.gold} /></Pressable>
     {(view === 'inventory' || view === 'services' || view === 'sales') ? <Pressable style={styles.fab} onPress={view === 'sales' ? openSale : () => openProduct()} accessibilityRole="button" accessibilityLabel={view === 'sales' ? t('finance.store.newSale') : t('finance.store.addProduct')}><Ionicons name="add" size={25} color={C.gold} /></Pressable> : null}
     <ConfirmDialog visible={exitPromptOpen} title={t('finance.exit.title')} message={t('finance.exit.copy')} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.exit.confirm')} icon="power-outline" destructive={false} onCancel={() => setExitPromptOpen(false)} onConfirm={() => { setExitPromptOpen(false); BackHandler.exitApp(); }} />
+    <ConfirmDialog visible={Boolean(pendingStoreBackup)} title={t('finance.storeBackup.importStore')} message={t('finance.storeBackup.importConfirmCopy')} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.storeBackup.importStore')} icon="cloud-download-outline" destructive onCancel={() => setPendingStoreBackup(null)} onConfirm={() => void confirmStoreImport()} />
+    <Modal visible={importBusy} transparent animationType="fade" statusBarTranslucent><View style={styles.importBackdrop}><View style={styles.importCard}><ActivityIndicator size="large" color={C.gold} /><Text style={styles.importTitle}>{t('finance.releaseImport.importing')}</Text><Text style={styles.importCopy}>{t('finance.releaseImport.importingCopy')}</Text></View></View></Modal>
 
     <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}>
       <View style={styles.drawerBackdrop}>
@@ -1001,4 +1011,5 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   empty: { flex: 1, minHeight: 220, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 28 }, emptyIcon: { width: 50, height: 50, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, alignItems: 'center', justifyContent: 'center', marginBottom: 13 }, emptyTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13, textAlign: 'center' }, emptyCopy: { maxWidth: 280, color: 'rgba(255,244,208,0.48)', fontFamily: SANS, fontSize: 11, lineHeight: 17, textAlign: 'center', marginTop: 7 },
   fab: { position: 'absolute', right: 31, bottom: 25, width: 46, height: 46, borderRadius: 23, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }, workspaceFab: { position: 'absolute', right: 32, width: 44, height: 44, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' }, workspaceFabStacked: { bottom: 81 }, workspaceFabSolo: { bottom: 25 },
   reportRangeOptions: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, paddingVertical: 10 }, reportRangeOption: { width: '31.5%', minHeight: 44, borderRadius: 11, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.025)', paddingHorizontal: 5, alignItems: 'center', justifyContent: 'center' }, reportRangeOptionActive: { backgroundColor: C.gold, borderColor: C.gold }, reportRangeOptionText: { maxWidth: '100%', color: C.textSubtle, fontFamily: SANS, fontSize: 9, lineHeight: 12, fontWeight: '600', textAlign: 'center' }, reportRangeOptionTextActive: { color: C.void, fontWeight: '800' },
+  importBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.76)' }, importCard: { width: '100%', maxWidth: 330, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14', padding: 24, alignItems: 'center' }, importTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 21, marginTop: 14, textAlign: 'center' }, importCopy: { color: C.textSubtle, fontFamily: SANS, fontSize: 11, lineHeight: 17, marginTop: 7, textAlign: 'center' },
 }));

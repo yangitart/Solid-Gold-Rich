@@ -30,6 +30,10 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
   const scrollRef = React.useRef<ScrollView>(null);
   const [page, setPage] = React.useState(0);
   const [currency, setCurrency] = React.useState(state.settings.preferredCurrency || 'USD');
+  const [customCurrencies, setCustomCurrencies] = React.useState<string[]>(() => {
+    const preferred = (state.settings.preferredCurrency || 'USD').toUpperCase();
+    return (CURRENCY_OPTIONS as readonly string[]).includes(preferred) ? [] : [preferred];
+  });
   const [currencyPickerOpen, setCurrencyPickerOpen] = React.useState(false);
   const [currencyQuery, setCurrencyQuery] = React.useState('');
   const [languagePickerOpen, setLanguagePickerOpen] = React.useState(false);
@@ -40,16 +44,24 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
   const compact = height < 700;
   const veryCompact = height < 620;
   const lastPage = page === PAGES.length - 1;
-  const availableCurrencies = React.useMemo(() => Array.from(new Set([...CURRENCY_OPTIONS, currency])), [currency]);
+  const availableCurrencies = React.useMemo(() => Array.from(new Set([...CURRENCY_OPTIONS, ...customCurrencies, currency])).sort(), [currency, customCurrencies]);
   const normalizedCurrencyQuery = currencyQuery.trim().toUpperCase();
   const filteredCurrencies = availableCurrencies.filter((item) => !normalizedCurrencyQuery || item.includes(normalizedCurrencyQuery));
   const canAddCustomCurrency = /^[A-Z]{3}$/.test(normalizedCurrencyQuery) && !availableCurrencies.includes(normalizedCurrencyQuery);
 
   const addOnboardingCategory = () => {
     const name = onboardingCategoryName.trim();
+    if (!name) {
+      setOnboardingCategoryError(t('finance.storeUnits.categoryRequired'));
+      return;
+    }
     const id = name.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     if (!id) return;
-    if (state.categories[onboardingCategoryType].some((item) => item.id === id || item.name?.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+    const normalizedName = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
+    if (state.categories[onboardingCategoryType].some((item) => {
+      const label = item.name ?? t(`finance.categories.${item.id}`, { defaultValue: item.id });
+      return item.id === id || label.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase() === normalizedName;
+    })) {
       setOnboardingCategoryError(t('finance.categoryExists'));
       return;
     }
@@ -62,6 +74,14 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
     }));
     setOnboardingCategoryName('');
     setOnboardingCategoryError('');
+  };
+
+  const addCustomCurrency = () => {
+    if (!canAddCustomCurrency) return;
+    setCustomCurrencies((current) => current.includes(normalizedCurrencyQuery) ? current : [...current, normalizedCurrencyQuery]);
+    setCurrency(normalizedCurrencyQuery);
+    setCurrencyQuery('');
+    setCurrencyPickerOpen(false);
   };
 
   const completeOnboarding = () => {
@@ -134,7 +154,7 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
             {item.key === 'organize' && <View style={styles.onboardingCategoryCard}>
               <View style={styles.onboardingCategoryHeader}><Text style={styles.onboardingCategoryLabel}>{t('finance.category')}</Text><View style={styles.onboardingCategoryTabs}>{(['expense', 'income'] as const).map((type) => <Pressable key={type} style={[styles.onboardingCategoryTab, onboardingCategoryType === type && styles.onboardingCategoryTabActive]} onPress={() => { setOnboardingCategoryType(type); setOnboardingCategoryError(''); }} accessibilityRole="tab" accessibilityState={{ selected: onboardingCategoryType === type }}><Text style={[styles.onboardingCategoryTabText, onboardingCategoryType === type && styles.onboardingCategoryTabTextActive]}>{t(type === 'expense' ? 'finance.expenses' : 'finance.income')}</Text></Pressable>)}</View></View>
               <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.onboardingCategoryList}>{state.categories[onboardingCategoryType].map((category) => <View key={category.id} style={styles.onboardingCategoryChip}><Text style={styles.onboardingCategoryChipText} numberOfLines={1}>{category.name ?? t(`finance.categories.${category.id}`, { defaultValue: category.id })}</Text></View>)}</ScrollView>
-              <View style={styles.onboardingCategoryAddRow}><TextInput value={onboardingCategoryName} onChangeText={(value) => { setOnboardingCategoryName(value); setOnboardingCategoryError(''); }} placeholder={t('finance.categoryPlaceholder')} placeholderTextColor={C.textSubtle} style={styles.onboardingCategoryInput} returnKeyType="done" onSubmitEditing={addOnboardingCategory} /><Pressable style={styles.onboardingCategoryAddButton} onPress={addOnboardingCategory} accessibilityRole="button" accessibilityLabel={t('finance.addCategory')}><Ionicons name="add" size={19} color={C.void} /></Pressable></View>
+              <View style={styles.onboardingCategoryAddRow}><TextInput value={onboardingCategoryName} onChangeText={(value) => { setOnboardingCategoryName(value); setOnboardingCategoryError(''); }} placeholder={t('finance.categoryPlaceholder')} placeholderTextColor={C.textSubtle} style={styles.onboardingCategoryInput} returnKeyType="done" maxLength={32} onSubmitEditing={addOnboardingCategory} /><Pressable style={[styles.onboardingCategoryAddButton, !onboardingCategoryName.trim() && styles.onboardingCategoryAddButtonDisabled]} onPress={addOnboardingCategory} accessibilityRole="button" accessibilityLabel={t('finance.addCategory')}><Ionicons name="add" size={19} color={C.void} /></Pressable></View>
               {onboardingCategoryError ? <Text style={styles.onboardingCategoryError}>{onboardingCategoryError}</Text> : null}
             </View>}
             {item.key === 'currency' && <Pressable style={styles.currencySelect} onPress={() => { setCurrencyQuery(''); setCurrencyPickerOpen(true); }} accessibilityRole="button" accessibilityLabel={t('app.onboarding.currency.select')}><View><Text style={styles.currencyCode}>{currency}</Text><Text style={styles.currencyHint}>{t('app.onboarding.currency.select')}</Text></View><Ionicons name="chevron-down-outline" size={18} color={C.gold} /></Pressable>}
@@ -156,7 +176,7 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
             <View style={styles.currencyHeader}><Text style={styles.currencyTitle}>{t('app.onboarding.currency.select')}</Text><Pressable style={styles.closeButton} onPress={() => setCurrencyPickerOpen(false)} accessibilityLabel={t('app.onboarding.currency.close')}><Ionicons name="close" size={18} color={C.goldLight} /></Pressable></View>
             <View style={styles.currencySearch}><Ionicons name="search-outline" size={17} color={C.textSubtle} /><TextInput value={currencyQuery} onChangeText={(value) => setCurrencyQuery(value.replace(/[^a-z]/gi, '').slice(0, 3).toUpperCase())} autoCapitalize="characters" autoCorrect={false} maxLength={3} placeholder={t('app.onboarding.currency.search')} placeholderTextColor={C.textSubtle} style={styles.currencySearchInput} /></View>
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-              {canAddCustomCurrency && <Pressable style={styles.currencyOption} onPress={() => { setCurrency(normalizedCurrencyQuery); setCurrencyQuery(''); setCurrencyPickerOpen(false); }} accessibilityRole="button" accessibilityLabel={t('app.onboarding.currency.add', { currency: normalizedCurrencyQuery })}><View><Text style={styles.currencyOptionText}>{t('app.onboarding.currency.add', { currency: normalizedCurrencyQuery })}</Text><Text style={styles.currencyCustomHint}>{t('app.onboarding.currency.custom')}</Text></View><Ionicons name="add" size={18} color={C.gold} /></Pressable>}
+              {canAddCustomCurrency && <Pressable style={styles.currencyOption} onPress={addCustomCurrency} accessibilityRole="button" accessibilityLabel={t('app.onboarding.currency.add', { currency: normalizedCurrencyQuery })}><View><Text style={styles.currencyOptionText}>{t('app.onboarding.currency.add', { currency: normalizedCurrencyQuery })}</Text><Text style={styles.currencyCustomHint}>{t('app.onboarding.currency.custom')}</Text></View><Ionicons name="add" size={18} color={C.gold} /></Pressable>}
               {filteredCurrencies.map((item) => <Pressable key={item} style={[styles.currencyOption, currency === item && styles.currencyOptionActive]} onPress={() => { setCurrency(item); setCurrencyQuery(''); setCurrencyPickerOpen(false); }}><Text style={styles.currencyOptionText}>{item}</Text>{currency === item && <Ionicons name="checkmark" size={18} color={C.gold} />}</Pressable>)}
             </ScrollView>
           </View>
@@ -216,6 +236,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   onboardingCategoryAddRow: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 7 },
   onboardingCategoryInput: { flex: 1, minHeight: 36, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 0, color: C.goldLight, fontFamily: SANS, fontSize: 10, backgroundColor: 'rgba(255,255,255,0.045)' },
   onboardingCategoryAddButton: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: C.gold },
+  onboardingCategoryAddButtonDisabled: { opacity: 0.38 },
   onboardingCategoryError: { color: C.red, fontFamily: SANS, fontSize: 9, marginTop: 6 },
   currencySelect: { width: '100%', maxWidth: 300, minHeight: 56, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.32)', backgroundColor: 'transparent', paddingHorizontal: 3, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 22 },
   currencyCode: { color: C.goldLight, fontFamily: SERIF, fontSize: 22 },

@@ -15,7 +15,7 @@ import type {
   Transfer,
 } from '@/features/finance/domain/entities/financeTypes';
 import type { FinanceRepository } from '@/features/finance/application/ports/FinanceRepository';
-import { generateDueRecurring } from '@/features/finance/domain/services/financeDomain';
+import { generateDueRecurring, resolveImportedFinanceState, transactionImportKey } from '@/features/finance/domain/services/financeDomain';
 import { addAccount as createAccount, addTransaction as createTransaction, addTransfer as createTransfer, archiveAccount as archiveAccountState, removeTransaction, removeTransfer, restoreAccount as restoreAccountState, updateAccount as updateAccountState, updateTransaction as updateTransactionState } from '@/features/finance/application/commands/financeCommands';
 import { removeNoteFolder } from '@/features/notes/domain/useCases/removeNoteFolder';
 import { captureCurrencySnapshot } from '@/shared/finance/currency';
@@ -58,7 +58,7 @@ type FinanceContextValue = {
   updateNoteFolder: (folder: NoteFolder) => void;
   deleteNoteFolder: (id: string) => void;
   updateCategories: (categories: FinanceState['categories']) => void;
-  importJson: (json: string) => boolean;
+  importJson: (json: string, options?: { preserveStore?: boolean }) => boolean;
   importCsvText: (csv: string, accountId: string) => string[];
   resetData: () => void;
 };
@@ -213,19 +213,33 @@ export function FinanceProvider({ children, repository }: { children: React.Reac
       });
   }, [repository, retryLoad, setPersistenceError, setPersistenceErrorPhase, setPersistenceStatus, state]);
 
-  const importJson = React.useCallback((json: string) => {
+  const importJson = React.useCallback((json: string, options?: { preserveStore?: boolean }) => {
     const parsed = repository.parseJson(json);
     if (!parsed) return false;
-    setState(parsed);
+    setState((current) => resolveImportedFinanceState(current, parsed, Boolean(options?.preserveStore)));
     return true;
   }, [repository, setState]);
 
   const importCsvText = React.useCallback((csv: string, accountId: string) => {
     const account = state.accounts.find((item) => item.id === accountId);
     const result = repository.importCsv(csv, accountId, account?.currency ?? state.settings.preferredCurrency);
-    if (result.items.length) updateState((current) => ({ ...current, transactions: [...result.items.map((item) => ({ ...item, ...captureCurrencySnapshot(item.amount, item.currency, current.settings.preferredCurrency, current.settings.exchangeRates ?? { USD: 1 }) })), ...current.transactions] }));
-    return result.errors;
-  }, [repository, state.accounts, state.settings.preferredCurrency, updateState]);
+    const existingCounts = state.transactions.reduce((counts, item) => {
+      const key = transactionImportKey(item);
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+      return counts;
+    }, new Map<string, number>());
+    let duplicateCount = 0;
+    const uniqueItems = result.items.filter((item) => {
+      const key = transactionImportKey(item);
+      const remaining = existingCounts.get(key) ?? 0;
+      if (remaining <= 0) return true;
+      existingCounts.set(key, remaining - 1);
+      duplicateCount += 1;
+      return false;
+    });
+    if (uniqueItems.length) updateState((current) => ({ ...current, transactions: [...uniqueItems.map((item) => ({ ...item, ...captureCurrencySnapshot(item.amount, item.currency, current.settings.preferredCurrency, current.settings.exchangeRates ?? { USD: 1 }) })), ...current.transactions] }));
+    return duplicateCount ? [...result.errors, `duplicates:${duplicateCount}`] : result.errors;
+  }, [repository, state.accounts, state.settings.preferredCurrency, state.transactions, updateState]);
 
   const resetData = React.useCallback(() => setState(repository.reset()), [repository, setState]);
 

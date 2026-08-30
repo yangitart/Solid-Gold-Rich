@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, BackHandler, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, SectionList, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, BackHandler, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, SectionList, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -16,6 +16,7 @@ import { accountHasHistory, budgetSpent, filterActivityTransactions, inDateRange
 import { removeCategory as removeFinanceCategory } from '@/features/finance/domain/useCases/removeCategory';
 import type { FileService } from '@/application/ports/FileService';
 import type { BackupRepository } from '@/features/store/application/ports/BackupRepository';
+import type { AppBackup } from '@/features/store/application/ports/BackupTypes';
 
 export type FinanceModuleName = 'accounts' | 'debt' | 'notes' | 'tools' | 'savings' | 'budget' | 'activity' | 'recurring' | 'categories' | 'settings';
 
@@ -30,6 +31,7 @@ type ActivityFilter = FinanceActivityFilter;
 type ActivityPeriod = 'all' | 'today' | 'week' | 'month' | 'year';
 type ActivityGroup = { key: string; label: string; transactions: Transaction[] };
 type ConfirmPrompt = { title: string; message: string; confirmLabel: string; onConfirm: () => void; icon?: IconName; destructive?: boolean };
+type PendingFinanceImport = { kind: 'app'; backup: AppBackup } | { kind: 'full-json' | 'finance'; json: string };
 
 const localDayKey = (value: string | Date) => {
   const date = value instanceof Date ? value : new Date(value);
@@ -180,6 +182,8 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
   const [pinError, setPinError] = React.useState('');
   const [settingsSection, setSettingsSection] = React.useState<SettingsSection | null>(null);
   const [confirmPrompt, setConfirmPrompt] = React.useState<ConfirmPrompt | null>(null);
+  const [pendingFinanceImport, setPendingFinanceImport] = React.useState<PendingFinanceImport | null>(null);
+  const [importBusy, setImportBusy] = React.useState(false);
   const [currencyRateCurrency, setCurrencyRateCurrency] = React.useState('USD');
   const [currencyBaseDraft, setCurrencyBaseDraft] = React.useState('USD');
   const [currencyRate, setCurrencyRate] = React.useState('1');
@@ -589,6 +593,8 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
   };
   const csvErrorText = React.useCallback((error: string) => {
     if (error === 'header') return t('finance.releaseImport.csvHeaderError');
+    const duplicates = /^duplicates:(\d+)$/.exec(error);
+    if (duplicates) return t('finance.releaseImport.csvDuplicates', { count: duplicates[1] });
     const match = /^row:(\d+):amount$/.exec(error);
     return match ? t('finance.releaseImport.csvAmountError', { row: match[1] }) : t('finance.releaseImport.csvUnknownError');
   }, [t]);
@@ -608,28 +614,49 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
     try {
       const result = await fileService.pick(['application/json', 'text/csv', 'application/zip', 'application/x-zip-compressed', 'text/plain']);
       if (!result) return;
+      setImportBusy(true);
       const fileUri = result.uri;
       const fileName = result.name.toLocaleLowerCase();
       if (fileName.endsWith('.zip')) {
-        const restored = await backupRepository.restoreApp(backupRepository.parseAppArchive(await fileService.readBase64(fileUri)));
-        if (!finance.importJson(JSON.stringify(restored))) throw new Error('invalid-backup');
+        setPendingFinanceImport({ kind: 'app', backup: backupRepository.parseAppArchive(await fileService.readBase64(fileUri)) });
         return;
       }
       const content = await fileService.readText(fileUri);
       if (result.name.toLocaleLowerCase().endsWith('.json') || content.trim().startsWith('{')) {
-        let jsonToImport = content;
         try {
-          jsonToImport = JSON.stringify(await backupRepository.restoreApp(backupRepository.parseAppJson(content)));
+          setPendingFinanceImport({ kind: 'app', backup: backupRepository.parseAppJson(content) });
         } catch {
-          // Older finance JSON backups did not use the full-backup wrapper.
+          const parsed = JSON.parse(content) as { accounts?: unknown; transactions?: unknown; store?: { products?: unknown; sales?: unknown } };
+          if (!Array.isArray(parsed.accounts) || !Array.isArray(parsed.transactions)) throw new Error('invalid-backup');
+          const includesStore = Boolean(parsed.store && Array.isArray(parsed.store.products) && Array.isArray(parsed.store.sales));
+          setPendingFinanceImport({ kind: includesStore ? 'full-json' : 'finance', json: content });
         }
-        if (!finance.importJson(jsonToImport)) throw new Error('invalid-backup');
       } else if (accounts[0]) {
         const errors = finance.importCsvText(content, accounts[0].id);
         if (errors.length) Alert.alert(t('finance.releaseImport.csvWarnings'), errors.map(csvErrorText).join('\n'));
-      }
+      } else throw new Error('invalid-backup');
     } catch {
       Alert.alert(t('finance.releaseImport.importFailed'), t('finance.releaseImport.invalidBackup'));
+    } finally {
+      setImportBusy(false);
+    }
+  };
+
+  const confirmFinanceImport = async () => {
+    const pending = pendingFinanceImport;
+    if (!pending) return;
+    setPendingFinanceImport(null);
+    setImportBusy(true);
+    try {
+      if (pending.kind === 'app') {
+        const restored = await backupRepository.restoreApp(pending.backup);
+        if (!finance.importJson(JSON.stringify(restored))) throw new Error('invalid-backup');
+      } else if (!finance.importJson(pending.json, { preserveStore: pending.kind === 'finance' })) throw new Error('invalid-backup');
+      Alert.alert(t('finance.releaseImport.importComplete'), t('finance.releaseImport.importCompleteCopy'));
+    } catch {
+      Alert.alert(t('finance.releaseImport.importFailed'), t('finance.releaseImport.invalidBackup'));
+    } finally {
+      setImportBusy(false);
     }
   };
 
@@ -1184,6 +1211,8 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
       <Pressable style={[styles.primary, (!budgetDraft.accountId || !Number(budgetDraft.limit)) && styles.buttonDisabled]} disabled={!budgetDraft.accountId || !Number(budgetDraft.limit)} onPress={addBudget}><Text style={styles.primaryText}>{t('finance.done')}</Text></Pressable>
       <Pressable style={styles.secondary} onPress={() => setBudgetOpen(false)}><Text style={styles.secondaryText}>{t('finance.cancel')}</Text></Pressable>
      </ResponsiveModal>
+    <ConfirmDialog visible={Boolean(pendingFinanceImport)} title={t('finance.releaseExtra.importData')} message={t(pendingFinanceImport?.kind === 'finance' ? 'finance.releaseImport.financeImportConfirm' : 'finance.releaseImport.fullImportConfirm')} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.releaseExtra.importData')} icon="cloud-download-outline" destructive onCancel={() => setPendingFinanceImport(null)} onConfirm={() => void confirmFinanceImport()} />
+    <Modal visible={importBusy} transparent animationType="fade" statusBarTranslucent><View style={styles.importBackdrop}><View style={styles.importCard}><ActivityIndicator size="large" color={C.gold} /><Text style={styles.importTitle}>{t('finance.releaseImport.importing')}</Text><Text style={styles.importCopy}>{t('finance.releaseImport.importingCopy')}</Text></View></View></Modal>
     <ConfirmDialog visible={Boolean(confirmPrompt)} title={confirmPrompt?.title ?? ''} message={confirmPrompt?.message ?? ''} cancelLabel={t('finance.cancel')} confirmLabel={confirmPrompt?.confirmLabel ?? t('finance.done')} icon={confirmPrompt?.icon} destructive={confirmPrompt?.destructive ?? true} onCancel={() => setConfirmPrompt(null)} onConfirm={() => { const action = confirmPrompt?.onConfirm; setConfirmPrompt(null); action?.(); }} />
   </SafeAreaView>;
 }
@@ -1412,4 +1441,5 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   aboutCompact: { alignItems: 'center', paddingHorizontal: 12, paddingBottom: 8 },
   formSheet: { width: '100%', maxWidth: 620, maxHeight: '90%', borderRadius: 24, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.11)', backgroundColor: '#0A0C14' }, formSheetContent: { paddingHorizontal: 18, paddingBottom: 22 }, formField: { marginTop: 8 }, formFieldLabel: { color: 'rgba(233,200,119,0.54)', fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.label, lineHeight: 14, marginBottom: 1, letterSpacing: 0.25 }, formInputRow: { position: 'relative' }, formInput: { minHeight: 43, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.16)', backgroundColor: 'transparent', color: C.goldLight, fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.input, paddingHorizontal: 2, paddingVertical: 8 }, formInputWithVisibility: { paddingRight: 42 }, formInputFocused: { borderBottomColor: C.gold }, formInputVisibility: { position: 'absolute', right: 0, top: 0, width: 42, height: 43, alignItems: 'center', justifyContent: 'center' }, formMultiline: { minHeight: 82, textAlignVertical: 'top', paddingTop: 10 }, formChoices: { gap: 6, paddingVertical: 7 }, formChoice: { minHeight: 40, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.025)', paddingHorizontal: 11, justifyContent: 'center' }, formChoiceActive: { backgroundColor: 'rgba(233,200,119,0.14)' }, formChoiceText: { color: 'rgba(255,244,208,0.58)', fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.option }, formChoiceTextActive: { color: C.goldLight, fontWeight: '700' },
   root: { flex: 1, backgroundColor: C.void }, header: { height: 78, paddingTop: 12, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, back: { width: 42 }, backText: { color: C.goldLight, fontSize: 34, fontWeight: '200' }, headerTitle: { flex: 1, textAlign: 'center', color: C.goldLight, fontFamily: SERIF, fontSize: 21 }, headerSpace: { width: 42 }, content: { paddingHorizontal: 18, paddingBottom: 50 }, panel: { width: '100%', maxWidth: 720, alignSelf: 'center', borderRadius: 19, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(10,12,20,0.72)', padding: 14, marginBottom: 15 }, row: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.1)' }, rowMain: { flex: 1, minWidth: 0 }, accountStripe: { width: 5, height: 38, borderRadius: 3 }, cardTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13 }, cardMeta: { color: 'rgba(255,244,208,0.52)', fontFamily: SANS, fontSize: 11, marginTop: 4 }, positive: { color: C.goldLight, fontFamily: SERIF, fontSize: 14 }, negative: { color: C.red, fontFamily: SERIF, fontSize: 14 }, primary: { minHeight: 48, borderRadius: 14, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center', marginTop: 14 }, primaryText: { color: C.void, fontFamily: SANS, fontSize: 11, fontWeight: '700', letterSpacing: 1 }, secondary: { minHeight: 46, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.gold, alignItems: 'center', justifyContent: 'center', marginTop: 10 }, secondaryText: { color: C.gold, fontFamily: SANS, fontSize: 11, fontWeight: '700' }, danger: { minHeight: 46, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.red, alignItems: 'center', justifyContent: 'center', marginTop: 10 }, dangerText: { color: C.red, fontFamily: SANS, fontSize: 11, fontWeight: '700' }, module: { paddingVertical: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, body: { color: 'rgba(255,244,208,0.72)', fontFamily: SANS, fontSize: 13, lineHeight: 20, marginVertical: 10 }, track: { height: 6, borderRadius: 4, backgroundColor: 'rgba(255,255,255,0.1)', overflow: 'hidden', marginVertical: 9 }, fill: { height: '100%', borderRadius: 4, backgroundColor: C.gold }, chart: { marginBottom: 14 }, chartTop: { flexDirection: 'row', justifyContent: 'space-between' }, check: { width: 44, height: 44, borderRadius: 22, borderWidth: 1, borderColor: C.gold, color: C.gold, textAlign: 'center', textAlignVertical: 'center' }, checkDone: { backgroundColor: C.gold, borderColor: C.gold, color: C.void }, strike: { textDecorationLine: 'line-through', opacity: 0.5 }, toolResult: { color: C.goldLight, fontFamily: SERIF, fontSize: 29, marginBottom: 15 }, toolChoices: { gap: 7, paddingBottom: 8 }, toolChoice: { minHeight: 44, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 6 }, toolChoiceActive: { backgroundColor: C.gold, borderColor: C.gold }, toolChoiceText: { color: 'rgba(255,244,208,0.62)', fontFamily: SANS, fontSize: 11 }, toolChoiceTextActive: { color: C.void, fontWeight: '700' }, menuLink: { paddingVertical: 14, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, field: { marginTop: 11 }, fieldLabel: { color: 'rgba(233,200,119,0.72)', fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.label, letterSpacing: 1, marginBottom: 6 }, input: { minHeight: 48, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', color: C.goldLight, fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.input, paddingHorizontal: 12, paddingVertical: 10 }, multiline: { minHeight: 80, textAlignVertical: 'top' }, import: { minHeight: 210, textAlignVertical: 'top', marginTop: 12 }, choices: { gap: 7, paddingVertical: 8 }, choice: { minHeight: 44, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, paddingHorizontal: 12, justifyContent: 'center' }, choiceActive: { backgroundColor: 'rgba(233,200,119,0.14)', borderColor: C.gold }, choiceText: { color: 'rgba(255,244,208,0.62)', fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.option }, choiceTextActive: { color: C.goldLight }, iconChoices: { gap: 8, paddingVertical: 8 }, iconChoice: { width: 44, height: 44, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', alignItems: 'center', justifyContent: 'center' }, iconChoiceActive: { backgroundColor: C.gold, borderColor: C.gold }, categoryRowIcon: { width: 40, height: 40, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.06)', alignItems: 'center', justifyContent: 'center' }, categoryRowName: { flex: 1 }, empty: { alignItems: 'center', paddingVertical: 28 }, diamond: { width: 22, height: 22, borderWidth: 1, borderColor: C.gold, transform: [{ rotate: '45deg' }], marginBottom: 15 }, emptyTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13 }, emptyBody: { color: 'rgba(255,244,208,0.52)', fontFamily: SANS, fontSize: 11, marginTop: 7, textAlign: 'center' }, modalBackdrop: { flex: 1, justifyContent: 'flex-end', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.72)' }, modalBackdropTablet: { justifyContent: 'center', padding: 28 }, sheet: { width: '100%', maxWidth: 620, maxHeight: '90%', borderRadius: 25, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14', padding: 18 }, sheetTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 23, marginBottom: 12 }, about: { color: C.gold, fontFamily: SERIF, fontSize: 48, textAlign: 'center', marginTop: 20 }, aboutTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 24, textAlign: 'center', marginBottom: 12 },
+  importBackdrop: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0,0,0,0.76)' }, importCard: { width: '100%', maxWidth: 330, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14', padding: 24, alignItems: 'center' }, importTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 21, marginTop: 14, textAlign: 'center' }, importCopy: { color: C.textSubtle, fontFamily: SANS, fontSize: 11, lineHeight: 17, marginTop: 7, textAlign: 'center' },
 }));
