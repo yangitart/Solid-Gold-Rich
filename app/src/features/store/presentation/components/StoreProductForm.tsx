@@ -51,6 +51,7 @@ type ProductFormProps = {
   onAddAdditionalPrice: () => void;
   onUnitChange: (value: string) => void;
   onCategoryChange: (value: string) => void;
+  onAddCategory: (name: string) => void;
   onPurchaseAccountChange: (value: string) => void;
   onManageCategories: () => void;
   onIconChange: (icon: IconName) => void;
@@ -87,6 +88,7 @@ export default function StoreProductForm({
   onAddAdditionalPrice,
   onUnitChange,
   onCategoryChange,
+  onAddCategory,
   onPurchaseAccountChange,
   onManageCategories,
   onIconChange,
@@ -103,7 +105,7 @@ export default function StoreProductForm({
     <Section icon="barcode-outline" title={t('finance.store.sectionIdentity')} showHeader={false}>
       <FormField label={service ? t('finance.store.service') : t('finance.store.productName')} value={draft.name} onChangeText={(value) => onChangeText('name', value, ['name'])} required error={errors.name} />
       {!service ? <FormField label={t('finance.store.productKey')} value={draft.key} onChangeText={(value) => onChangeText('key', value, ['key'])} required error={errors.key} /> : null}
-      <SearchableSelect label={t('finance.store.category')} value={draft.categoryId} options={categoryOptions} onChange={onCategoryChange} placeholder={t('finance.store.generalCategory')} searchPlaceholder={t('finance.search')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} required error={errors.category} />
+      <SearchableSelect label={t('finance.store.category')} value={draft.categoryId} options={categoryOptions} onChange={onCategoryChange} placeholder={t('finance.store.generalCategory')} searchPlaceholder={t('finance.search')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} emptyAction={{ label: t('finance.addCategory'), onPress: onAddCategory }} required error={errors.category} />
       <Pressable style={styles.manageCategories} onPress={onManageCategories} accessibilityRole="button"><View style={styles.manageCategoriesIcon}><Ionicons name="settings-outline" size={17} color={C.gold} /></View><Text style={styles.manageCategoriesText}>{t('finance.store.manageCategories')}</Text><Ionicons name="chevron-forward" size={17} color={C.textSubtle} /></Pressable>
       <SearchableSelect label={t('finance.store.unit')} value={customUnitOpen ? '__custom__' : draft.unit} options={unitOptions} onChange={onUnitChange} placeholder={t('finance.store.unit')} searchPlaceholder={t('finance.search')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} required error={errors.unit} />
       {customUnitOpen ? <View style={styles.customUnitFields}>

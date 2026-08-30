@@ -1,6 +1,8 @@
-import type { Account, FinanceState, Transaction, Transfer } from '@/features/finance/domain/entities/financeTypes';
-import { captureCurrencySnapshot } from '@/shared/finance/currency';
-import { removeTransaction, removeTransfer, withStoreBalance } from '@/features/finance/domain/services/financeDomain';
+import type { AppState as FinanceState } from '@/domain/AppState';
+import type { Account, Transaction, Transfer } from '@/features/finance/domain/entities/financeTypes';
+import { captureCurrencySnapshot } from '@/shared/domain/finance/currency';
+import { removeTransaction, removeTransfer } from '@/features/finance/application/services/financeStateOperations';
+import { withStoreBalance } from '@/features/store/domain/services/storeDomain';
 
 export function addAccount(state: FinanceState, account: Account): FinanceState {
   return { ...state, accounts: [...state.accounts, account], settings: { ...state.settings, activeAccountId: state.settings.activeAccountId ?? account.id } };

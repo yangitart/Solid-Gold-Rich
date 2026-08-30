@@ -5,7 +5,7 @@ import type { ExternalIdentity, LinkedBankAccount, PremiumEntitlement } from '@/
  * no runtime implementation and must not be imported by current UI code.
  * Provider secrets, refresh tokens, bank access tokens, and encryption keys
  * belong on a backend or in an approved secure credential store, never in
- * FinanceState, AsyncStorage, backups, logs, analytics, or source control.
+ * AppState, AsyncStorage, backups, logs, analytics, or source control.
  */
 
 export type IdentitySession = {

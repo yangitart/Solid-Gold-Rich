@@ -3,20 +3,22 @@ import { ActivityIndicator, Alert, BackHandler, KeyboardAvoidingView, Modal, Pla
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFinance } from '@/features/finance/application/FinanceContext';
+import { useFinance } from '@/features/app-state/presentation/components/AppStateContext';
+import type { AppLanguage } from '@/domain/AppState';
 import { DEFAULT_COLORS } from '@/features/finance/domain/entities/defaultColors';
 import { hashPin } from '@/shared/security/pin';
 import { supportedLanguages } from '@/shared/i18n/i18next';
-import type { Account, AppLanguage, Budget, Debt, FinanceCategory, RecurringFrequency, RecurringTransaction, SavingsGoal, Transaction } from '@/features/finance/domain/entities/financeTypes';
+import type { Account, Budget, Debt, FinanceCategory, RecurringFrequency, RecurringTransaction, SavingsGoal, Transaction } from '@/features/finance/domain/entities/financeTypes';
 import { C, FORM_TYPOGRAPHY, SANS, SERIF, createThemeStyles } from '@/shared/theme/luxury';
 import DateSelect from '@/shared/ui/DateSelect';
 import { ConfirmDialog, SearchableSelect } from '@/shared/ui/FormKit';
-import { captureCurrencySnapshot, currencyRate as resolveCurrencyRate } from '@/shared/finance/currency';
-import { accountHasHistory, budgetSpent, filterActivityTransactions, inDateRange, periodBounds, recordDebtPayment, recordSavingsContribution, transactionMatchesActivityFilter, type FinanceActivityFilter } from '@/features/finance/domain/services/financeDomain';
-import { removeCategory as removeFinanceCategory } from '@/features/finance/domain/useCases/removeCategory';
-import type { FileService } from '@/application/ports/FileService';
-import type { BackupRepository } from '@/features/store/application/ports/BackupRepository';
-import type { AppBackup } from '@/features/store/application/ports/BackupTypes';
+import { captureCurrencySnapshot, currencyRate as resolveCurrencyRate } from '@/shared/domain/finance/currency';
+import { accountHasHistory, budgetSpent, filterActivityTransactions, inDateRange, periodBounds, transactionMatchesActivityFilter, type FinanceActivityFilter } from '@/features/finance/domain/services/financeDomain';
+import { recordDebtPayment, recordSavingsContribution } from '@/features/finance/application/services/financeStateOperations';
+import { removeCategory as removeFinanceCategory } from '@/features/finance/application/useCases/removeCategory';
+import type { FileService } from '@/shared/application/ports/FileService';
+import type { BackupRepository } from '@/features/backup/application/ports/BackupRepository';
+import type { AppBackup } from '@/features/backup/application/ports/BackupTypes';
 
 export type FinanceModuleName = 'accounts' | 'debt' | 'notes' | 'tools' | 'savings' | 'budget' | 'activity' | 'recurring' | 'categories' | 'settings';
 
@@ -531,7 +533,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
         setCategoryError(t('finance.categoryExists'));
         return;
       }
-      finance.updateState((current) => ({ ...current, store: { ...current.store, categories: [...current.store.categories, { id, name }] } }));
+      finance.updateState((current) => ({ ...current, store: { ...current.store, categories: [...current.store.categories, { id, name, icon: 'pricetag-outline' }] } }));
       setCategoryName('');
       setCategoryError('');
       setCategoryCreateOpen(false);
@@ -878,7 +880,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
           const locked = Boolean(item.builtIn) || item.id === 'general';
           return (
             <View key={`store-${item.id}`} style={styles.row}>
-              <View style={styles.categoryRowIcon}><Ionicons name={(locked ? 'grid-outline' : 'pricetag-outline') as IconName} size={18} color={C.gold} /></View>
+              <View style={styles.categoryRowIcon}><Ionicons name={(item.icon as IconName | undefined) ?? (locked ? 'grid-outline' : 'pricetag-outline')} size={18} color={C.gold} /></View>
               <Text style={[styles.cardTitle, styles.categoryRowName]}>{label}</Text>
               {!locked && <Pressable onPress={() => removeCategory('store', item.id)} accessibilityLabel={t('finance.deleteCategory')}><Ionicons name="trash-outline" size={19} color={C.red} /></Pressable>}
             </View>

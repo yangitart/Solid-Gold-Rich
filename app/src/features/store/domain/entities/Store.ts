@@ -1,5 +1,5 @@
-import type { Currency, PaymentMethod } from '@/features/finance/domain/entities/financeTypes';
-export type { PaymentMethod } from '@/features/finance/domain/entities/financeTypes';
+import type { Currency, PaymentMethod } from '@/shared/domain/finance/types';
+export type { PaymentMethod } from '@/shared/domain/finance/types';
 
 export type StoreProductType = 'product' | 'service';
 export type StoreStockMovementType = 'initial' | 'entry' | 'exit' | 'adjustment' | 'sale' | 'saleReversal';
@@ -8,7 +8,7 @@ export type StoreCashMovementType = 'opening' | 'funding' | 'withdrawal' | 'sale
 export type StorePayFrequency = 'weekly' | 'biweekly' | 'monthly';
 export type StorePayMode = 'manual' | 'automatic';
 
-export type StoreCategory = { id: string; name: string; builtIn?: boolean };
+export type StoreCategory = { id: string; name: string; icon?: string; builtIn?: boolean };
 
 export type StoreProduct = {
   id: string;

@@ -1,10 +1,10 @@
-import type { FinanceState } from '@/features/finance/domain/entities/financeTypes';
-import type { StoreCashMovement, StoreProduct, StoreProductType, StoreSale, StoreStockMovement } from '@/features/store/domain/entities/Store';
-import { currencyRate, type CurrencyRates } from '@/shared/finance/currency';
-import { withStoreBalance } from '@/features/finance/domain/services/financeDomain';
+import type { StoreCashMovement, StoreProduct, StoreProductType, StoreSale, StoreState, StoreStockMovement } from '@/features/store/domain/entities/Store';
+import { currencyRate, type CurrencyRates } from '@/shared/domain/finance/currency';
 
-export type StoreActionResult = { state: FinanceState; error?: 'duplicate' | 'missing-product' | 'insufficient-stock' | 'already-void' };
-export type StoreCurrencyChangeResult = { state: FinanceState; rate?: number; error?: 'missing-rate' };
+type StoreStateContainer = { store: StoreState };
+
+export type StoreActionResult<T extends StoreStateContainer = StoreStateContainer> = { state: T; error?: 'duplicate' | 'missing-product' | 'insufficient-stock' | 'already-void' };
+export type StoreCurrencyChangeResult<T extends StoreStateContainer = StoreStateContainer> = { state: T; rate?: number; error?: 'missing-rate' };
 export type StoreStatisticsRange = { start: Date; end: Date };
 export type StoreStockFilter = '' | 'low' | 'out' | 'expired' | 'expiring';
 export type StoreSalePeriod = 'all' | 'today' | 'week' | 'month';
@@ -26,7 +26,7 @@ function firstById<T extends { id: string }>(items: readonly T[]) {
   return index;
 }
 
-function productStockIndex(state: Pick<FinanceState, 'store'>) {
+function productStockIndex(state: StoreStateContainer) {
   const productsById = firstById(state.store.products);
   const movementTotals = new Map<string, { total: number; hasInitial: boolean }>();
   state.store.stockMovements.forEach((movement) => {
@@ -51,11 +51,16 @@ function availableStockFromIndex(stockByProductId: ReadonlyMap<string, number>, 
   return Math.max(0, (stockByProductId.get(product.id) ?? 0) - product.reservedQuantity);
 }
 
-export function storeBalance(state: Pick<FinanceState, 'store'>) {
+export function storeBalance(state: StoreStateContainer) {
   return state.store.cashMovements.reduce((total, item) => total + item.amount, 0);
 }
 
-export function changeStoreCurrency(state: FinanceState, targetCurrency: string, rates: CurrencyRates): StoreCurrencyChangeResult {
+export function withStoreBalance<T extends StoreStateContainer>(state: T): T {
+  const balance = storeBalance(state);
+  return { ...state, store: { ...state.store, businessAccount: { ...state.store.businessAccount, balance } } };
+}
+
+export function changeStoreCurrency<T extends StoreStateContainer>(state: T, targetCurrency: string, rates: CurrencyRates): StoreCurrencyChangeResult<T> {
   const sourceCurrency = state.store.currency.toUpperCase();
   const target = targetCurrency.trim().toUpperCase();
   const rate = currencyRate(sourceCurrency, target, rates);
@@ -89,11 +94,11 @@ export function changeStoreCurrency(state: FinanceState, targetCurrency: string,
   };
 }
 
-export function productStock(state: Pick<FinanceState, 'store'>, productId: string) {
+export function productStock(state: StoreStateContainer, productId: string) {
   return productStockIndex(state).get(productId) ?? 0;
 }
 
-export function storeReportData(state: Pick<FinanceState, 'store'>) {
+export function storeReportData(state: StoreStateContainer) {
   const sales = state.store.sales.filter((item) => item.status === 'completed');
   const daily = Array.from(sales.reduce((map, sale) => {
     const date = new Date(sale.date);
@@ -118,7 +123,7 @@ export function storeReportData(state: Pick<FinanceState, 'store'>) {
   return { sales, daily, topProducts, topClients, total: sales.reduce((sum, sale) => sum + sale.total, 0) };
 }
 
-export function storeStatistics(state: Pick<FinanceState, 'store'>, range: StoreStatisticsRange) {
+export function storeStatistics(state: StoreStateContainer, range: StoreStatisticsRange) {
   const inRange = (value: string) => {
     const timestamp = new Date(value).getTime();
     return timestamp >= range.start.getTime() && timestamp < range.end.getTime();
@@ -157,12 +162,12 @@ export function storeStatistics(state: Pick<FinanceState, 'store'>, range: Store
   };
 }
 
-export function availableStock(state: Pick<FinanceState, 'store'>, product: StoreProduct) {
+export function availableStock(state: StoreStateContainer, product: StoreProduct) {
   return Math.max(0, productStock(state, product.id) - product.reservedQuantity);
 }
 
 export function filterStoreProducts(
-  state: Pick<FinanceState, 'store'>,
+  state: StoreStateContainer,
   filters: { type: StoreProductType; query: string; categoryId: string; status: string; stock: StoreStockFilter; today?: Date },
 ) {
   const query = normalizedSearch(filters.query);
@@ -190,7 +195,7 @@ export function filterStoreProducts(
 }
 
 export function filterStoreSales(
-  state: Pick<FinanceState, 'store'>,
+  state: StoreStateContainer,
   filters: { query: string; period: StoreSalePeriod; firstDayOfWeek: 0 | 1; today?: Date },
 ) {
   const query = normalizedSearch(filters.query);
@@ -215,12 +220,12 @@ export function filterStoreSales(
   });
 }
 
-export function appendCashMovement(state: FinanceState, movement: StoreCashMovement) {
+export function appendCashMovement<T extends StoreStateContainer>(state: T, movement: StoreCashMovement): T {
   if (state.store.cashMovements.some((item) => item.id === movement.id)) return state;
   return withStoreBalance({ ...state, store: { ...state.store, cashMovements: [...state.store.cashMovements, movement] } });
 }
 
-export function validateSale(state: FinanceState, sale: StoreSale): StoreActionResult['error'] {
+export function validateSale(state: StoreStateContainer, sale: StoreSale): StoreActionResult['error'] {
   if (state.store.sales.some((item) => item.id === sale.id)) return 'duplicate';
   const productsById = firstById(state.store.products.filter((product) => product.active));
   const stockByProductId = productStockIndex(state);
@@ -232,13 +237,13 @@ export function validateSale(state: FinanceState, sale: StoreSale): StoreActionR
   return undefined;
 }
 
-export function completeSale(
-  state: FinanceState,
+export function completeSale<T extends StoreStateContainer>(
+  state: T,
   sale: StoreSale,
   createId: (prefix: string) => string,
   stockNote: string,
   cashNote: string,
-): StoreActionResult {
+): StoreActionResult<T> {
   const validationError = validateSale(state, sale);
   if (validationError) return { state, error: validationError };
   const stockMovements: StoreStockMovement[] = sale.items
@@ -273,13 +278,13 @@ export function completeSale(
   };
 }
 
-export function voidSale(
-  state: FinanceState,
+export function voidSale<T extends StoreStateContainer>(
+  state: T,
   saleId: string,
   createId: (prefix: string) => string,
   stockNote: string,
   cashNote: string,
-): StoreActionResult {
+): StoreActionResult<T> {
   const sale = state.store.sales.find((item) => item.id === saleId);
   if (!sale) return { state, error: 'missing-product' };
   if (sale.status === 'void') return { state, error: 'already-void' };

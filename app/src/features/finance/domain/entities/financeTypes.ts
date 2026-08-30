@@ -1,32 +1,10 @@
-import type { Note, NoteFolder } from '@/features/notes/domain/entities/Note';
-import type { StoreState } from '@/features/store/domain/entities/Store';
+import type { Currency, PaymentMethod } from '@/shared/domain/finance/types';
 
-export type { Note, NoteFolder } from '@/features/notes/domain/entities/Note';
-export type {
-  StoreAccount,
-  StoreCashMovement,
-  StoreCategory,
-  StoreClient,
-  StoreEmployee,
-  StoreProduct,
-  StoreProductType,
-  StoreSale,
-  StoreSaleItem,
-  StoreState,
-  StoreStockMovement,
-  StoreStockMovementType,
-  StoreSaleStatus,
-  StoreCashMovementType,
-  StorePayFrequency,
-  StorePayMode,
-} from '@/features/store/domain/entities/Store';
-
-export type Currency = string;
+export type { Currency, PaymentMethod } from '@/shared/domain/finance/types';
 
 export type AccountType = 'cash' | 'bank' | 'card' | 'savings' | 'debt' | 'other';
 export type TransactionKind = 'expense' | 'income' | 'adjustment' | 'transfer';
 export type TransactionStatus = 'pending' | 'cleared' | 'void';
-export type PaymentMethod = 'cash' | 'card' | 'bank' | 'transfer' | 'other';
 export type BudgetPeriod = 'monthly' | 'weekly' | 'custom';
 export type RecurringFrequency = 'daily' | 'weekly' | 'monthly' | 'yearly';
 
@@ -170,20 +148,6 @@ export type Reminder = {
   linkedAccountId?: string;
   linkedTransactionId?: string;
 };
-export type AppSettings = {
-  activeAccountId?: string;
-  activeWorkspace?: 'personal' | 'store';
-  preferredCurrency: Currency;
-  exchangeRates?: Record<string, number>;
-  firstDayOfWeek: 0 | 1;
-  dateFormat: 'system' | 'iso';
-  language?: AppLanguage;
-  theme?: 'dark' | 'light';
-  pinHash?: string;
-};
-
-export type AppLanguage = 'en' | 'es' | 'pt' | 'fr' | 'de' | 'it';
-
 export type FinanceCategory = {
   id: string;
   icon: string;
@@ -195,21 +159,4 @@ export type FinanceCategories = {
   expense: FinanceCategory[];
   income: FinanceCategory[];
   tag: FinanceCategory[];
-};
-
-export type FinanceState = {
-  schemaVersion: 7;
-  accounts: Account[];
-  transactions: Transaction[];
-  transfers: Transfer[];
-  budgets: Budget[];
-  recurring: RecurringTransaction[];
-  debts: Debt[];
-  savingsGoals: SavingsGoal[];
-  reminders: Reminder[];
-  notes: Note[];
-  noteFolders: NoteFolder[];
-  categories: FinanceCategories;
-  store: StoreState;
-  settings: AppSettings;
 };

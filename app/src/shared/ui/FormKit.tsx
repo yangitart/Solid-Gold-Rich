@@ -76,7 +76,7 @@ export function SegmentedControl({ options, value, onChange, label }: { options:
   })}</View></View>;
 }
 
-export function SearchableSelect({ label, value, options, onChange, placeholder, searchPlaceholder, closeLabel, emptyLabel, required, error, disabled }: { label: string; value: string; options: SelectOption[]; onChange: (value: string) => void; placeholder: string; searchPlaceholder: string; closeLabel: string; emptyLabel: string; required?: boolean; error?: string; disabled?: boolean }) {
+export function SearchableSelect({ label, value, options, onChange, placeholder, searchPlaceholder, closeLabel, emptyLabel, emptyAction, required, error, disabled }: { label: string; value: string; options: SelectOption[]; onChange: (value: string) => void; placeholder: string; searchPlaceholder: string; closeLabel: string; emptyLabel: string; emptyAction?: { label: string; onPress: (query: string) => void }; required?: boolean; error?: string; disabled?: boolean }) {
   const [open, setOpen] = React.useState(false);
   const [query, setQuery] = React.useState('');
   const selected = React.useMemo(() => options.find((option) => option.value === value), [options, value]);
@@ -92,7 +92,7 @@ export function SearchableSelect({ label, value, options, onChange, placeholder,
       <View style={styles.options}>{visible.map((option) => {
         const active = value === option.value;
         return <Pressable key={option.value} style={[styles.option, active && styles.optionActive]} onPress={() => { onChange(option.value); close(); }} accessibilityRole="radio" accessibilityState={{ selected: active }}>{option.icon ? <View style={styles.optionIcon}><Ionicons name={option.icon} size={18} color={active ? C.goldLight : C.gold} /></View> : null}<View style={styles.optionCopy}><Text style={styles.optionLabel} numberOfLines={2}>{option.label}</Text>{option.description ? <Text style={styles.optionDescription} numberOfLines={2}>{option.description}</Text> : null}</View><View style={[styles.check, active && styles.checkActive]}>{active ? <Ionicons name="checkmark" size={14} color={C.void} /> : null}</View></Pressable>;
-      })}{!visible.length ? <Text style={styles.empty} numberOfLines={3}>{emptyLabel}</Text> : null}</View>
+      })}{!visible.length ? <><Text style={styles.empty} numberOfLines={3}>{emptyLabel}</Text>{emptyAction && normalizedQuery ? <Pressable style={styles.emptyAction} onPress={() => { emptyAction.onPress(query.trim()); close(); }} accessibilityRole="button" accessibilityLabel={emptyAction.label}><View style={styles.optionIcon}><Ionicons name="add-circle-outline" size={19} color={C.gold} /></View><View style={styles.optionCopy}><Text style={styles.optionLabel} numberOfLines={2}>{emptyAction.label}</Text><Text style={styles.optionDescription} numberOfLines={2}>{query.trim()}</Text></View><Ionicons name="chevron-forward" size={17} color={C.textSubtle} /></Pressable> : null}</> : null}</View>
     </ResponsiveSheet>
   </View>;
 }
@@ -155,6 +155,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   check: { width: 22, height: 22, borderRadius: 11, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.28)', alignItems: 'center', justifyContent: 'center' },
   checkActive: { backgroundColor: C.gold, borderColor: C.gold },
   empty: { minHeight: 90, color: 'rgba(255,244,208,0.45)', fontFamily: SANS, fontSize: 11, textAlign: 'center', textAlignVertical: 'center', paddingTop: 34 },
+  emptyAction: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 8, borderRadius: 11, backgroundColor: 'rgba(233,200,119,0.07)' },
   actions: { gap: 9 },
   actionRow: { flexDirection: 'row', gap: 8 },
   cancel: { flex: 1, minHeight: 47, borderRadius: 13, backgroundColor: 'rgba(255,255,255,0.025)', alignItems: 'center', justifyContent: 'center' },

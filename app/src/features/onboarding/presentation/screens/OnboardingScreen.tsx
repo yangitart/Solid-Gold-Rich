@@ -5,7 +5,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { C, SANS, SERIF, createThemeStyles } from '@/shared/theme/luxury';
-import { useFinance } from '@/features/finance/application/FinanceContext';
+import { useFinance } from '@/features/app-state/presentation/components/AppStateContext';
 import i18n, { getPhoneLanguage, supportedLanguages, type SupportedLanguage } from '@/shared/i18n/i18next';
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];

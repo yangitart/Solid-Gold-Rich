@@ -5,19 +5,19 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import Animated, { Easing, FadeIn, FadeOut, SlideInLeft, useReducedMotion } from 'react-native-reanimated';
-import { useFinance } from '@/features/finance/application/FinanceContext';
+import { useFinance } from '@/features/app-state/presentation/components/AppStateContext';
 import type { PaymentMethod, StoreCategory, StoreClient, StoreEmployee, StorePayFrequency, StorePayMode, StoreProduct, StoreProductType, StoreSale, StoreSaleItem, StoreStockMovementType } from '@/features/store/domain/entities/Store';
-import { captureCurrencySnapshot, currencyRate } from '@/shared/finance/currency';
-import { accountBalance, periodBounds, previousPeriodBounds, withStoreBalance } from '@/features/finance/domain/services/financeDomain';
-import { availableStock, changeStoreCurrency, completeSale as completeStoreSale, filterStoreProducts, filterStoreSales, productStock, storeReportData, storeStatistics, validateSale, voidSale as voidStoreSale, type StoreSalePeriod, type StoreStockFilter } from '@/features/store/domain/services/storeDomain';
-import type { FinanceRepository } from '@/features/finance/application/ports/FinanceRepository';
-import type { BackupRepository } from '@/features/store/application/ports/BackupRepository';
-import type { StoreBackup } from '@/features/store/application/ports/BackupTypes';
+import { captureCurrencySnapshot, currencyRate } from '@/shared/domain/finance/currency';
+import { accountBalance, periodBounds, previousPeriodBounds } from '@/features/finance/domain/services/financeDomain';
+import { availableStock, changeStoreCurrency, completeSale as completeStoreSale, filterStoreProducts, filterStoreSales, productStock, storeReportData, storeStatistics, validateSale, voidSale as voidStoreSale, withStoreBalance, type StoreSalePeriod, type StoreStockFilter } from '@/features/store/domain/services/storeDomain';
+import type { AppStateRepository } from '@/features/app-state/application/ports/AppStateRepository';
+import type { BackupRepository } from '@/features/backup/application/ports/BackupRepository';
+import type { StoreBackup } from '@/features/backup/application/ports/BackupTypes';
 import type { ImageStorage } from '@/features/store/application/ports/ImageStorage';
 import type { ReportExportLabels, ReportRepository, StoreReportRange } from '@/features/store/application/ports/ReportRepository';
-import type { FileService } from '@/application/ports/FileService';
+import type { FileService } from '@/shared/application/ports/FileService';
 import { ConfirmDialog, FormActions, FormField, ResponsiveSheet, SearchableSelect, SegmentedControl, type SelectOption } from '@/shared/ui/FormKit';
-import StoreProductForm, { type ProductFormDraft, type ProductFormTextField } from '../components/StoreProductForm';
+import StoreProductForm, { PRODUCT_ICON_OPTIONS, type ProductFormDraft, type ProductFormTextField } from '../components/StoreProductForm';
 import DateSelect from '@/shared/ui/DateSelect';
 import { C, SANS, SERIF, createThemeStyles } from '@/shared/theme/luxury';
 
@@ -69,7 +69,7 @@ function ProductPicture({ product }: { product: StoreProduct }) {
   return <Image source={{ uri: product.picture }} style={styles.productImage} onError={() => setFailed(true)} />;
 }
 
-export default function StoreScreen({ backupRepository, fileService, imageStorage, financeRepository, reportRepository }: { backupRepository: BackupRepository; fileService: FileService; imageStorage: ImageStorage; financeRepository: FinanceRepository; reportRepository: ReportRepository }) {
+export default function StoreScreen({ backupRepository, fileService, imageStorage, appStateRepository, reportRepository }: { backupRepository: BackupRepository; fileService: FileService; imageStorage: ImageStorage; appStateRepository: AppStateRepository; reportRepository: ReportRepository }) {
   const { t } = useTranslation();
   const finance = useFinance();
   const { state } = finance;
@@ -95,6 +95,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const [purchaseAccountId, setPurchaseAccountId] = React.useState('store-business');
   const [categoryManagerOpen, setCategoryManagerOpen] = React.useState(false);
   const [categoryName, setCategoryName] = React.useState('');
+  const [categoryIcon, setCategoryIcon] = React.useState<IconName>('pricetag-outline');
   const [categoryError, setCategoryError] = React.useState('');
   const [editingCategoryId, setEditingCategoryId] = React.useState<string | null>(null);
   const [stockProduct, setStockProduct] = React.useState<StoreProduct | null>(null);
@@ -135,7 +136,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const [movementType, setMovementType] = React.useState<'all' | 'income' | 'expense'>('all');
   const [reportKind, setReportKind] = React.useState<StoreReportKind | null>(null);
   const [reportRangeMode, setReportRangeMode] = React.useState<ReportRangeMode>('today');
-  const [storeStatsRange, setStoreStatsRange] = React.useState<StoreStatsRange>('month');
+  const [storeStatsRange, setStoreStatsRange] = React.useState<StoreStatsRange>('today');
   const [reportStartDate, setReportStartDate] = React.useState(() => isoAtNoon(new Date(new Date().getFullYear(), new Date().getMonth(), 1)));
   const [reportEndDate, setReportEndDate] = React.useState(() => isoAtNoon(new Date()));
   const [fundingAccountId, setFundingAccountId] = React.useState('none');
@@ -268,7 +269,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     return () => subscription.remove();
   }, [addOpen, categoryManagerOpen, directoryOpen, drawerOpen, exitPromptOpen, filterOpen, productOpen, reportKind, saleOpen, selectedSaleId, stockProduct, t, view]);
 
-  const categoryOptions = React.useMemo<SelectOption[]>(() => store.categories.map((item) => ({ value: item.id, label: categoryNameFor(item.id), icon: 'pricetag-outline' })), [categoryNameFor, store.categories]);
+  const categoryOptions = React.useMemo<SelectOption[]>(() => store.categories.map((item) => ({ value: item.id, label: categoryNameFor(item.id), icon: (item.icon as IconName | undefined) ?? (item.builtIn ? 'grid-outline' : 'pricetag-outline') })), [categoryNameFor, store.categories]);
   const accountOptions = React.useMemo<SelectOption[]>(() => [
     { value: 'none', label: t('finance.storePurchase.none'), icon: 'remove-circle-outline' },
     { value: 'store-business', label: t('finance.storeAccount.name'), description: money(store.businessAccount.balance, currency), icon: 'storefront-outline' },
@@ -281,7 +282,6 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const clientOptions = React.useMemo<SelectOption[]>(() => [{ value: '', label: t('finance.store.noneSelected'), icon: 'remove-circle-outline' }, ...store.clients.filter((item) => item.active).map((item) => ({ value: item.id, label: item.name, icon: 'person-outline' as const }))], [store.clients, t]);
   const employeeOptions = React.useMemo<SelectOption[]>(() => [{ value: '', label: t('finance.store.noneSelected'), icon: 'remove-circle-outline' }, ...store.employees.filter((item) => item.active).map((item) => ({ value: item.id, label: item.name, icon: 'people-outline' as const }))], [store.employees, t]);
   const selectedFundingAccount = React.useMemo(() => accountOptions.find((item) => item.value === fundingAccountId), [accountOptions, fundingAccountId]);
-  const fundingPreview = numeric(fundingAmount);
   const saleItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const visibleMovements = React.useMemo(() => {
     const query = normalizedSearch(movementQuery);
@@ -470,6 +470,14 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     setProductOpen(false);
   };
 
+  const openCategoryManager = (name = '') => {
+    setEditingCategoryId(null);
+    setCategoryName(name);
+    setCategoryIcon('pricetag-outline');
+    setCategoryError('');
+    setCategoryManagerOpen(true);
+  };
+
   const saveCategory = () => {
     const name = categoryName.trim();
     if (!name) { setCategoryError(t('finance.storeUnits.categoryRequired')); return; }
@@ -480,12 +488,12 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       store: {
         ...current.store,
         categories: editingCategoryId
-          ? current.store.categories.map((item) => item.id === editingCategoryId ? { ...item, name } : item)
-          : [...current.store.categories, { id: categoryId, name }],
+          ? current.store.categories.map((item) => item.id === editingCategoryId ? { ...item, name, icon: categoryIcon } : item)
+          : [...current.store.categories, { id: categoryId, name, icon: categoryIcon }],
       },
     }));
     if (!editingCategoryId) setProductDraft((current) => ({ ...current, categoryId }));
-    setCategoryName(''); setCategoryError(''); setEditingCategoryId(null); setCategoryManagerOpen(false);
+    setCategoryName(''); setCategoryIcon('pricetag-outline'); setCategoryError(''); setEditingCategoryId(null); setCategoryManagerOpen(false);
   };
 
   const deleteCategory = (category: StoreCategory) => {
@@ -727,7 +735,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     setImportBusy(true);
     try {
       const restoredStore = backupRepository.isolateStore(await backupRepository.restoreStore(backup));
-      finance.updateState((current) => ({ ...current, store: financeRepository.normalize({ ...current, store: restoredStore }).store }));
+      finance.updateState((current) => ({ ...current, store: appStateRepository.normalize({ ...current, store: restoredStore }).store }));
       setSelectedSaleId(null);
       switchView('inventory');
       Alert.alert(t('finance.storeBackup.backupImported'), t('finance.storeBackup.backupImportedCopy'));
@@ -873,7 +881,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     </ResponsiveSheet>
 
     <ResponsiveSheet visible={addOpen} title={t('finance.storeFunding.title')} onClose={() => setAddOpen(false)} closeLabel={t('finance.close')} footer={<FormActions saveLabel={t('finance.storeFunding.save')} onSave={() => commitFunding(false)} compact disabled={!(numeric(fundingAmount) > 0)} />}>
-      <View style={styles.flowHero}><View style={styles.flowHeroSide}><Text style={styles.flowHeroLabel}>{t('finance.storeBackup.businessBalance')}</Text><Text style={styles.flowHeroValue} numberOfLines={1} adjustsFontSizeToFit>{money(store.businessAccount.balance, currency)}</Text><Text style={styles.flowHeroMeta}>{t('finance.store.business')}</Text></View><Ionicons name="add-outline" size={20} color={C.gold} /><View style={styles.flowHeroSide}><Text style={styles.flowHeroLabel}>{t('finance.storeFunding.amount')}</Text><Text style={styles.flowHeroValue} numberOfLines={1} adjustsFontSizeToFit>{fundingPreview > 0 ? '+' + money(fundingPreview, currency) : '—'}</Text><Text style={styles.flowHeroMeta}>{selectedFundingAccount?.label ?? t('finance.storePurchase.none')}</Text></View></View>
+      <View style={styles.flowHero}><View style={styles.flowHeroSide}><Text style={styles.flowHeroLabel}>{t('finance.storeFunding.account')}</Text><Text style={styles.flowHeroValue} numberOfLines={1} adjustsFontSizeToFit>{selectedFundingAccount?.label ?? t('finance.storePurchase.none')}</Text><Text style={styles.flowHeroMeta}>{selectedFundingAccount?.description ?? t('finance.storePurchase.none')}</Text></View><Ionicons name="arrow-forward-outline" size={20} color={C.gold} /><View style={styles.flowHeroSide}><Text style={styles.flowHeroLabel}>{t('finance.storeBackup.businessBalance')}</Text><Text style={styles.flowHeroValue} numberOfLines={1} adjustsFontSizeToFit>{money(store.businessAccount.balance, currency)}</Text><Text style={styles.flowHeroMeta}>{t('finance.store.business')}</Text></View></View>
       <Text style={styles.helper}>{t('finance.storeFunding.copy')}</Text>
       <SearchableSelect label={t('finance.storeFunding.account')} value={fundingAccountId} options={accountOptions.filter((item) => item.value !== 'store-business')} onChange={(value) => { setFundingAccountId(value); setFundingError(''); }} placeholder={t('finance.storePurchase.none')} searchPlaceholder={t('finance.search')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} />
       <FormField label={t('finance.storeFunding.amount')} value={fundingAmount} onChangeText={(value) => { setFundingAmount(value); setFundingError(''); }} numeric required placeholder="0.00" error={fundingError} />
@@ -900,6 +908,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
         onRemoveAdditionalPrice={(index) => setProductDraft((current) => ({ ...current, additionalSalePrices: current.additionalSalePrices.filter((_, itemIndex) => itemIndex !== index) }))}
         onAddAdditionalPrice={() => setProductDraft((current) => ({ ...current, additionalSalePrices: [...current.additionalSalePrices, ''] }))}
         onUnitChange={handleProductUnitChange}
+        onAddCategory={openCategoryManager}
         onPurchaseAccountChange={(value) => {
           setPurchaseAccountId(value);
           setProductErrors((current) => ({ ...current, purchase: '' }));
@@ -908,7 +917,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
           setProductDraft((current) => ({ ...current, categoryId: value }));
           setProductErrors((current) => ({ ...current, category: '' }));
         }}
-        onManageCategories={() => setCategoryManagerOpen(true)}
+        onManageCategories={() => openCategoryManager()}
         onIconChange={(icon) => setProductDraft((current) => ({ ...current, icon }))}
         onToggleMore={() => setProductMoreOpen((current) => !current)}
         onChoosePicture={choosePicture}
@@ -918,9 +927,10 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       />
     </ResponsiveSheet>
 
-    <ResponsiveSheet visible={categoryManagerOpen} title={t('finance.store.manageCategories')} onClose={() => { setCategoryManagerOpen(false); setEditingCategoryId(null); setCategoryName(''); setCategoryError(''); }} closeLabel={t('finance.close')} footer={<FormActions cancelLabel={t('finance.cancel')} saveLabel={t('finance.save')} onCancel={() => { setCategoryManagerOpen(false); setEditingCategoryId(null); setCategoryName(''); setCategoryError(''); }} onSave={saveCategory} disabled={!categoryName.trim()} />}>
+    <ResponsiveSheet visible={categoryManagerOpen} title={t('finance.store.manageCategories')} onClose={() => { setCategoryManagerOpen(false); setEditingCategoryId(null); setCategoryName(''); setCategoryIcon('pricetag-outline'); setCategoryError(''); }} closeLabel={t('finance.close')} footer={<FormActions cancelLabel={t('finance.cancel')} saveLabel={t('finance.save')} onCancel={() => { setCategoryManagerOpen(false); setEditingCategoryId(null); setCategoryName(''); setCategoryIcon('pricetag-outline'); setCategoryError(''); }} onSave={saveCategory} disabled={!categoryName.trim()} />}>
       <View style={styles.inline}><View style={styles.inlineMain}><FormField label={editingCategoryId ? t('finance.store.renameCategory') : t('finance.store.newCategoryPlaceholder')} value={categoryName} onChangeText={(value) => { setCategoryName(value); setCategoryError(''); }} error={categoryError} /></View></View>
-      {store.categories.map((category) => <View key={category.id} style={styles.categoryRow}><Text style={[styles.rowTitle, styles.categoryRowText]} numberOfLines={1}>{categoryNameFor(category.id)}</Text>{!category.builtIn ? <><Pressable style={styles.iconButton} onPress={() => { setEditingCategoryId(category.id); setCategoryName(category.name); }} accessibilityLabel={t('finance.editAction')}><Ionicons name="pencil-outline" size={17} color={C.gold} /></Pressable><Pressable style={styles.iconButton} onPress={() => deleteCategory(category)} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></> : null}</View>)}
+      <View style={styles.categoryIconPicker}><View style={styles.categoryIconHeader}><Text style={styles.subLabel}>{t('finance.chooseIcon')}</Text><View style={styles.categorySelectedIcon}><Ionicons name={categoryIcon} size={18} color={C.goldLight} /></View></View><View style={styles.categoryIconChoices}>{PRODUCT_ICON_OPTIONS.map((icon) => { const selected = categoryIcon === icon; return <Pressable key={icon} style={[styles.categoryIconChoice, selected && styles.categoryIconChoiceActive]} onPress={() => setCategoryIcon(icon)} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={t('finance.chooseIcon')}><Ionicons name={icon} size={20} color={selected ? C.void : C.gold} />{selected ? <View style={styles.categoryIconSelectedMark}><Ionicons name="checkmark" size={10} color={C.void} /></View> : null}</Pressable>; })}</View></View>
+      {store.categories.map((category) => <View key={category.id} style={styles.categoryRow}><View style={styles.categoryListIcon}><Ionicons name={(category.icon as IconName | undefined) ?? (category.builtIn ? 'grid-outline' : 'pricetag-outline')} size={18} color={C.gold} /></View><Text style={[styles.rowTitle, styles.categoryRowText]} numberOfLines={1}>{categoryNameFor(category.id)}</Text>{!category.builtIn ? <><Pressable style={styles.iconButton} onPress={() => { setEditingCategoryId(category.id); setCategoryName(category.name); setCategoryIcon((category.icon as IconName | undefined) ?? 'pricetag-outline'); }} accessibilityLabel={t('finance.editAction')}><Ionicons name="pencil-outline" size={17} color={C.gold} /></Pressable><Pressable style={styles.iconButton} onPress={() => deleteCategory(category)} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></> : null}</View>)}
     </ResponsiveSheet>
 
     <ResponsiveSheet visible={Boolean(stockProduct)} title={stockProduct?.name ?? t('finance.store.adjustStock')} onClose={() => setStockProduct(null)} closeLabel={t('finance.close')} footer={<FormActions cancelLabel={t('finance.cancel')} saveLabel={t('finance.save')} onCancel={() => setStockProduct(null)} onSave={saveStock} disabled={!Number.isFinite(numeric(stockQuantity)) || numeric(stockQuantity) < 0 || (stockAction !== 'adjustment' && numeric(stockQuantity) === 0)} />}>
@@ -994,7 +1004,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   drawerTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 22, marginBottom: 14 },
   balanceCard: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, padding: 16, marginBottom: 14 }, eyebrow: { color: 'rgba(233,200,119,0.64)', fontFamily: SANS, fontSize: 9, letterSpacing: 1.1, textTransform: 'uppercase' }, balance: { color: C.goldLight, fontFamily: SERIF, fontSize: 26, marginTop: 7 }, drawerItem: { minHeight: 54, borderRadius: 14, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12 }, drawerItemActive: { backgroundColor: C.glass }, drawerText: { flex: 1, color: C.goldLight, fontFamily: SANS, fontSize: 14 },
   filterRows: { marginTop: 14 }, filterRow: { minHeight: 50, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, textAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 7, alignSelf: 'flex-start', paddingHorizontal: 3 }, secondaryButton: { minHeight: 44, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.gold, alignItems: 'center', justifyContent: 'center', marginTop: 10 }, link: { color: C.gold, fontFamily: SANS, fontSize: 11, fontWeight: '700' }, dangerLink: { color: '#F08B88', fontFamily: SANS, fontSize: 11, fontWeight: '700' }, helper: { color: 'rgba(255,244,208,0.5)', fontFamily: SANS, fontSize: 11, lineHeight: 17, marginTop: 8 }, sectionTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 17, marginTop: 20, marginBottom: 2 },
-  inline: { flexDirection: 'row', alignItems: 'flex-end', gap: 7 }, inlineMain: { flex: 1, minWidth: 0 }, priceRow: { flexDirection: 'row', gap: 10 }, priceColumn: { flex: 1, minWidth: 0 }, moreHeader: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }, picturePicker: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, pictureBox: { width: 52, height: 52, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, categoryRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 8 }, categoryRowText: { flex: 1, minWidth: 0 },
+  inline: { flexDirection: 'row', alignItems: 'flex-end', gap: 7 }, inlineMain: { flex: 1, minWidth: 0 }, priceRow: { flexDirection: 'row', gap: 10 }, priceColumn: { flex: 1, minWidth: 0 }, moreHeader: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 10 }, picturePicker: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 11, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, pictureBox: { width: 52, height: 52, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, categoryIconPicker: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.16)', backgroundColor: 'rgba(233,200,119,0.035)', padding: 10, marginTop: 11 }, categoryIconHeader: { minHeight: 34, flexDirection: 'row', alignItems: 'center', marginBottom: 9 }, subLabel: { flex: 1, color: 'rgba(233,200,119,0.72)', fontFamily: SANS, fontSize: 10.5, fontWeight: '700', letterSpacing: 0.35 }, categorySelectedIcon: { width: 34, height: 34, borderRadius: 11, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.26)', backgroundColor: 'rgba(233,200,119,0.12)', alignItems: 'center', justifyContent: 'center' }, categoryIconChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 }, categoryIconChoice: { width: 46, height: 46, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.035)', alignItems: 'center', justifyContent: 'center' }, categoryIconChoiceActive: { backgroundColor: C.gold, borderColor: C.gold }, categoryIconSelectedMark: { position: 'absolute', top: 3, right: 3, width: 14, height: 14, borderRadius: 7, backgroundColor: C.goldLight, alignItems: 'center', justifyContent: 'center' }, categoryRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 8 }, categoryListIcon: { width: 34, height: 34, borderRadius: 10, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center' }, categoryRowText: { flex: 1, minWidth: 0 },
   historyRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 8 }, positive: { color: C.gold, fontFamily: SERIF, fontSize: 14 }, negative: { color: '#F08B88', fontFamily: SERIF, fontSize: 14 },
   saleProduct: { minHeight: 56, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, cartRow: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 6, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, quantityButton: { width: 44, height: 44, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, alignItems: 'center', justifyContent: 'center' }, quantityText: { color: C.gold, fontSize: 20 }, quantityValue: { minWidth: 22, color: C.goldLight, fontFamily: SANS, fontSize: 12, textAlign: 'center' }, priceLink: { color: C.gold, fontFamily: SANS, fontSize: 10, marginTop: 4 }, totalRow: { minHeight: 62, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, marginTop: 8 }, totalLabel: { color: C.goldLight, fontFamily: SANS, fontSize: 12, fontWeight: '700' }, totalValue: { color: C.goldLight, fontFamily: SERIF, fontSize: 22 }, error: { color: '#F08B88', fontFamily: SANS, fontSize: 11, marginTop: 10 },
   reportPeriodCard: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, padding: 14, marginBottom: 10 }, reportPeriodTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 17, marginBottom: 2 }, reportDateRow: { flexDirection: 'row', gap: 8 }, reportDateColumn: { flex: 1, minWidth: 0 }, reportRangeLabel: { color: 'rgba(255,244,208,0.56)', fontFamily: SANS, fontSize: 10, marginTop: 10 }, reportOption: { minHeight: 74, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, reportIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: 'rgba(233,200,119,0.09)', alignItems: 'center', justifyContent: 'center' }, reportRow: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, backRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 8 }, metric: { minHeight: 220, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, alignItems: 'center', justifyContent: 'center', marginTop: 16 }, metricNumber: { color: C.goldLight, fontFamily: SERIF, fontSize: 44 }, metricAmount: { color: C.gold, fontFamily: SERIF, fontSize: 22, marginTop: 10 }, detail: { paddingVertical: 9, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, dangerButton: { minHeight: 48, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: '#F08B88', alignItems: 'center', justifyContent: 'center', marginTop: 16 },

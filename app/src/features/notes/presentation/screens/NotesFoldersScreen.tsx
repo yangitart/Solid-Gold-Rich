@@ -1,10 +1,10 @@
 import React from 'react';
-import { Animated as NativeAnimated, BackHandler, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { Animated as NativeAnimated, BackHandler, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFinance } from '@/features/finance/application/FinanceContext';
-import { applyPrefixToCurrentLine, continueListAfterNewline, countNotesByFolderTree, insertDividerAfterCurrentLine } from '@/features/notes/domain/services/noteText';
+import { useFinance } from '@/features/app-state/presentation/components/AppStateContext';
+import { applyPrefixToCurrentLine, continueListAfterNewline, countNotesByFolderTree } from '@/features/notes/domain/services/noteText';
 import { C, SANS, SERIF, createThemeStyles } from '@/shared/theme/luxury';
 import { ConfirmDialog } from '@/shared/ui/FormKit';
 
@@ -26,9 +26,12 @@ type SwipeAction = { icon: IconName; label: string; danger?: boolean; onPress: (
 type ConfirmPrompt = { title: string; message: string; onConfirm: () => void };
 const AnimatedPressable = NativeAnimated.createAnimatedComponent(Pressable);
 
-function EditorTool({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
-  return <Pressable style={({ pressed }) => [styles.editorTool, pressed && styles.editorToolPressed]} onPress={onPress} accessibilityRole="button" accessibilityLabel={label} hitSlop={3}><Ionicons name={icon} size={20} color={C.gold} /></Pressable>;
+function EditorTool({ icon, label, onPress, disabled = false }: { icon: IconName; label: string; onPress: () => void; disabled?: boolean }) {
+  return <Pressable style={({ pressed }) => [styles.editorTool, disabled && styles.editorToolDisabled, pressed && !disabled && styles.editorToolPressed]} onPress={onPress} disabled={disabled} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }} hitSlop={3}><Ionicons name={icon} size={20} color={disabled ? C.textSubtle : C.gold} /></Pressable>;
 }
+
+type EditorSnapshot = { body: string; selection: { start: number; end: number } };
+type EditorHistory = { past: EditorSnapshot[]; present: EditorSnapshot; future: EditorSnapshot[] };
 
 function SwipeableRow({ children, actions, onPress, accessibilityLabel }: { children: React.ReactNode; actions: SwipeAction[]; onPress?: () => void; accessibilityLabel?: string }) {
   const translateX = React.useRef(new NativeAnimated.Value(0)).current;
@@ -66,11 +69,6 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
   const { t } = useTranslation();
   const finance = useFinance();
   const { state } = finance;
-  const { width: windowWidth } = useWindowDimensions();
-  const noteDivider = React.useMemo(() => {
-    const contentWidth = Math.min(windowWidth, 760) - 40;
-    return '\u2500'.repeat(Math.max(18, Math.min(80, Math.floor(contentWidth / 8.9))));
-  }, [windowWidth]);
   const [selectedFolderId, setSelectedFolderId] = React.useState<string | null>(null);
   const [noteOpen, setNoteOpen] = React.useState(false);
   const [folderOpen, setFolderOpen] = React.useState(false);
@@ -81,6 +79,8 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
   const [editingNoteId, setEditingNoteId] = React.useState<string | null>(null);
   const [noteSelection, setNoteSelection] = React.useState({ start: 0, end: 0 });
   const bodyInputRef = React.useRef<TextInput>(null);
+  const noteHistoryRef = React.useRef<EditorHistory>({ past: [], present: { body: '', selection: { start: 0, end: 0 } }, future: [] });
+  const [, refreshHistory] = React.useReducer((value) => value + 1, 0);
   const [query, setQuery] = React.useState('');
   const [confirmPrompt, setConfirmPrompt] = React.useState<ConfirmPrompt | null>(null);
 
@@ -118,49 +118,95 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
     .filter((item) => !normalizedQuery || normalizedSearch(`${item.title} ${item.body}`).includes(normalizedQuery))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), [folderNotes, normalizedQuery]);
   const folderNoteCounts = React.useMemo(() => countNotesByFolderTree(state.noteFolders, state.notes), [state.noteFolders, state.notes]);
+  const resetNoteHistory = (body: string, selection: { start: number; end: number }) => {
+    noteHistoryRef.current = { past: [], present: { body, selection }, future: [] };
+    refreshHistory();
+  };
   const openNewNote = () => {
     setEditingNoteId(null);
     setNote({ title: '', body: '', folderId: selectedFolderId ?? '' });
     setNoteSelection({ start: 0, end: 0 });
+    resetNoteHistory('', { start: 0, end: 0 });
     setNoteOpen(true);
   };
   const openNote = (item: typeof state.notes[number]) => {
     setEditingNoteId(item.id);
     setNote({ title: item.title, body: item.body, folderId: item.folderId ?? '' });
     setNoteSelection({ start: item.body.length, end: item.body.length });
+    resetNoteHistory(item.body, { start: item.body.length, end: item.body.length });
     setNoteOpen(true);
   };
 
+  const commitBodyEdit = (body: string, selection?: { start: number; end: number }) => {
+    const history = noteHistoryRef.current;
+    const nextSelection = selection ?? history.present.selection;
+    if (body === history.present.body) {
+      history.present = { body, selection: nextSelection };
+      if (selection) setNoteSelection(selection);
+      return;
+    }
+    noteHistoryRef.current = {
+      past: [...history.past, history.present],
+      present: { body, selection: nextSelection },
+      future: [],
+    };
+    setNote((current) => ({ ...current, body }));
+    if (selection) setNoteSelection(selection);
+    refreshHistory();
+  };
+
+  const undoBodyEdit = () => {
+    const history = noteHistoryRef.current;
+    if (!history.past.length) return;
+    const previous = history.past[history.past.length - 1];
+    noteHistoryRef.current = {
+      past: history.past.slice(0, -1),
+      present: previous,
+      future: [history.present, ...history.future],
+    };
+    setNote((current) => ({ ...current, body: previous.body }));
+    setNoteSelection(previous.selection);
+    refreshHistory();
+    requestAnimationFrame(() => bodyInputRef.current?.focus());
+  };
+
+  const redoBodyEdit = () => {
+    const history = noteHistoryRef.current;
+    if (!history.future.length) return;
+    const next = history.future[0];
+    noteHistoryRef.current = {
+      past: [...history.past, history.present],
+      present: next,
+      future: history.future.slice(1),
+    };
+    setNote((current) => ({ ...current, body: next.body }));
+    setNoteSelection(next.selection);
+    refreshHistory();
+    requestAnimationFrame(() => bodyInputRef.current?.focus());
+  };
+
   const insertListPrefix = (prefix: string) => {
-    const edit = applyPrefixToCurrentLine(note.body, noteSelection, prefix);
-    setNote((current) => ({ ...current, body: edit.body }));
-    setNoteSelection(edit.selection);
+    const { body, selection } = noteHistoryRef.current.present;
+    const edit = applyPrefixToCurrentLine(body, selection, prefix);
+    commitBodyEdit(edit.body, edit.selection);
     requestAnimationFrame(() => bodyInputRef.current?.focus());
   };
 
   const insertBlock = (value: string) => {
-    const { body } = note;
-    const start = Math.max(0, Math.min(noteSelection.start, body.length));
-    const end = Math.max(start, Math.min(noteSelection.end, body.length));
+    const { body, selection } = noteHistoryRef.current.present;
+    const start = Math.max(0, Math.min(selection.start, body.length));
+    const end = Math.max(start, Math.min(selection.end, body.length));
     const lineStart = body.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
     const insertion = body.slice(lineStart, start).trim() ? `\n${value}\n` : `${value}\n`;
     const nextBody = `${body.slice(0, start)}${insertion}${body.slice(end)}`;
     const cursor = start + insertion.length;
-    setNote((current) => ({ ...current, body: nextBody }));
-    setNoteSelection({ start: cursor, end: cursor });
-    requestAnimationFrame(() => bodyInputRef.current?.focus());
-  };
-
-  const insertDivider = () => {
-    const edit = insertDividerAfterCurrentLine(note.body, noteSelection, noteDivider);
-    setNote((current) => ({ ...current, body: edit.body }));
-    setNoteSelection(edit.selection);
+    commitBodyEdit(nextBody, { start: cursor, end: cursor });
     requestAnimationFrame(() => bodyInputRef.current?.focus());
   };
 
   const toggleCurrentCheckbox = () => {
-    const { body } = note;
-    const start = Math.max(0, Math.min(noteSelection.start, body.length));
+    const { body, selection } = noteHistoryRef.current.present;
+    const start = Math.max(0, Math.min(selection.start, body.length));
     const lineStart = body.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
     const line = body.slice(lineStart);
     const checkbox = line.match(/^(\s*)([\u2610\u2611])\s/);
@@ -170,18 +216,19 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
     }
     const checkboxIndex = lineStart + checkbox[1].length;
     const nextBody = `${body.slice(0, checkboxIndex)}${checkbox[2] === '\u2610' ? '\u2611' : '\u2610'}${body.slice(checkboxIndex + 1)}`;
-    setNote((current) => ({ ...current, body: nextBody }));
+    commitBodyEdit(nextBody);
     requestAnimationFrame(() => bodyInputRef.current?.focus());
   };
 
   const updateNoteBody = (value: string) => {
-    const continuation = continueListAfterNewline(note.body, value, noteSelection);
+    const previousBody = noteHistoryRef.current.present.body;
+    const selection = noteHistoryRef.current.present.selection;
+    const continuation = continueListAfterNewline(previousBody, value, selection);
     if (!continuation) {
-      setNote((current) => ({ ...current, body: value }));
+      commitBodyEdit(value);
       return;
     }
-    setNote((current) => ({ ...current, body: continuation.body }));
-    setNoteSelection(continuation.selection);
+    commitBodyEdit(continuation.body, continuation.selection);
     requestAnimationFrame(() => setNoteSelection(continuation.selection));
   };
 
@@ -269,8 +316,8 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
       <Modal visible={noteOpen} animationType="fade" onRequestClose={() => setNoteOpen(false)}>
         <SafeAreaView style={styles.editorRoot} edges={['top', 'bottom']}><KeyboardAvoidingView style={styles.editorRoot} behavior="padding" enabled={Platform.OS === 'ios'}>
           <View style={styles.editorHeader}><Pressable style={styles.editorHeaderAction} onPress={() => setNoteOpen(false)}><Text style={styles.editorAction}>{t('finance.cancel')}</Text></Pressable><Text style={styles.editorHeading}>{editingNoteId ? t('finance.notes') : t('finance.newNote')}</Text><Pressable style={styles.editorHeaderAction} disabled={!note.title.trim() && !note.body.trim()} onPress={saveNote}><Text style={[styles.editorAction, !note.title.trim() && !note.body.trim() && styles.editorActionDisabled]}>{t('finance.done')}</Text></Pressable></View>
-          <ScrollView style={styles.editorScroll} contentContainerStyle={styles.editorContent} keyboardShouldPersistTaps="handled"><TextInput value={note.title} onChangeText={(value) => setNote((current) => ({ ...current, title: value }))} placeholder={t('finance.noteTitle')} placeholderTextColor={C.textSubtle} style={styles.editorTitle} /><TextInput ref={bodyInputRef} value={note.body} onChangeText={updateNoteBody} onSelectionChange={(event) => setNoteSelection(event.nativeEvent.selection)} selection={noteSelection} placeholder={t('finance.noteBody')} placeholderTextColor={C.textSubtle} multiline style={styles.editorBody} /></ScrollView>
-          <View style={styles.editorToolbarShell}><ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={styles.editorToolbar}><EditorTool icon="checkbox-outline" label={t('finance.noteToolbar.checklist')} onPress={toggleCurrentCheckbox} /><EditorTool icon="list-outline" label={t('finance.noteToolbar.bulletList')} onPress={() => insertListPrefix('\u2022 ')} /><EditorTool icon="reorder-three-outline" label={t('finance.noteToolbar.numberedList')} onPress={() => insertListPrefix('1. ')} /><EditorTool icon="chatbox-outline" label={t('finance.noteToolbar.quote')} onPress={() => insertListPrefix('> ')} /><View style={styles.editorToolDivider} /><EditorTool icon="remove-outline" label={t('finance.noteToolbar.divider')} onPress={insertDivider} /><EditorTool icon="calendar-outline" label={t('finance.noteToolbar.date')} onPress={() => insertBlock(new Date().toLocaleDateString())} /></ScrollView></View>
+          <ScrollView style={styles.editorScroll} contentContainerStyle={styles.editorContent} keyboardShouldPersistTaps="handled"><TextInput value={note.title} onChangeText={(value) => setNote((current) => ({ ...current, title: value }))} placeholder={t('finance.noteTitle')} placeholderTextColor={C.textSubtle} style={styles.editorTitle} /><TextInput ref={bodyInputRef} value={note.body} onChangeText={updateNoteBody} onSelectionChange={(event) => { const selection = event.nativeEvent.selection; noteHistoryRef.current.present = { ...noteHistoryRef.current.present, selection }; setNoteSelection(selection); }} selection={noteSelection} placeholder={t('finance.noteBody')} placeholderTextColor={C.textSubtle} multiline style={styles.editorBody} /></ScrollView>
+          <View style={styles.editorToolbarShell}><ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={styles.editorToolbar}><EditorTool icon="arrow-undo-outline" label={t('finance.noteToolbar.undo')} onPress={undoBodyEdit} disabled={!noteHistoryRef.current.past.length} /><EditorTool icon="arrow-redo-outline" label={t('finance.noteToolbar.redo')} onPress={redoBodyEdit} disabled={!noteHistoryRef.current.future.length} /><View style={styles.editorToolDivider} /><EditorTool icon="checkbox-outline" label={t('finance.noteToolbar.checklist')} onPress={toggleCurrentCheckbox} /><EditorTool icon="list-outline" label={t('finance.noteToolbar.bulletList')} onPress={() => insertListPrefix('\u2022 ')} /><EditorTool icon="reorder-three-outline" label={t('finance.noteToolbar.numberedList')} onPress={() => insertListPrefix('1. ')} /><EditorTool icon="chatbox-outline" label={t('finance.noteToolbar.quote')} onPress={() => insertListPrefix('> ')} /><View style={styles.editorToolDivider} /><EditorTool icon="calendar-outline" label={t('finance.noteToolbar.date')} onPress={() => insertBlock(new Date().toLocaleDateString())} /></ScrollView></View>
         </KeyboardAvoidingView></SafeAreaView>
       </Modal>
       <ConfirmDialog visible={Boolean(confirmPrompt)} title={confirmPrompt?.title ?? ''} message={confirmPrompt?.message ?? ''} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.deleteAction')} icon="trash-outline" destructive onCancel={() => setConfirmPrompt(null)} onConfirm={() => { const action = confirmPrompt?.onConfirm; setConfirmPrompt(null); action?.(); }} />
@@ -353,6 +400,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   editorToolbarShell: { minHeight: 56, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, backgroundColor: 'rgba(9,11,18,0.98)' },
   editorToolbar: { minHeight: 56, alignItems: 'center', gap: 2, paddingHorizontal: 12, paddingVertical: 6 },
   editorTool: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  editorToolDisabled: { opacity: 0.38 },
   editorToolPressed: { backgroundColor: 'rgba(233,200,119,0.1)' },
   editorToolDivider: { width: StyleSheet.hairlineWidth, height: 24, marginHorizontal: 4, backgroundColor: 'rgba(233,200,119,0.16)' },
 }));

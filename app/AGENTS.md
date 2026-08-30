@@ -11,10 +11,10 @@
 
 - Esta carpeta contiene una app Expo/React Native orientada principalmente a Android.
 - La entrada nativa de la app es `index.js`, registrada con `registerRootComponent`; no usa Expo Router ni rutas web.
-- `src/application/AppRoot.tsx` es la raíz de composición e inyecta mediante Inversify las dependencias registradas en `src/application/composition/dependencies.ts`; `src/application/AppContent.tsx` coordina la pantalla de carga (`BootScreen`) y el panel principal (`RichScreen`).
-- El código se organiza por capas: `src/application/` para arranque y servicios globales, `src/features/` para funcionalidades, `src/shared/` para recursos compartidos y `src/legacy/` para scaffolding futuro todavía inactivo. El alias `@/` apunta a `src/`.
+- `src/app/components/AppRoot.tsx` es la raíz visual de la aplicación e inyecta mediante Inversify las dependencias registradas en `src/ioc/dependencies.ts`; `src/app/components/AppContent.tsx` coordina la pantalla de carga (`BootScreen`) y el panel principal (`RichScreen`).
+- El código se organiza por capas: `src/app/components/` para el shell React global, `src/ioc/` para ensamblar dependencias, `src/domain/` para el agregado global, `src/features/` para funcionalidades, `src/shared/` para contratos y recursos transversales y `src/legacy/` para scaffolding futuro todavía inactivo. Dentro de cada feature, `domain` no depende de capas externas, `application` depende de `domain`, `infrastructure` implementa ports de `application` y `presentation` consume casos de uso y contratos. Cada port y adaptador pertenece a la feature que lo consume; solo los servicios realmente transversales viven en `src/shared/`. El alias `@/` apunta a `src/`.
 - La composición visual de `RichScreen` es estable y no debe rediseñarse sin petición explícita; las funciones nuevas se abren desde los accesos del encabezado en `src/features/finance/presentation/screens/FinanceModulesScreen.tsx`.
-- `src/features/finance/application/FinanceContext.tsx` expone la API compatible de finanzas sobre una store Zustand y persiste mediante el puerto `FinanceRepository`; no duplicar el estado financiero en componentes ni acoplar la presentación directamente a AsyncStorage.
+- `src/features/app-state/presentation/components/AppStateContext.tsx` expone la API compatible `useFinance` sobre una store Zustand y persiste el agregado global mediante el puerto `AppStateRepository`; no duplicar el estado en otros componentes ni acoplar la presentación directamente a AsyncStorage.
 - `src/shared/ui/AuroraBackground.tsx` proporciona el fondo oscuro con gradientes animados. No hay partículas ni polvo dorado de fondo.
 - El nombre público es `Solid Gold Rich` y el package Android es `com.escobar.solidgold`. No cambiar ninguno sin autorización explícita.
 - No recrear archivos de documentación de Play Store que el usuario haya eliminado. No modificar archivos generados dentro de `dist/` o `android/`.
@@ -26,7 +26,7 @@
 - El panel muestra saldo, flujo de caja, actividad reciente, actividad global, límites de gasto y totales por período.
 - El modal de estadísticas de `src/features/finance/presentation/screens/RichScreen.tsx` ofrece vista de gráficos y calendario, filtros de hoy/semana/mes/año, flujo de ingresos y gastos, categoría principal y desglose por categorías. La vista de actividad global convierte los importes a la moneda base.
 - El diamante de `src/shared/ui/Gem.tsx` evoluciona según el saldo positivo de la cuenta activa. Tocar el diamante solo activa su animación.
-- Los datos financieros se guardan localmente mediante `src/features/finance/infrastructure/storage/financeRepository.ts` y `financeStorage.ts`; conservar las claves y migraciones históricas.
+- El estado global se guarda localmente mediante `src/features/app-state/infrastructure/storage/appStateRepository.ts` y `appStateStorage.ts`; conservar las claves y migraciones históricas.
 - Las categorías de gastos e ingresos se administran desde el módulo `Categories` del menú izquierdo y se usan en el formulario de operaciones.
 - Se conserva la migración de los datos antiguos `@solid-gold/transactions` y `@solid-gold/monthly-budget`.
 - No activar ni exponer autenticación, huella, foto, captura o compartir salvo petición explícita del usuario. El scaffolding futuro descrito abajo no autoriza UI ni comportamiento en runtime.
@@ -72,7 +72,7 @@ npx.cmd expo export --platform android
 
 ## Store workspace
 
-- The app has a separate Store workspace backed by `FinanceState.store` inside the version 7 finance state; do not mix store products, stock movements, or sales with personal accounts and transactions.
+- The app has a separate Store workspace backed by `AppState.store` inside the version 7 app state; do not mix store products, stock movements, or sales with personal accounts and transactions.
 - `src/features/store/presentation/screens/StoreScreen.tsx` is the single Store entry point. Its left menu stays limited to Inventory, Employees, Clients, Services, Sales, and Settings.
 - The workspace switch is an icon-only action at the bottom of the right quick menu. Do not re-add a large text toggle to the left drawer.
 - Inventory uses a fixed search field for product name, key, and SKU. The floating `+` opens the single responsive product form directly; there is no add-method chooser or scanner flow.
@@ -85,7 +85,7 @@ npx.cmd expo export --platform android
 
 - Existe scaffolding interno en `src/legacy/future/`. Su presencia no cambia el producto actual.
 - `src/legacy/future/config.ts` es la fuente de verdad. Todas las banderas deben permanecer en `false` hasta una petición explícita de activación; ningún screen, menú, modal, drawer, deep link, notificación o tarea de fondo puede revelar estas capacidades mientras estén apagadas.
-- No importar el scaffolding futuro desde `src/application/`, `src/features/` ni componentes compartidos. Mantenerlo fuera del bundle visible hasta que una función sea aprobada e implementada de extremo a extremo.
+- No importar el scaffolding futuro desde `src/app/`, `src/ioc/`, `src/features/` ni componentes compartidos. Mantenerlo fuera del bundle visible hasta que una función sea aprobada e implementada de extremo a extremo.
 
 ### Regalar un café a los desarrolladores
 
@@ -98,12 +98,12 @@ npx.cmd expo export --platform android
 
 - Premium permanece desactivado. Las ideas reservadas son respaldo cifrado en nube, sincronización multidispositivo, importación bancaria automática, pronósticos avanzados, plantillas de reportes y soporte prioritario.
 - No convertir silenciosamente funciones actuales en premium. Cualquier cambio de acceso, precio, prueba o restauración de compras requiere una decisión explícita del usuario.
-- Los derechos premium deben verificarse con el proveedor/backend; no confiar en un booleano editable de AsyncStorage ni guardarlo como autoridad dentro de `FinanceState`.
+- Los derechos premium deben verificarse con el proveedor/backend; no confiar en un booleano editable de AsyncStorage ni guardarlo como autoridad dentro de `AppState`.
 
 ### Google y respaldo en nube
 
 - El inicio de sesión con Google y el respaldo remoto requieren backend, consentimiento, política de privacidad actualizada, configuración por ambiente y manejo seguro de sesión antes de activarse.
-- Nunca guardar access tokens, refresh tokens, secretos OAuth, claves de cifrado o cookies de sesión en `FinanceState`, AsyncStorage, backups exportados, logs, analytics o el repositorio.
+- Nunca guardar access tokens, refresh tokens, secretos OAuth, claves de cifrado o cookies de sesión en `AppState`, AsyncStorage, backups exportados, logs, analytics o el repositorio.
 - No usar variables `EXPO_PUBLIC_*` para secretos. Los secretos y el intercambio de tokens pertenecen al backend; en el cliente solo pueden existir referencias opacas de sesión y credenciales públicas permitidas por el proveedor.
 - Cualquier backup de nube debe cifrarse antes de subirse, tener versión de sobre, control de revisiones, borrado remoto y una estrategia explícita de conflictos/recuperación.
 
