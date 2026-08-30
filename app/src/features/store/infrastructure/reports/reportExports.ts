@@ -48,27 +48,43 @@ function sheetsFor(state: StoreReportSource, currency: string, language: string,
   const products = state.store.products.slice().sort((left, right) => left.name.localeCompare(right.name));
   const employees = state.store.employees.slice().sort((left, right) => left.name.localeCompare(right.name));
   const clients = state.store.clients.slice().sort((left, right) => left.name.localeCompare(right.name));
-  const inventory = products.map((product) => [product.key, product.name, product.type, productStock(state, product.id), Math.max(0, productStock(state, product.id) - product.reservedQuantity), amount(product.salePrice, currency, language)] as (string | number)[]);
+  const providers = state.store.providers.slice().sort((left, right) => left.name.localeCompare(right.name));
+  const sales = report.sales.slice().sort((left, right) => right.date.localeCompare(left.date));
+  const inventory = products.map((product) => [product.key, product.name, product.type, productStock(state, product.id), Math.max(0, productStock(state, product.id) - product.reservedQuantity), product.salePrice] as (string | number)[]);
   return [
-    { name: labels.summary, rows: [[labels.title, state.store.name], [labels.generated, dateLabel(new Date().toISOString(), language)], ...(range ? [[labels.period, range.label] as (string | number)[]] : []), [labels.balance, amount(state.store.businessAccount.balance, currency, language)], [labels.transactions, report.sales.length], [labels.amount, amount(report.total, currency, language)]] },
-    { name: labels.salesByDay, rows: [[labels.date, labels.transactions, labels.amount], ...report.daily.map(([date, value]) => [date, value.count, amount(value.total, currency, language)])] },
-    { name: labels.topProducts, rows: [[labels.name, labels.quantity, labels.amount], ...report.topProducts.map(([, value]) => [value.name, value.quantity, amount(value.total, currency, language)])] },
-    { name: labels.topClients, rows: [[labels.name, labels.transactions, labels.amount], ...report.topClients.map(([id, value]) => [state.store.clients.find((client) => client.id === id)?.name ?? id, value.count, amount(value.total, currency, language)])] },
-    { name: labels.moneyMovements, rows: [[labels.date, labels.type, labels.name, labels.amount], ...movements.map((movement) => [dateLabel(movement.date, language), movement.type, movement.note, amount(movement.amount, currency, language)])] },
-    { name: labels.inventory, rows: [[labels.type, labels.name, labels.stock, labels.available, labels.salePrice], ...inventory.map((row) => [row[0], row[1], row[3], row[4], row[5]])] },
-    { name: labels.employees, rows: [[labels.name, labels.role, labels.contact, labels.amount, labels.status], ...employees.map((employee) => [employee.name, employee.role ?? '', employee.phone ?? '', amount(employee.salary, currency, language), employee.active ? labels.active : labels.inactive])] },
+    { name: labels.summary, rows: [[labels.title, state.store.name], [labels.generated, dateLabel(new Date().toISOString(), language)], ...(range ? [[labels.period, range.label] as (string | number)[]] : []), [], [labels.balance, state.store.businessAccount.balance, currency], [labels.transactions, report.sales.length], [labels.amount, report.total, currency], [labels.topProducts, report.topProducts.length], [labels.topClients, report.topClients.length]] },
+    { name: labels.sales, rows: [[labels.date, labels.name, labels.quantity, labels.amount, labels.status], ...sales.map((sale) => [dateLabel(sale.date, language), state.store.clients.find((client) => client.id === sale.clientId)?.name ?? '', sale.items.map((item) => `${item.name} × ${item.quantity}`).join('; '), sale.total, sale.status === 'completed' ? labels.active : labels.inactive])] },
+    { name: labels.topProducts, rows: [[labels.name, labels.quantity, labels.amount], ...report.topProducts.map(([, value]) => [value.name, value.quantity, value.total])] },
+    { name: labels.topClients, rows: [[labels.name, labels.transactions, labels.amount], ...report.topClients.map(([id, value]) => [state.store.clients.find((client) => client.id === id)?.name ?? id, value.count, value.total])] },
+    { name: labels.moneyMovements, rows: [[labels.date, labels.type, labels.name, labels.amount], ...movements.map((movement) => [dateLabel(movement.date, language), movement.type, movement.note, movement.amount])] },
+    { name: labels.inventory, rows: [[labels.type, labels.name, labels.stock, labels.available, labels.salePrice], ...inventory.map((row) => [row[2], row[1], row[3], row[4], row[5]])] },
+    { name: labels.employees, rows: [[labels.name, labels.role, labels.contact, labels.amount, labels.status], ...employees.map((employee) => [employee.name, employee.role ?? '', employee.phone ?? '', employee.salary, employee.active ? labels.active : labels.inactive])] },
     { name: labels.clients, rows: [[labels.name, labels.contact, labels.status], ...clients.map((client) => [client.name, [client.phone, client.email].filter(Boolean).join(' · '), client.active ? labels.active : labels.inactive])] },
+    { name: labels.providers, rows: [[labels.name, labels.contact, labels.status], ...providers.map((provider) => [provider.name, [provider.phone, provider.email].filter(Boolean).join(' · '), provider.active ? labels.active : labels.inactive])] },
   ];
 }
 
+function columnName(index: number) {
+  let value = '';
+  let current = index + 1;
+  while (current > 0) { const remainder = (current - 1) % 26; value = String.fromCharCode(65 + remainder) + value; current = Math.floor((current - 1) / 26); }
+  return value;
+}
+
 function worksheet(sheet: Sheet) {
+  const columnCount = Math.max(1, ...sheet.rows.map((row) => row.length));
+  const rowCount = sheet.rows.length;
+  const columns = Array.from({ length: columnCount }, (_, index) => {
+    const width = Math.min(42, Math.max(12, ...sheet.rows.map((row) => String(row[index] ?? '').length + 2)));
+    return `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`;
+  }).join('');
   const rows = sheet.rows.map((row, rowIndex) => `<row r="${rowIndex + 1}">${row.map((cell, cellIndex) => {
-    const reference = `${String.fromCharCode(65 + Math.min(cellIndex, 25))}${rowIndex + 1}`;
+    const reference = `${columnName(cellIndex)}${rowIndex + 1}`;
     return typeof cell === 'number' && Number.isFinite(cell)
       ? `<c r="${reference}"><v>${cell}</v></c>`
       : `<c r="${reference}" t="inlineStr"><is><t>${xml(String(cell ?? ''))}</t></is></c>`;
   }).join('')}</row>`).join('');
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${rows}</sheetData></worksheet>`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><outlinePr summaryBelow="1"/></sheetPr><sheetViews><sheetView workbookViewId="0"><pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${columns}</cols><sheetData>${rows}</sheetData>${rowCount > 1 ? `<autoFilter ref="A1:${columnName(columnCount - 1)}${rowCount}"/>` : ''}</worksheet>`;
 }
 
 function utf8(value: string) {
@@ -142,24 +158,26 @@ function pdfText(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[–—·•]/g, '-').replace(/[^\x20-\x7e]/g, '?').replace(/[\\()]/g, (character) => `\\${character}`);
 }
 
-function pdfLines(state: StoreReportSource, currency: string, language: string, labels: ReportExportLabels, range?: StoreReportRange) {
+type PdfLine = { text: string; kind: 'title' | 'meta' | 'metric' | 'section' | 'body' };
+
+function pdfLines(state: StoreReportSource, currency: string, language: string, labels: ReportExportLabels, range?: StoreReportRange): PdfLine[] {
   const report = storeReportData(state);
-  const lines = [`${labels.title}: ${state.store.name}`, `${labels.generated}: ${dateLabel(new Date().toISOString(), language)}`, ...(range ? [`${labels.period}: ${range.label}`] : []), `${labels.balance}: ${amount(state.store.businessAccount.balance, currency, language)}`, `${labels.transactions}: ${report.sales.length}`, `${labels.amount}: ${amount(report.total, currency, language)}`, '', labels.salesByDay];
-  report.daily.forEach(([date, value]) => lines.push(`${date} | ${value.count} ${labels.transactions} | ${amount(value.total, currency, language)}`));
-  lines.push('', labels.topProducts);
-  report.topProducts.forEach(([, value]) => lines.push(`${value.name} | ${value.quantity} ${labels.quantity} | ${amount(value.total, currency, language)}`));
-  lines.push('', labels.topClients);
-  report.topClients.forEach(([id, value]) => lines.push(`${state.store.clients.find((client) => client.id === id)?.name ?? id} | ${value.count} ${labels.transactions} | ${amount(value.total, currency, language)}`));
-  lines.push('', labels.moneyMovements);
-  state.store.cashMovements.slice().sort((left, right) => right.date.localeCompare(left.date)).forEach((movement) => lines.push(`${dateLabel(movement.date, language)} | ${movement.type} | ${movement.note || '-'} | ${amount(movement.amount, currency, language)}`));
-  lines.push('', labels.inventory);
-  state.store.products.forEach((product) => lines.push(`${product.key} | ${product.name} | ${labels.stock}: ${productStock(state, product.id)} | ${labels.available}: ${Math.max(0, productStock(state, product.id) - product.reservedQuantity)}`));
+  const lines: PdfLine[] = [{ text: `${labels.title}: ${state.store.name}`, kind: 'title' }, { text: `${labels.generated}: ${dateLabel(new Date().toISOString(), language)}`, kind: 'meta' }, ...(range ? [{ text: `${labels.period}: ${range.label}`, kind: 'meta' as const }] : []), { text: `${labels.balance}: ${amount(state.store.businessAccount.balance, currency, language)}`, kind: 'metric' }, { text: `${labels.transactions}: ${report.sales.length}`, kind: 'metric' }, { text: `${labels.amount}: ${amount(report.total, currency, language)}`, kind: 'metric' }, { text: labels.sales, kind: 'section' }];
+  report.sales.forEach((sale) => lines.push({ text: `${dateLabel(sale.date, language)} | ${state.store.clients.find((client) => client.id === sale.clientId)?.name ?? '-'} | ${sale.items.map((item) => `${item.name} x${item.quantity}`).join(', ')} | ${amount(sale.total, currency, language)}`, kind: 'body' }));
+  lines.push({ text: labels.topProducts, kind: 'section' });
+  report.topProducts.forEach(([, value]) => lines.push({ text: `${value.name} | ${value.quantity} ${labels.quantity} | ${amount(value.total, currency, language)}`, kind: 'body' }));
+  lines.push({ text: labels.topClients, kind: 'section' });
+  report.topClients.forEach(([id, value]) => lines.push({ text: `${state.store.clients.find((client) => client.id === id)?.name ?? id} | ${value.count} ${labels.transactions} | ${amount(value.total, currency, language)}`, kind: 'body' }));
+  lines.push({ text: labels.moneyMovements, kind: 'section' });
+  state.store.cashMovements.slice().sort((left, right) => right.date.localeCompare(left.date)).forEach((movement) => lines.push({ text: `${dateLabel(movement.date, language)} | ${movement.type} | ${movement.note || '-'} | ${amount(movement.amount, currency, language)}`, kind: 'body' }));
+  lines.push({ text: labels.inventory, kind: 'section' });
+  state.store.products.forEach((product) => lines.push({ text: `${product.key} | ${product.name} | ${labels.stock}: ${productStock(state, product.id)} | ${labels.available}: ${Math.max(0, productStock(state, product.id) - product.reservedQuantity)}`, kind: 'body' }));
   return lines;
 }
 
 export function createStoreReportPdf(state: StoreReportSource, currency: string, language: string, labels: ReportExportLabels, range?: StoreReportRange) {
   const allLines = pdfLines(filterStoreReportState(state, range), currency, language, labels, range);
-  const pages: string[][] = [];
+  const pages: PdfLine[][] = [];
   for (let index = 0; index < allLines.length; index += 45) pages.push(allLines.slice(index, index + 45));
   const objects: string[] = ['<< /Type /Catalog /Pages 2 0 R >>', ''];
   const pageIds = pages.map((_, index) => 4 + index * 2);
@@ -167,15 +185,25 @@ export function createStoreReportPdf(state: StoreReportSource, currency: string,
   objects.push('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>');
   pages.forEach((page, pageIndex) => {
     const contentId = 5 + pageIndex * 2;
-    const commands = ['BT', '/F1 14 Tf', '45 800 Td'];
-    page.forEach((line, lineIndex) => {
-      if (lineIndex > 0) commands.push('0 -16 Td');
-      commands.push(`(${pdfText(line.slice(0, 100))}) Tj`);
+    const hasTitle = page[0]?.kind === 'title';
+    const pageBody = hasTitle ? page.slice(1) : page;
+    const pageTitle = pageIndex === 0 && hasTitle ? page[0].text : labels.title;
+    const commands = ['q', '0.92 0.76 0.38 rg', '45 790 505 34 re', 'f', 'Q', 'BT', '/F1 18 Tf', '55 801 Td', `(${pdfText(pageTitle.slice(0, 90))}) Tj`, 'ET'];
+    let y = 765;
+    pageBody.forEach((line) => {
+      if (line.kind === 'section') {
+        commands.push('q', '0.82 0.67 0.34 rg', `45 ${y - 4} 505 1 re`, 'f', 'Q', 'BT', '/F1 11 Tf', `45 ${y} Td`, `(${pdfText(line.text.slice(0, 100))}) Tj`, 'ET');
+        y -= 22;
+        return;
+      }
+      const fontSize = line.kind === 'metric' ? 11 : 9;
+      commands.push('BT', `/${fontSize === 11 ? 'F1' : 'F1'} ${fontSize} Tf`, `45 ${y} Td`, `(${pdfText(line.text.slice(0, 115))}) Tj`, 'ET');
+      y -= line.kind === 'metric' ? 18 : 15;
     });
-    commands.push('ET');
+    commands.push('BT', '/F1 8 Tf', '45 28 Td', `(${pdfText(`${pageIndex + 1}`)}) Tj`, 'ET');
     const stream = commands.join('\n');
     objects.push(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 3 0 R >> >> /Contents ${contentId} 0 R >>`);
-    objects.push(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+    objects.push(`<< /Length ${utf8(stream).length} >>\nstream\n${stream}\nendstream`);
   });
   const chunks = ['%PDF-1.4\n%\xE2\xE3\xCF\xD3\n'];
   const offsets: number[] = [0];

@@ -9,7 +9,7 @@ import type {
   TransactionStatus,
 } from '@/features/finance/domain/entities/financeTypes';
 import type { NoteFolder } from '@/features/notes/domain/entities/Note';
-import type { StoreClient, StoreCategory, StoreCashMovement, StoreEmployee, StoreProduct, StoreSale, StoreSaleItem, StoreState, StoreStockMovement } from '@/features/store/domain/entities/Store';
+import type { StoreClient, StoreCategory, StoreCashMovement, StoreDefaultOperation, StoreEmployee, StoreProduct, StoreProvider, StoreSale, StoreSaleItem, StoreState, StoreStockMovement } from '@/features/store/domain/entities/Store';
 import { captureCurrencySnapshot } from '@/shared/domain/finance/currency';
 import { DEFAULT_COLORS } from '@/features/finance/domain/entities/defaultColors';
 
@@ -65,6 +65,7 @@ export const emptyStoreState = (): StoreState => ({
   cashMovements: [],
   employees: [],
   clients: [],
+  providers: [],
   products: [],
   stockMovements: [],
   sales: [],
@@ -232,7 +233,9 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       type,
       unit: text(item.unit, 'unit'),
       unitAbbreviation: Array.from(text(item.unitAbbreviation).trim()).slice(0, 4).join('') || undefined,
-      categoryId: categoryIdFor(item.categoryId, item.category),
+       categoryId: categoryIdFor(item.categoryId, item.category),
+       providerId: text(item.providerId) || undefined,
+       clientId: text(item.clientId) || undefined,
       sku: text(item.sku) || undefined,
       salePrice: Math.max(0, number(item.salePrice)),
       purchasePrice: Math.max(0, purchasePrice),
@@ -312,9 +315,29 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       phone: text(item.phone) || undefined,
       email: text(item.email) || undefined,
       note: text(item.note) || undefined,
+      defaultOperations: recordArray(item.defaultOperations).map((operation, operationIndex) => {
+        const value = operation as Partial<StoreDefaultOperation>;
+        return { id: text(value.id, `store-client-operation-${index}-${operationIndex}`), productId: text(value.productId), quantity: Math.max(0, number(value.quantity)) } satisfies StoreDefaultOperation;
+      }).filter((operation) => productIds.has(operation.productId) && operation.quantity > 0),
       active: item.active !== false,
       createdAt: text(item.createdAt, new Date().toISOString()),
     } satisfies StoreClient;
+  }));
+  const providers = uniqueById(recordArray(source.providers).map((provider, index) => {
+    const item = provider as Partial<StoreProvider>;
+    return {
+      id: text(item.id, `store-provider-${index}`),
+      name: text(item.name, `Provider ${index + 1}`),
+      phone: text(item.phone) || undefined,
+      email: text(item.email) || undefined,
+      note: text(item.note) || undefined,
+      defaultOperations: recordArray(item.defaultOperations).map((operation, operationIndex) => {
+        const value = operation as Partial<StoreDefaultOperation>;
+        return { id: text(value.id, `store-provider-operation-${index}-${operationIndex}`), productId: text(value.productId), quantity: Math.max(0, number(value.quantity)) } satisfies StoreDefaultOperation;
+      }).filter((operation) => productIds.has(operation.productId) && operation.quantity > 0),
+      active: item.active !== false,
+      createdAt: text(item.createdAt, new Date().toISOString()),
+    } satisfies StoreProvider;
   }));
   const rawBalance = number(source.businessAccount?.balance);
   const cashMovements: StoreCashMovement[] = uniqueById(recordArray(source.cashMovements).map((movement, index) => {
@@ -352,6 +375,7 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
     cashMovements,
     employees,
     clients,
+    providers,
     products,
     stockMovements,
     sales,

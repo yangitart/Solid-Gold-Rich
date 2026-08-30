@@ -13,11 +13,11 @@ import type { FileService } from '@/shared/application/ports/FileService';
 import i18n, { getPhoneLanguage } from '@/shared/i18n/i18next';
 import { createThemeStyles, setThemeMode } from '@/shared/theme/luxury';
 import AuroraBackground from '@/shared/ui/AuroraBackground';
-import BootScreen from '@/app/BootScreen';
+import BootScreen from '@/components/BootScreen';
 import FinanceModulesScreen, { type FinanceModuleName } from '@/features/finance/presentation/screens/FinanceModulesScreen';
 import NotesFoldersScreen from '@/features/notes/presentation/screens/NotesFoldersScreen';
 import OnboardingScreen from '@/features/onboarding/presentation/screens/OnboardingScreen';
-import PinScreen from '@/app/PinScreen';
+import PinScreen from '@/components/PinScreen';
 import RichScreen from '@/features/finance/presentation/screens/RichScreen';
 import StoreScreen from '@/features/store/presentation/screens/StoreScreen';
 

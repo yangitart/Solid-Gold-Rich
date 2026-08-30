@@ -4,6 +4,8 @@ export type {
   StoreCashMovement,
   StoreCategory,
   StoreClient,
+  StoreDefaultOperation,
+  StoreProvider,
   StoreEmployee,
   StorePayFrequency,
   StorePayMode,

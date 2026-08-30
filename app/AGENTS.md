@@ -11,8 +11,8 @@
 
 - Esta carpeta contiene una app Expo/React Native orientada principalmente a Android.
 - La entrada nativa de la app es `index.js`, registrada con `registerRootComponent`; no usa Expo Router ni rutas web.
-- `src/app/components/AppRoot.tsx` es la raíz visual de la aplicación e inyecta mediante Inversify las dependencias registradas en `src/ioc/dependencies.ts`; `src/app/components/AppContent.tsx` coordina la pantalla de carga (`BootScreen`) y el panel principal (`RichScreen`).
-- El código se organiza por capas: `src/app/components/` para el shell React global, `src/ioc/` para ensamblar dependencias, `src/domain/` para el agregado global, `src/features/` para funcionalidades, `src/shared/` para contratos y recursos transversales y `src/legacy/` para scaffolding futuro todavía inactivo. Dentro de cada feature, `domain` no depende de capas externas, `application` depende de `domain`, `infrastructure` implementa ports de `application` y `presentation` consume casos de uso y contratos. Cada port y adaptador pertenece a la feature que lo consume; solo los servicios realmente transversales viven en `src/shared/`. El alias `@/` apunta a `src/`.
+- `src/components/AppRoot.tsx` es la raíz visual de la aplicación e inyecta mediante Inversify las dependencias registradas en `src/ioc/dependencies.ts`; `src/components/AppContent.tsx` coordina la pantalla de carga (`BootScreen`) y el panel principal (`RichScreen`).
+- El código se organiza por capas: `src/components/` para el shell React global, `src/ioc/` para ensamblar dependencias, `src/domain/` para el agregado global, `src/features/` para funcionalidades, `src/shared/` para contratos y recursos transversales y `src/legacy/` para scaffolding futuro todavía inactivo. Dentro de cada feature, `domain` no depende de capas externas, `application` depende de `domain`, `infrastructure` implementa ports de `application` y `presentation` consume casos de uso y contratos. Cada port y adaptador pertenece a la feature que lo consume; solo los servicios realmente transversales viven en `src/shared/`. El alias `@/` apunta a `src/`.
 - La composición visual de `RichScreen` es estable y no debe rediseñarse sin petición explícita; las funciones nuevas se abren desde los accesos del encabezado en `src/features/finance/presentation/screens/FinanceModulesScreen.tsx`.
 - `src/features/app-state/presentation/components/AppStateContext.tsx` expone la API compatible `useFinance` sobre una store Zustand y persiste el agregado global mediante el puerto `AppStateRepository`; no duplicar el estado en otros componentes ni acoplar la presentación directamente a AsyncStorage.
 - `src/shared/ui/AuroraBackground.tsx` proporciona el fondo oscuro con gradientes animados. No hay partículas ni polvo dorado de fondo.
@@ -85,7 +85,7 @@ npx.cmd expo export --platform android
 
 - Existe scaffolding interno en `src/legacy/future/`. Su presencia no cambia el producto actual.
 - `src/legacy/future/config.ts` es la fuente de verdad. Todas las banderas deben permanecer en `false` hasta una petición explícita de activación; ningún screen, menú, modal, drawer, deep link, notificación o tarea de fondo puede revelar estas capacidades mientras estén apagadas.
-- No importar el scaffolding futuro desde `src/app/`, `src/ioc/`, `src/features/` ni componentes compartidos. Mantenerlo fuera del bundle visible hasta que una función sea aprobada e implementada de extremo a extremo.
+- No importar el scaffolding futuro desde `src/components/`, `src/ioc/`, `src/features/` ni componentes compartidos. Mantenerlo fuera del bundle visible hasta que una función sea aprobada e implementada de extremo a extremo.
 
 ### Regalar un café a los desarrolladores
 

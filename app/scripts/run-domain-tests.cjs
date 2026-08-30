@@ -482,7 +482,7 @@ async function run() {
       { id: 'account-budget-safe', accountId: 'safe', category: 'all', period: 'monthly', limit: 900 },
     ],
     categories: { expense: [{ id: 'subscriptions', icon: 'repeat-outline', name: 'Subscriptions' }], income: [{ id: 'commission', icon: 'cash-outline', name: 'Commission' }], tag: [] },
-    store: { categories: ['General', 'Food', { id: 'custom-imported', name: 'Custom imported', icon: 'cafe-outline' }, { id: 'duplicate-food', name: 'Food' }], products: [null, { id: 'old', sku: 'OLD', name: 'Old', category: 'Food', salePrice: 2, costPrice: 1, initialStock: 4, type: 'product' }] },
+    store: { categories: ['General', 'Food', { id: 'custom-imported', name: 'Custom imported', icon: 'cafe-outline' }, { id: 'duplicate-food', name: 'Food' }], providers: [{ id: 'provider-1', name: 'Acme', defaultOperations: [{ id: 'operation-1', productId: 'old', quantity: 10 }] }], products: [null, { id: 'old', sku: 'OLD', name: 'Old', category: 'Food', providerId: 'provider-1', salePrice: 2, costPrice: 1, initialStock: 4, type: 'product' }] },
   });
   assert.equal(normalized.schemaVersion, 7);
   assert.equal(normalized.transactions.length, 2);
@@ -498,6 +498,7 @@ async function run() {
   assert.equal(normalized.store.categories.filter((item) => item.name === 'Food').length, 1);
   assert.equal(normalized.store.categories.some((item) => item.id === 'custom-imported' && !item.builtIn), true);
   assert.equal(normalized.store.categories.find((item) => item.id === 'custom-imported').icon, 'cafe-outline');
+  assert.equal(normalized.store.providers[0].defaultOperations[0].quantity, 10);
   assert.equal(normalized.store.products[0].categoryId, normalized.store.categories.find((item) => item.name === 'Food').id);
 
   storage.clear();
