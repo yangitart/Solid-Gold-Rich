@@ -27,7 +27,7 @@ import type { Account as FinanceAccount, Budget as FinanceBudget } from '@/featu
 import { currencyRate, historicalAmountInCurrency } from '@/shared/finance/currency';
 import DateSelect from '@/shared/ui/DateSelect';
 import { SearchableSelect, type SelectOption } from '@/shared/ui/FormKit';
-import { accountHasHistory, inDateRange, periodBounds, previousPeriodBounds } from '@/features/finance/domain/services/financeDomain';
+import { accountHasHistory, inDateRange, isTransferTransaction, periodBounds, previousPeriodBounds } from '@/features/finance/domain/services/financeDomain';
 
 type TransactionKind = 'expense' | 'income' | 'transfer';
 type ScreenMode = 'budget' | 'allActivity';
@@ -241,7 +241,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [managerOpen, setManagerOpen] = React.useState(false);
   const [statsOpen, setStatsOpen] = React.useState(false);
-  const [statsRange, setStatsRange] = React.useState<StatsRange>('month');
+  const [statsRange, setStatsRange] = React.useState<StatsRange>('week');
   const [statsView, setStatsView] = React.useState<StatsView>('charts');
   const [statsCalendarMonth, setStatsCalendarMonth] = React.useState(() => new Date(new Date().getFullYear(), new Date().getMonth(), 1));
   const [selectedStatsDate, setSelectedStatsDate] = React.useState(() => new Date().toDateString());
@@ -357,7 +357,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
     ? { start: new Date(activeLimitDefinition.startDate), end: new Date(activeLimitDefinition.endDate) }
     : periodBounds(activeLimitDefinition?.period === 'weekly' ? 'week' : 'month', referenceNow, financeState.settings.firstDayOfWeek), [activeLimitDefinition, financeState.settings.firstDayOfWeek, referenceNow]);
   const expenses = React.useMemo(() => activeBudget ? activeBudget.transactions
-    .filter((item) => item.kind === 'expense' && !item.transferId && inDateRange(item.date, activeLimitRange))
+    .filter((item) => item.kind === 'expense' && !isTransferTransaction(item) && inDateRange(item.date, activeLimitRange))
     .reduce((sum, item) => sum + item.amount, 0) : 0, [activeBudget, activeLimitRange]);
   const balance = React.useMemo(() => activeBudget ? balanceFor(activeBudget) : 0, [activeBudget]);
   const positiveBalance = Math.max(0, balance);
@@ -410,7 +410,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
     const periodTotals = (range: { start: Date; end: Date }) => {
       const totals = { income: 0, expenses: 0 };
       activeBudget?.transactions.forEach((item) => {
-        if (item.transferId || !inDateRange(item.date, range)) return;
+        if (isTransferTransaction(item) || !inDateRange(item.date, range)) return;
         if (item.kind === 'income') totals.income += item.amount;
         else totals.expenses += item.amount;
       });
@@ -427,7 +427,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
     const portfolioPeriodTotals = (range: { start: Date; end: Date }) => {
       const totals = { income: 0, expenses: 0 };
       allTransactions.forEach((item) => {
-        if (item.transferId || !inDateRange(item.date, range)) return;
+        if (isTransferTransaction(item) || !inDateRange(item.date, range)) return;
         const budget = accountViewsById.get(item.budgetId);
         if (!budget) return;
         if (item.kind === 'income') totals.income += transactionToBaseCurrency(item, budget);
@@ -445,7 +445,6 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
   const statsPeriods = screenMode === 'allActivity' ? portfolioPeriods : periods;
   const statsCurrency = screenMode === 'allActivity' ? baseCurrency : activeBudget?.currency ?? baseCurrency;
   const statsRangeOptions: { key: StatsRange; label: string }[] = [
-    { key: 'today', label: t('finance.today') },
     { key: 'week', label: t('finance.thisWeek') },
     { key: 'month', label: t('finance.thisMonth') },
     { key: 'year', label: t('finance.yearToDate') },
@@ -457,8 +456,8 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
   }), [statsCalendarMonth]);
   const statsTransactionRange = statsView === 'calendar' ? statsCalendarRange : statsRangeBounds;
   const statsTransactions = React.useMemo(() => (screenMode === 'allActivity' ? allTransactions : activeBudget?.transactions ?? [])
-    .filter((item) => !item.transferId && inDateRange(item.date, statsTransactionRange)), [activeBudget, allTransactions, screenMode, statsTransactionRange]);
-  const selectedStatsPeriod = statsPeriods.find((period) => period.key === statsRange) ?? statsPeriods[2];
+    .filter((item) => !isTransferTransaction(item) && inDateRange(item.date, statsTransactionRange)), [activeBudget, allTransactions, screenMode, statsTransactionRange]);
+  const selectedStatsPeriod = statsPeriods.find((period) => period.key === statsRange) ?? statsPeriods[1] ?? statsPeriods[0];
   const statsNet = selectedStatsPeriod.income - selectedStatsPeriod.expenses;
   const selectedBudget = selectedTransaction ? accountViews.find((budget) => budget.id === selectedTransaction.budgetId) : undefined;
   const selectedDisplayAmount = selectedTransaction && selectedBudget
@@ -492,7 +491,13 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
   }, [accountViewsById, screenMode, transactionToBaseCurrency]);
   const statsPreviousRange = React.useMemo(() => previousPeriodBounds(statsRange, statsRangeBounds), [statsRange, statsRangeBounds]);
   const statsPreviousTransactions = React.useMemo(() => (screenMode === 'allActivity' ? allTransactions : activeBudget?.transactions ?? [])
-    .filter((item) => !item.transferId && inDateRange(item.date, statsPreviousRange)), [activeBudget, allTransactions, screenMode, statsPreviousRange]);
+    .filter((item) => !isTransferTransaction(item) && inDateRange(item.date, statsPreviousRange)), [activeBudget, allTransactions, screenMode, statsPreviousRange]);
+  const statsComparisonPeriodLabel = statsRange === 'year'
+    ? t('finance.financeStats.previousYear')
+    : statsRange === 'month'
+      ? t('finance.financeStats.previousMonth')
+      : t('finance.financeStats.previousWeek');
+  const statsHasPreviousData = statsPreviousTransactions.length > 0;
   const statsPreviousTotals = React.useMemo(() => statsPreviousTransactions.reduce((totals, item) => {
     const amount = statsAmountOf(item);
     if (item.kind === 'income') totals.income += amount;
@@ -1014,7 +1019,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
             <Text style={styles.sectionTitle}>{t('finance.operations')}</Text>
            </Pressable>
            <View style={styles.operationHeaderActions}>
-             {todayTransactions.length > 0 && <Pressable style={styles.operationCountBadge} onPress={() => onOpenModule?.('activity', false, activeBudgetId)} accessibilityLabel={t('finance.allActivity')}><Ionicons name="receipt-outline" size={17} color={C.gold} /></Pressable>}
+             <Pressable style={styles.operationCountBadge} onPress={() => onOpenModule?.('activity', false, activeBudgetId)} accessibilityLabel={t('finance.allActivity')}><Ionicons name="receipt-outline" size={17} color={C.gold} /></Pressable>
              <Pressable style={styles.statsIconButton} onPress={() => setStatsOpen(true)} accessibilityLabel={t('finance.statistics')}>
                <Ionicons name="analytics-outline" size={18} color={C.gold} />
              </Pressable>
@@ -1077,7 +1082,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
           <Text style={styles.sectionTitle}>{t('finance.allActivity')}</Text>
         </Pressable>
         <View style={styles.operationHeaderActions}>
-          {todayAllTransactions.length > 0 && <Pressable style={styles.operationCountBadge} onPress={() => onOpenModule?.('activity', false, 'all')} accessibilityLabel={t('finance.allActivity')}><Ionicons name="receipt-outline" size={17} color={C.gold} /></Pressable>}
+          <Pressable style={styles.operationCountBadge} onPress={() => onOpenModule?.('activity', false, 'all')} accessibilityLabel={t('finance.allActivity')}><Ionicons name="receipt-outline" size={17} color={C.gold} /></Pressable>
           <Pressable style={styles.statsIconButton} onPress={() => setStatsOpen(true)} accessibilityLabel={t('finance.statistics')}>
             <Ionicons name="analytics-outline" size={18} color={C.gold} />
           </Pressable>
@@ -1242,14 +1247,14 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
               {statsView === 'charts' ? <>
               <View style={styles.statsSummary}>
                 <View style={styles.statsSummaryTop}><View style={styles.statsSummaryCopy}><Text style={styles.statsSummaryLabel}>{t('finance.cashFlow')} · {selectedStatsPeriod.label}</Text><Text style={[styles.statsSummaryNet, statsNet < 0 ? styles.expenseText : styles.incomeText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.58}>{formatMoney(statsNet, language, statsCurrency)}</Text></View><View style={styles.statsOperationBadge}><Ionicons name="receipt-outline" size={14} color={C.gold} /><Text style={styles.statsOperationCount}>{statsTransactions.length}</Text></View></View>
-                <View style={styles.statsSummaryValues}><View style={styles.statsMetric}><Text style={styles.statsMetricLabel}>{t('finance.income')}</Text><Text style={[styles.statsMetricValue, styles.incomeText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.58}>+{formatMoney(selectedStatsPeriod.income, language, statsCurrency)}</Text></View><View style={styles.statsMetricDivider} /><View style={styles.statsMetric}><Text style={styles.statsMetricLabel}>{t('finance.expenses')}</Text><Text style={[styles.statsMetricValue, styles.expenseText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.58}>-{formatMoney(selectedStatsPeriod.expenses, language, statsCurrency)}</Text></View></View>
+                <View style={styles.statsSummaryValues}><View style={styles.statsMetric}><Text style={styles.statsMetricLabel}>{t('finance.income')}</Text><Text style={[styles.statsMetricValue, styles.incomeText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.58}>{formatMoney(selectedStatsPeriod.income, language, statsCurrency)}</Text></View><View style={styles.statsMetricDivider} /><View style={styles.statsMetric}><Text style={styles.statsMetricLabel}>{t('finance.expenses')}</Text><Text style={[styles.statsMetricValue, styles.expenseText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.58}>{formatMoney(selectedStatsPeriod.expenses, language, statsCurrency)}</Text></View></View>
               </View>
-              <Text style={styles.managerEyebrow}>{t('finance.financeStats.vsPrevious')}</Text>
+              {statsHasPreviousData && <><Text style={styles.managerEyebrow}>{t('finance.financeStats.vsPreviousPeriod', { period: statsComparisonPeriodLabel })}</Text>
               <View style={styles.statsComparisonGrid}>
-                <View style={[styles.statsComparisonCard, narrowLayout && styles.statsComparisonCardWide]}><Text style={styles.statsInsightLabel}>{t('finance.income')}</Text><Text style={[styles.statsComparisonValue, statsComparison.income !== null && statsComparison.income >= 0 ? styles.incomeText : styles.expenseText]}>{statsComparison.income === null ? '—' : `${statsComparison.income >= 0 ? '+' : ''}${Math.round(statsComparison.income)}%`}</Text><Text style={styles.statsComparisonMeta} numberOfLines={2}>{statsComparison.income === null ? t('finance.financeStats.noPreviousData') : `${t('finance.financeStats.previous')}: ${formatMoney(statsPreviousTotals.income, language, statsCurrency)}`}</Text></View>
-                <View style={[styles.statsComparisonCard, narrowLayout && styles.statsComparisonCardWide]}><Text style={styles.statsInsightLabel}>{t('finance.expenses')}</Text><Text style={[styles.statsComparisonValue, statsComparison.expenses !== null && statsComparison.expenses <= 0 ? styles.incomeText : styles.expenseText]}>{statsComparison.expenses === null ? '—' : `${statsComparison.expenses >= 0 ? '+' : ''}${Math.round(statsComparison.expenses)}%`}</Text><Text style={styles.statsComparisonMeta} numberOfLines={2}>{statsComparison.expenses === null ? t('finance.financeStats.noPreviousData') : `${t('finance.financeStats.previous')}: ${formatMoney(statsPreviousTotals.expenses, language, statsCurrency)}`}</Text></View>
-                <View style={[styles.statsComparisonCard, narrowLayout && styles.statsComparisonCardWide]}><Text style={styles.statsInsightLabel}>{t('finance.savingsRate')}</Text><Text style={[styles.statsComparisonValue, statsComparison.savings !== null && statsComparison.savings >= 0 ? styles.incomeText : styles.expenseText]}>{statsComparison.savings === null ? '—' : `${statsComparison.savings >= 0 ? '+' : ''}${Math.round(statsComparison.savings)}%`}</Text><Text style={styles.statsComparisonMeta} numberOfLines={2}>{statsComparison.savings === null ? t('finance.financeStats.noPreviousData') : `${t('finance.financeStats.previous')}: ${Math.round(statsComparison.previousSavings)}%`}</Text></View>
-              </View>
+                <View style={styles.statsComparisonCard}><Text style={styles.statsInsightLabel} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72}>{t('finance.income')}</Text><Text style={[styles.statsComparisonValue, statsComparison.income !== null && statsComparison.income >= 0 ? styles.incomeText : styles.expenseText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{statsComparison.income === null ? '—' : `${statsComparison.income >= 0 ? '+' : ''}${Math.round(statsComparison.income)}%`}</Text><Text style={styles.statsComparisonMeta} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72}>{statsComparison.income === null ? t('finance.financeStats.noPreviousData') : `${t('finance.financeStats.previous')}: ${formatMoney(statsPreviousTotals.income, language, statsCurrency)}`}</Text></View>
+                <View style={styles.statsComparisonCard}><Text style={styles.statsInsightLabel} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72}>{t('finance.expenses')}</Text><Text style={[styles.statsComparisonValue, statsComparison.expenses !== null && statsComparison.expenses <= 0 ? styles.incomeText : styles.expenseText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{statsComparison.expenses === null ? '—' : `${statsComparison.expenses >= 0 ? '+' : ''}${Math.round(statsComparison.expenses)}%`}</Text><Text style={styles.statsComparisonMeta} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72}>{statsComparison.expenses === null ? t('finance.financeStats.noPreviousData') : `${t('finance.financeStats.previous')}: ${formatMoney(statsPreviousTotals.expenses, language, statsCurrency)}`}</Text></View>
+                <View style={styles.statsComparisonCard}><Text style={styles.statsInsightLabel} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72}>{t('finance.savingsRate')}</Text><Text style={[styles.statsComparisonValue, statsComparison.savings !== null && statsComparison.savings >= 0 ? styles.incomeText : styles.expenseText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{statsComparison.savings === null ? '—' : `${statsComparison.savings >= 0 ? '+' : ''}${Math.round(statsComparison.savings)}%`}</Text><Text style={styles.statsComparisonMeta} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.72}>{statsComparison.savings === null ? t('finance.financeStats.noPreviousData') : `${t('finance.financeStats.previous')}: ${Math.round(statsComparison.previousSavings)}%`}</Text></View>
+              </View></>}
               <View style={styles.statsInsights}>
                 <View style={[styles.statsInsight, narrowLayout && styles.statsInsightWide]}><Text style={styles.statsInsightLabel}>{t('finance.averageDailyExpense')}</Text><Text style={styles.statsInsightValue} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>{formatMoney(statsInsights.averageDailyExpense, language, statsCurrency)}</Text></View>
                 <View style={[styles.statsInsight, narrowLayout && styles.statsInsightWide]}><Text style={styles.statsInsightLabel}>{t('finance.savingsRate')}</Text><Text style={[styles.statsInsightValue, statsInsights.savingsRate < 0 && styles.expenseText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>{Math.round(statsInsights.savingsRate)}%</Text></View>
@@ -1318,7 +1323,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                 })}</View>
                 <View style={styles.statsCalendarDetails}>
                   <Text style={styles.managerEyebrow}>{new Date(selectedStatsDate).toLocaleDateString(language, { weekday: 'long', month: 'long', day: 'numeric' })}</Text>
-                  {selectedStatsItems.map((item) => { const portfolioItem = item as PortfolioTransaction; const budget = accountViews.find((candidate) => candidate.id === portfolioItem.budgetId); const displayAmount = screenMode === 'allActivity' && budget ? transactionToBaseCurrency(item, budget) : item.amount; const displayCurrency = screenMode === 'allActivity' ? baseCurrency : item.currency ?? statsCurrency; return <View key={item.id} style={styles.statsCategoryTop}><Text style={[styles.managerAccountName, styles.statsCalendarItemName]} numberOfLines={2}>{item.title}</Text><Text style={item.kind === 'income' ? styles.incomeText : styles.expenseText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{item.kind === 'income' ? '+' : '-'}{formatMoney(displayAmount, language, displayCurrency)}</Text></View>; })}
+                  {selectedStatsItems.map((item) => { const portfolioItem = item as PortfolioTransaction; const budget = accountViews.find((candidate) => candidate.id === portfolioItem.budgetId); const displayAmount = screenMode === 'allActivity' && budget ? transactionToBaseCurrency(item, budget) : item.amount; const displayCurrency = screenMode === 'allActivity' ? baseCurrency : item.currency ?? statsCurrency; return <View key={item.id} style={styles.statsCategoryTop}><Text style={[styles.managerAccountName, styles.statsCalendarItemName]} numberOfLines={2}>{item.title}</Text><Text style={item.kind === 'income' ? styles.incomeText : styles.expenseText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{formatMoney(displayAmount, language, displayCurrency)}</Text></View>; })}
                   {!selectedStatsItems.length && <Text style={styles.emptyCopy}>{t('finance.noActivityCopy')}</Text>}
                 </View>
               </View>}
@@ -1723,7 +1728,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   budgetTabActive: { borderBottomColor: C.gold },
   budgetTabText: { flexShrink: 1, color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 10, letterSpacing: 0.5 },
   budgetTabTextActive: { color: C.goldLight, fontWeight: '600' },
-  content: { paddingHorizontal: 18, paddingTop: 13, paddingBottom: 13 },
+  content: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 18, paddingTop: 13, paddingBottom: 13 },
   fixedContent: { flex: 1, minHeight: 0, paddingHorizontal: 18, paddingTop: 13, paddingBottom: 0 },
   fixedBudgetView: { flex: 1, minHeight: 0 },
   compactHero: { height: 146, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, flexDirection: 'row', overflow: 'hidden', backgroundColor: 'rgba(10,12,20,0.66)' },
@@ -1752,9 +1757,8 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   statsInsightLabel: { color: 'rgba(233,200,119,0.58)', fontFamily: SANS, fontSize: 7.5, lineHeight: 11, letterSpacing: 0.7, textTransform: 'uppercase' },
   statsInsightValue: { color: C.goldLight, fontFamily: SERIF, fontSize: 13, marginTop: 5 },
   statsInsightDivider: { width: StyleSheet.hairlineWidth, height: 30, backgroundColor: C.line },
-  statsComparisonGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 9, marginBottom: 14 },
-  statsComparisonCard: { width: '31.5%', minHeight: 92, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.045)', padding: 11, justifyContent: 'center' },
-  statsComparisonCardWide: { width: '100%' },
+  statsComparisonGrid: { flexDirection: 'row', gap: 7, marginBottom: 14 },
+  statsComparisonCard: { flex: 1, minWidth: 0, minHeight: 92, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.045)', paddingHorizontal: 8, paddingVertical: 10, justifyContent: 'center' },
   statsComparisonValue: { color: C.goldLight, fontFamily: SERIF, fontSize: 18, marginTop: 6 },
   statsComparisonMeta: { color: C.textSubtle, fontFamily: SANS, fontSize: 8.5, lineHeight: 13, marginTop: 4 },
   statsSummaryTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 },
@@ -1853,7 +1857,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   negativeCancelText: { color: C.gold, fontFamily: SANS, fontSize: 10, fontWeight: '700' },
   negativeConfirm: { flex: 1, minHeight: 48, borderRadius: 14, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center' },
   negativeConfirmText: { color: C.void, fontFamily: SANS, fontSize: 10, fontWeight: '800' },
-  drawer: { width: '84%', height: '100%', backgroundColor: '#090B12', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.line, paddingHorizontal: 18 },
+  drawer: { width: '84%', maxWidth: 420, height: '100%', backgroundColor: '#090B12', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.line, paddingHorizontal: 18 },
   drawerMenuScroll: { flex: 1 },
   drawerMenuContent: { paddingTop: 6, paddingBottom: 12 },
   drawerBalanceCard: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, padding: 15, marginTop: 8, backgroundColor: C.glass },

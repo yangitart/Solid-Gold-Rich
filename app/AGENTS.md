@@ -11,10 +11,10 @@
 
 - Esta carpeta contiene una app Expo/React Native orientada principalmente a Android.
 - La entrada nativa de la app es `index.js`, registrada con `registerRootComponent`; no usa Expo Router ni rutas web.
-- `src/application/AppRoot.tsx` es la raíz de composición e inyecta las dependencias definidas en `src/application/composition/dependencies.ts`; `src/application/AppContent.tsx` coordina la pantalla de carga (`BootScreen`) y el panel principal (`RichScreen`).
+- `src/application/AppRoot.tsx` es la raíz de composición e inyecta mediante Inversify las dependencias registradas en `src/application/composition/dependencies.ts`; `src/application/AppContent.tsx` coordina la pantalla de carga (`BootScreen`) y el panel principal (`RichScreen`).
 - El código se organiza por capas: `src/application/` para arranque y servicios globales, `src/features/` para funcionalidades, `src/shared/` para recursos compartidos y `src/legacy/` para scaffolding futuro todavía inactivo. El alias `@/` apunta a `src/`.
 - La composición visual de `RichScreen` es estable y no debe rediseñarse sin petición explícita; las funciones nuevas se abren desde los accesos del encabezado en `src/features/finance/presentation/screens/FinanceModulesScreen.tsx`.
-- `src/features/finance/application/FinanceContext.tsx` mantiene el modelo financiero versionado y persiste mediante el puerto `FinanceRepository`; no acoplar la presentación directamente a AsyncStorage.
+- `src/features/finance/application/FinanceContext.tsx` expone la API compatible de finanzas sobre una store Zustand y persiste mediante el puerto `FinanceRepository`; no duplicar el estado financiero en componentes ni acoplar la presentación directamente a AsyncStorage.
 - `src/shared/ui/AuroraBackground.tsx` proporciona el fondo oscuro con gradientes animados. No hay partículas ni polvo dorado de fondo.
 - El nombre público es `Solid Gold Rich` y el package Android es `com.escobar.solidgold`. No cambiar ninguno sin autorización explícita.
 - No recrear archivos de documentación de Play Store que el usuario haya eliminado. No modificar archivos generados dentro de `dist/` o `android/`.
@@ -35,6 +35,10 @@
 ## Fondo visual
 
 - Mantener el fondo limpio: no agregar partículas, polvo dorado ni otros elementos flotantes decorativos.
+
+## Modales y confirmaciones
+
+- No usar diálogos genéricos de React Native (`Alert.alert`) para confirmaciones. Crear o reutilizar siempre un modal propio integrado con el sistema visual de la app, preferentemente `ConfirmDialog` de `src/shared/ui/FormKit.tsx` para acciones destructivas, como el restablecimiento de datos en Ajustes.
 
 ## Idiomas
 

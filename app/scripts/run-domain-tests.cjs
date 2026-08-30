@@ -71,6 +71,7 @@ const {
   removeTransfer,
 } = require('../src/features/finance/domain/services/financeDomain.ts');
 const { removeNoteFolder } = require('../src/features/notes/domain/useCases/removeNoteFolder.ts');
+const { applyPrefixToCurrentLine, continueListAfterNewline, countNotesByFolderTree, insertDividerAfterCurrentLine } = require('../src/features/notes/domain/services/noteText.ts');
 const { removeCategory } = require('../src/features/finance/domain/useCases/removeCategory.ts');
 const {
   changeStoreCurrency,
@@ -238,6 +239,35 @@ async function run() {
     { id: 'child-note', title: 'Child note', body: 'Child body', tags: [], folderId: 'child-folder', createdAt: jan31, updatedAt: jan31, pinned: false },
     { id: 'grandchild-note', title: 'Grandchild note', body: 'Grandchild body', tags: [], folderId: 'grandchild-folder', createdAt: jan31, updatedAt: jan31, pinned: false },
   ];
+  const treeCounts = countNotesByFolderTree(foldersState.noteFolders, foldersState.notes);
+  assert.equal(treeCounts.get('root-folder'), 3);
+  assert.equal(treeCounts.get('child-folder'), 2);
+  assert.equal(treeCounts.get('grandchild-folder'), 1);
+  assert.equal(treeCounts.get('empty-folder'), 0);
+  assert.deepEqual(continueListAfterNewline('\u2610 Buy milk', '\u2610 Buy milk\n', { start: 10, end: 10 }), {
+    body: '\u2610 Buy milk\n\u2610 ',
+    selection: { start: 13, end: 13 },
+  });
+  assert.deepEqual(continueListAfterNewline('3. Third', '3. Third\n', { start: 8, end: 8 }), {
+    body: '3. Third\n4. ',
+    selection: { start: 12, end: 12 },
+  });
+  assert.deepEqual(continueListAfterNewline('\u2610 ', '\u2610 \n', { start: 2, end: 2 }), {
+    body: '',
+    selection: { start: 0, end: 0 },
+  });
+  assert.deepEqual(applyPrefixToCurrentLine('Buy milk', { start: 8, end: 8 }, '\u2610 '), {
+    body: '\u2610 Buy milk',
+    selection: { start: 10, end: 10 },
+  });
+  assert.deepEqual(applyPrefixToCurrentLine('Intro\n  \u2022 Existing', { start: 18, end: 18 }, '1. '), {
+    body: 'Intro\n  1. Existing',
+    selection: { start: 19, end: 19 },
+  });
+  assert.deepEqual(insertDividerAfterCurrentLine('Title\nNext', { start: 2, end: 2 }, '────'), {
+    body: 'Title\n────\nNext',
+    selection: { start: 11, end: 11 },
+  });
   const originalTransactions = foldersState.transactions;
   const originalCategories = foldersState.categories;
   const afterRootFolderDelete = removeNoteFolder(foldersState, 'root-folder');

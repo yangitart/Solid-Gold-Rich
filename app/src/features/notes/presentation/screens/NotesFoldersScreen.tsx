@@ -1,10 +1,12 @@
 import React from 'react';
-import { Alert, Animated as NativeAnimated, BackHandler, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Animated as NativeAnimated, BackHandler, KeyboardAvoidingView, Modal, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTranslation } from 'react-i18next';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFinance } from '@/features/finance/application/FinanceContext';
+import { applyPrefixToCurrentLine, continueListAfterNewline, countNotesByFolderTree, insertDividerAfterCurrentLine } from '@/features/notes/domain/services/noteText';
 import { C, SANS, SERIF, createThemeStyles } from '@/shared/theme/luxury';
+import { ConfirmDialog } from '@/shared/ui/FormKit';
 
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const normalizedSearch = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim();
@@ -21,7 +23,12 @@ function Field({ title, value, onChangeText, placeholder, multiline = false }: {
 
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 type SwipeAction = { icon: IconName; label: string; danger?: boolean; onPress: () => void };
+type ConfirmPrompt = { title: string; message: string; onConfirm: () => void };
 const AnimatedPressable = NativeAnimated.createAnimatedComponent(Pressable);
+
+function EditorTool({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
+  return <Pressable style={({ pressed }) => [styles.editorTool, pressed && styles.editorToolPressed]} onPress={onPress} accessibilityRole="button" accessibilityLabel={label} hitSlop={3}><Ionicons name={icon} size={20} color={C.gold} /></Pressable>;
+}
 
 function SwipeableRow({ children, actions, onPress, accessibilityLabel }: { children: React.ReactNode; actions: SwipeAction[]; onPress?: () => void; accessibilityLabel?: string }) {
   const translateX = React.useRef(new NativeAnimated.Value(0)).current;
@@ -59,6 +66,11 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
   const { t } = useTranslation();
   const finance = useFinance();
   const { state } = finance;
+  const { width: windowWidth } = useWindowDimensions();
+  const noteDivider = React.useMemo(() => {
+    const contentWidth = Math.min(windowWidth, 760) - 40;
+    return '\u2500'.repeat(Math.max(18, Math.min(80, Math.floor(contentWidth / 8.9))));
+  }, [windowWidth]);
   const [selectedFolderId, setSelectedFolderId] = React.useState<string | null>(null);
   const [noteOpen, setNoteOpen] = React.useState(false);
   const [folderOpen, setFolderOpen] = React.useState(false);
@@ -70,6 +82,7 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
   const [noteSelection, setNoteSelection] = React.useState({ start: 0, end: 0 });
   const bodyInputRef = React.useRef<TextInput>(null);
   const [query, setQuery] = React.useState('');
+  const [confirmPrompt, setConfirmPrompt] = React.useState<ConfirmPrompt | null>(null);
 
   React.useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -104,6 +117,7 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
   const visibleNotes = React.useMemo(() => folderNotes
     .filter((item) => !normalizedQuery || normalizedSearch(`${item.title} ${item.body}`).includes(normalizedQuery))
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)), [folderNotes, normalizedQuery]);
+  const folderNoteCounts = React.useMemo(() => countNotesByFolderTree(state.noteFolders, state.notes), [state.noteFolders, state.notes]);
   const openNewNote = () => {
     setEditingNoteId(null);
     setNote({ title: '', body: '', folderId: selectedFolderId ?? '' });
@@ -118,17 +132,57 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
   };
 
   const insertListPrefix = (prefix: string) => {
+    const edit = applyPrefixToCurrentLine(note.body, noteSelection, prefix);
+    setNote((current) => ({ ...current, body: edit.body }));
+    setNoteSelection(edit.selection);
+    requestAnimationFrame(() => bodyInputRef.current?.focus());
+  };
+
+  const insertBlock = (value: string) => {
     const { body } = note;
     const start = Math.max(0, Math.min(noteSelection.start, body.length));
     const end = Math.max(start, Math.min(noteSelection.end, body.length));
     const lineStart = body.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
-    const currentLineBeforeCursor = body.slice(lineStart, start);
-    const insertion = currentLineBeforeCursor.trim() ? `\n${prefix}` : prefix;
+    const insertion = body.slice(lineStart, start).trim() ? `\n${value}\n` : `${value}\n`;
     const nextBody = `${body.slice(0, start)}${insertion}${body.slice(end)}`;
-    const nextCursor = start + insertion.length;
+    const cursor = start + insertion.length;
     setNote((current) => ({ ...current, body: nextBody }));
-    setNoteSelection({ start: nextCursor, end: nextCursor });
+    setNoteSelection({ start: cursor, end: cursor });
     requestAnimationFrame(() => bodyInputRef.current?.focus());
+  };
+
+  const insertDivider = () => {
+    const edit = insertDividerAfterCurrentLine(note.body, noteSelection, noteDivider);
+    setNote((current) => ({ ...current, body: edit.body }));
+    setNoteSelection(edit.selection);
+    requestAnimationFrame(() => bodyInputRef.current?.focus());
+  };
+
+  const toggleCurrentCheckbox = () => {
+    const { body } = note;
+    const start = Math.max(0, Math.min(noteSelection.start, body.length));
+    const lineStart = body.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
+    const line = body.slice(lineStart);
+    const checkbox = line.match(/^(\s*)([\u2610\u2611])\s/);
+    if (!checkbox) {
+      insertListPrefix('\u2610 ');
+      return;
+    }
+    const checkboxIndex = lineStart + checkbox[1].length;
+    const nextBody = `${body.slice(0, checkboxIndex)}${checkbox[2] === '\u2610' ? '\u2611' : '\u2610'}${body.slice(checkboxIndex + 1)}`;
+    setNote((current) => ({ ...current, body: nextBody }));
+    requestAnimationFrame(() => bodyInputRef.current?.focus());
+  };
+
+  const updateNoteBody = (value: string) => {
+    const continuation = continueListAfterNewline(note.body, value, noteSelection);
+    if (!continuation) {
+      setNote((current) => ({ ...current, body: value }));
+      return;
+    }
+    setNote((current) => ({ ...current, body: continuation.body }));
+    setNoteSelection(continuation.selection);
+    requestAnimationFrame(() => setNoteSelection(continuation.selection));
   };
 
   const saveNote = () => {
@@ -162,7 +216,6 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
     setFolderName('');
     setEditingFolderId(null);
     setFolderError('');
-    setSelectedFolderId(null);
   };
 
   const openFolderEditor = (folder: typeof state.noteFolders[number]) => {
@@ -173,17 +226,19 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
   };
 
   const deleteFolder = (folder: typeof state.noteFolders[number]) => {
-    Alert.alert(t('finance.deleteFolder'), t('finance.modules.cannotUndo'), [
-      { text: t('finance.cancel'), style: 'cancel' },
-      { text: t('finance.deleteAction'), style: 'destructive', onPress: () => { finance.deleteNoteFolder(folder.id); if (selectedFolderId === folder.id) setSelectedFolderId(null); } },
-    ]);
+    setConfirmPrompt({
+      title: t('finance.deleteFolder'),
+      message: t('finance.modules.cannotUndo'),
+      onConfirm: () => { finance.deleteNoteFolder(folder.id); if (selectedFolderId === folder.id) setSelectedFolderId(null); },
+    });
   };
 
   const deleteNote = (item: typeof state.notes[number]) => {
-    Alert.alert(t('finance.deleteNote'), t('finance.modules.cannotUndo'), [
-      { text: t('finance.cancel'), style: 'cancel' },
-      { text: t('finance.deleteAction'), style: 'destructive', onPress: () => finance.updateState((current) => ({ ...current, notes: current.notes.filter((noteItem) => noteItem.id !== item.id) })) },
-    ]);
+    setConfirmPrompt({
+      title: t('finance.deleteNote'),
+      message: t('finance.modules.cannotUndo'),
+      onConfirm: () => finance.updateState((current) => ({ ...current, notes: current.notes.filter((noteItem) => noteItem.id !== item.id) })),
+    });
   };
 
   return (
@@ -197,10 +252,10 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
         <View style={styles.search}><Ionicons name="search-outline" size={17} color={C.textSubtle} /><TextInput value={query} onChangeText={setQuery} placeholder={t('finance.notesSearch', { defaultValue: 'Search notes' })} placeholderTextColor={C.textSubtle} style={styles.searchInput} /><Text style={styles.searchCount}>{visibleNotes.length + visibleFolders.length}</Text></View>
         <View style={[styles.panel, !visibleNotes.length && !visibleFolders.length && styles.panelEmpty]}>
           {visibleFolders.length > 0 ? <>
-            {visibleFolders.map((folder) => <SwipeableRow key={folder.id} onPress={() => { setSelectedFolderId(folder.id); setQuery(''); }} accessibilityLabel={folder.name} actions={[{ icon: 'create-outline', label: t('finance.renameFolder'), onPress: () => openFolderEditor(folder) }, { icon: 'trash-outline', label: t('finance.deleteAction'), danger: true, onPress: () => deleteFolder(folder) }]}><View style={styles.folderCard}><View style={styles.folderMain}><View style={styles.folderIcon}><Ionicons name="folder-outline" size={21} color={C.gold} /></View><View style={styles.folderCardMain}><Text style={styles.cardTitle} numberOfLines={1}>{folder.name}</Text><Text style={styles.cardMeta}>{t('finance.noteCount', { count: state.notes.filter((note) => note.folderId === folder.id).length })}</Text></View><Ionicons name="chevron-forward-outline" size={17} color={C.textSubtle} /></View></View></SwipeableRow>)}
+            {visibleFolders.map((folder) => <SwipeableRow key={folder.id} onPress={() => { setSelectedFolderId(folder.id); setQuery(''); }} accessibilityLabel={folder.name} actions={[{ icon: 'create-outline', label: t('finance.renameFolder'), onPress: () => openFolderEditor(folder) }, { icon: 'trash-outline', label: t('finance.deleteAction'), danger: true, onPress: () => deleteFolder(folder) }]}><View style={styles.folderCard}><View style={styles.folderMain}><View style={styles.folderIcon}><Ionicons name="folder-outline" size={21} color={C.gold} /></View><View style={styles.folderCardMain}><Text style={styles.cardTitle} numberOfLines={1}>{folder.name}</Text><Text style={styles.cardMeta}>{t('finance.noteCount', { count: folderNoteCounts.get(folder.id) ?? 0 })}</Text></View><Ionicons name="chevron-forward-outline" size={17} color={C.textSubtle} /></View></View></SwipeableRow>)}
           </> : null}
-          {visibleNotes.map((item) => <SwipeableRow key={item.id} actions={[{ icon: 'create-outline', label: t('finance.editAction', { defaultValue: 'Editar' }), onPress: () => openNote(item) }, { icon: 'trash-outline', label: t('finance.deleteAction'), danger: true, onPress: () => deleteNote(item) }]}><Pressable style={styles.noteCard} onPress={() => openNote(item)} accessibilityRole="button"><View style={styles.noteMain}><View style={styles.noteHeaderMain}><Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text><Text style={styles.notePreview} numberOfLines={2}>{new Date(item.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {item.body || t('finance.noActivityCopy')}</Text></View></View><Ionicons name="chevron-forward-outline" size={17} color={C.textSubtle} /></Pressable></SwipeableRow>)}
-          {!visibleNotes.length && !visibleFolders.length ? <View style={styles.empty}><View style={styles.diamond} /><Text style={styles.emptyTitle}>{t('finance.noNotes')}</Text><Text style={styles.emptyBody}>{t('finance.noActivityCopy')}</Text></View> : null}
+          {visibleNotes.map((item) => <SwipeableRow key={item.id} actions={[{ icon: 'trash-outline', label: t('finance.deleteAction'), danger: true, onPress: () => deleteNote(item) }]}><Pressable style={styles.noteCard} onPress={() => openNote(item)} accessibilityRole="button"><View style={styles.noteMain}><View style={styles.noteHeaderMain}><Text style={styles.cardTitle} numberOfLines={1}>{item.title}</Text><Text style={styles.notePreview} numberOfLines={2}>{new Date(item.updatedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}{item.body ? ` · ${item.body}` : ''}</Text></View></View><Ionicons name="chevron-forward-outline" size={17} color={C.textSubtle} /></Pressable></SwipeableRow>)}
+          {!visibleNotes.length && !visibleFolders.length ? <View style={styles.empty}><View style={styles.diamond} /><Text style={styles.emptyTitle}>{t('finance.noNotes')}</Text><Text style={styles.emptyBody}>{t('finance.modules.noNotesCopy')}</Text></View> : null}
         </View>
       </ScrollView>
       <View style={styles.bottomToolbar}><Pressable style={styles.toolbarAction} onPress={() => { setEditingFolderId(null); setFolderName(''); setFolderError(''); setFolderOpen(true); }}><Ionicons name="folder-open-outline" size={19} color={C.gold} /><Text style={styles.toolbarText}>{t('finance.newFolder')}</Text></Pressable><Pressable style={styles.composeButton} onPress={openNewNote}><Ionicons name="create-outline" size={22} color={C.void} /></Pressable></View>
@@ -214,10 +269,11 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
       <Modal visible={noteOpen} animationType="fade" onRequestClose={() => setNoteOpen(false)}>
         <SafeAreaView style={styles.editorRoot} edges={['top', 'bottom']}><KeyboardAvoidingView style={styles.editorRoot} behavior="padding" enabled={Platform.OS === 'ios'}>
           <View style={styles.editorHeader}><Pressable style={styles.editorHeaderAction} onPress={() => setNoteOpen(false)}><Text style={styles.editorAction}>{t('finance.cancel')}</Text></Pressable><Text style={styles.editorHeading}>{editingNoteId ? t('finance.notes') : t('finance.newNote')}</Text><Pressable style={styles.editorHeaderAction} disabled={!note.title.trim() && !note.body.trim()} onPress={saveNote}><Text style={[styles.editorAction, !note.title.trim() && !note.body.trim() && styles.editorActionDisabled]}>{t('finance.done')}</Text></Pressable></View>
-          <ScrollView style={styles.editorScroll} contentContainerStyle={styles.editorContent} keyboardShouldPersistTaps="handled"><TextInput value={note.title} onChangeText={(value) => setNote((current) => ({ ...current, title: value }))} placeholder={t('finance.noteTitle')} placeholderTextColor={C.textSubtle} style={styles.editorTitle} /><TextInput ref={bodyInputRef} value={note.body} onChangeText={(value) => setNote((current) => ({ ...current, body: value }))} onSelectionChange={(event) => setNoteSelection(event.nativeEvent.selection)} selection={noteSelection} placeholder={t('finance.noteBody')} placeholderTextColor={C.textSubtle} multiline style={styles.editorBody} /></ScrollView>
-          <View style={styles.editorToolbar}><Pressable style={styles.editorTool} onPress={() => insertListPrefix('\u2610 ')} accessibilityRole="button" accessibilityLabel={t('finance.noteToolbar.checklist')}><Ionicons name="checkbox-outline" size={21} color={C.gold} /></Pressable><Pressable style={styles.editorTool} onPress={() => insertListPrefix('\u2022 ')} accessibilityRole="button" accessibilityLabel={t('finance.noteToolbar.bulletList')}><Ionicons name="list-outline" size={22} color={C.gold} /></Pressable><Pressable style={styles.editorTool} onPress={() => insertListPrefix('1. ')} accessibilityRole="button" accessibilityLabel={t('finance.noteToolbar.numberedList')}><Ionicons name="reorder-three-outline" size={22} color={C.gold} /></Pressable></View>
+          <ScrollView style={styles.editorScroll} contentContainerStyle={styles.editorContent} keyboardShouldPersistTaps="handled"><TextInput value={note.title} onChangeText={(value) => setNote((current) => ({ ...current, title: value }))} placeholder={t('finance.noteTitle')} placeholderTextColor={C.textSubtle} style={styles.editorTitle} /><TextInput ref={bodyInputRef} value={note.body} onChangeText={updateNoteBody} onSelectionChange={(event) => setNoteSelection(event.nativeEvent.selection)} selection={noteSelection} placeholder={t('finance.noteBody')} placeholderTextColor={C.textSubtle} multiline style={styles.editorBody} /></ScrollView>
+          <View style={styles.editorToolbarShell}><ScrollView horizontal showsHorizontalScrollIndicator={false} keyboardShouldPersistTaps="always" contentContainerStyle={styles.editorToolbar}><EditorTool icon="checkbox-outline" label={t('finance.noteToolbar.checklist')} onPress={toggleCurrentCheckbox} /><EditorTool icon="list-outline" label={t('finance.noteToolbar.bulletList')} onPress={() => insertListPrefix('\u2022 ')} /><EditorTool icon="reorder-three-outline" label={t('finance.noteToolbar.numberedList')} onPress={() => insertListPrefix('1. ')} /><EditorTool icon="chatbox-outline" label={t('finance.noteToolbar.quote')} onPress={() => insertListPrefix('> ')} /><View style={styles.editorToolDivider} /><EditorTool icon="remove-outline" label={t('finance.noteToolbar.divider')} onPress={insertDivider} /><EditorTool icon="calendar-outline" label={t('finance.noteToolbar.date')} onPress={() => insertBlock(new Date().toLocaleDateString())} /></ScrollView></View>
         </KeyboardAvoidingView></SafeAreaView>
       </Modal>
+      <ConfirmDialog visible={Boolean(confirmPrompt)} title={confirmPrompt?.title ?? ''} message={confirmPrompt?.message ?? ''} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.deleteAction')} icon="trash-outline" destructive onCancel={() => setConfirmPrompt(null)} onConfirm={() => { const action = confirmPrompt?.onConfirm; setConfirmPrompt(null); action?.(); }} />
     </SafeAreaView>
   );
 }
@@ -294,6 +350,9 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   editorContent: { width: '100%', maxWidth: 760, alignSelf: 'center', flexGrow: 1, paddingHorizontal: 20, paddingTop: 22, paddingBottom: 50 },
   editorTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 27, paddingVertical: 8 },
   editorBody: { minHeight: 260, color: 'rgba(255,244,208,0.78)', fontFamily: SANS, fontSize: 15, lineHeight: 23, paddingVertical: 12, textAlignVertical: 'top' },
-  editorToolbar: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18, paddingBottom: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, backgroundColor: 'rgba(9,11,18,0.96)' },
-  editorTool: { width: 44, height: 44, borderRadius: 13, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(233,200,119,0.08)' },
+  editorToolbarShell: { minHeight: 56, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, backgroundColor: 'rgba(9,11,18,0.98)' },
+  editorToolbar: { minHeight: 56, alignItems: 'center', gap: 2, paddingHorizontal: 12, paddingVertical: 6 },
+  editorTool: { width: 42, height: 42, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
+  editorToolPressed: { backgroundColor: 'rgba(233,200,119,0.1)' },
+  editorToolDivider: { width: StyleSheet.hairlineWidth, height: 24, marginHorizontal: 4, backgroundColor: 'rgba(233,200,119,0.16)' },
 }));

@@ -1,4 +1,6 @@
 import React from 'react';
+import { useStore } from 'zustand';
+import { createStore } from 'zustand/vanilla';
 import type {
   Account,
   Budget,
@@ -63,6 +65,14 @@ type FinanceContextValue = {
 
 const FinanceContext = React.createContext<FinanceContextValue | null>(null);
 
+type FinanceStoreState = {
+  state: FinanceState;
+  loaded: boolean;
+  persistenceStatus: PersistenceStatus;
+  persistenceError: string | null;
+  persistenceErrorPhase: PersistenceErrorPhase;
+};
+
 function replaceById<T extends { id: string }>(items: T[], value: T) {
   return items.some((item) => item.id === value.id)
     ? items.map((item) => item.id === value.id ? value : item)
@@ -73,11 +83,21 @@ function newId(prefix: string) {
 }
 
 export function FinanceProvider({ children, repository }: { children: React.ReactNode; repository: FinanceRepository }) {
-  const [state, setState] = React.useState<FinanceState>(() => repository.reset());
-  const [loaded, setLoaded] = React.useState(false);
-  const [persistenceStatus, setPersistenceStatus] = React.useState<PersistenceStatus>('loading');
-  const [persistenceError, setPersistenceError] = React.useState<string | null>(null);
-  const [persistenceErrorPhase, setPersistenceErrorPhase] = React.useState<PersistenceErrorPhase>(null);
+  const [store] = React.useState(() => createStore<FinanceStoreState>(() => ({
+    state: repository.reset(),
+    loaded: false,
+    persistenceStatus: 'loading',
+    persistenceError: null,
+    persistenceErrorPhase: null,
+  })));
+  const { state, loaded, persistenceStatus, persistenceError, persistenceErrorPhase } = useStore(store);
+  const setState = React.useCallback((value: React.SetStateAction<FinanceState>) => {
+    store.setState((current) => ({ state: typeof value === 'function' ? value(current.state) : value }));
+  }, [store]);
+  const setLoaded = React.useCallback((value: boolean) => store.setState({ loaded: value }), [store]);
+  const setPersistenceStatus = React.useCallback((value: PersistenceStatus) => store.setState({ persistenceStatus: value }), [store]);
+  const setPersistenceError = React.useCallback((value: string | null) => store.setState({ persistenceError: value }), [store]);
+  const setPersistenceErrorPhase = React.useCallback((value: PersistenceErrorPhase) => store.setState({ persistenceErrorPhase: value }), [store]);
   const loadedSuccessfully = React.useRef(false);
   const saveSequence = React.useRef(Promise.resolve());
 
@@ -106,7 +126,7 @@ export function FinanceProvider({ children, repository }: { children: React.Reac
         if (active) setLoaded(true);
       });
     return () => { active = false; };
-  }, [repository]);
+  }, [repository, setLoaded, setPersistenceError, setPersistenceErrorPhase, setPersistenceStatus, setState]);
 
   React.useEffect(() => {
     const cleanup = retryLoad();
@@ -129,7 +149,7 @@ export function FinanceProvider({ children, repository }: { children: React.Reac
         setPersistenceErrorPhase('save');
         setPersistenceStatus('error');
       });
-  }, [loaded, repository, state]);
+  }, [loaded, repository, setPersistenceError, setPersistenceErrorPhase, setPersistenceStatus, state]);
 
   React.useEffect(() => {
     if (!loaded) return;
@@ -139,11 +159,11 @@ export function FinanceProvider({ children, repository }: { children: React.Reac
       const generated = generateDueRecurring(current.recurring, current.transactions, new Date(), () => newId('recurring'), current.settings.preferredCurrency, current.settings.exchangeRates ?? { USD: 1 });
       return { ...current, recurring: generated.recurring, transactions: generated.transactions };
     });
-  }, [loaded, state.recurring]);
+  }, [loaded, setState, state.recurring]);
 
   const updateState = React.useCallback((updater: (current: FinanceState) => FinanceState) => {
     setState((current) => updater(current));
-  }, []);
+  }, [setState]);
 
   const addAccount = React.useCallback((account: Account) => updateState((current) => createAccount(current, account)), [updateState]);
   const updateAccount = React.useCallback((account: Account) => updateState((current) => updateAccountState(current, account)), [updateState]);
@@ -191,14 +211,14 @@ export function FinanceProvider({ children, repository }: { children: React.Reac
         setPersistenceErrorPhase('save');
         setPersistenceStatus('error');
       });
-  }, [repository, retryLoad, state]);
+  }, [repository, retryLoad, setPersistenceError, setPersistenceErrorPhase, setPersistenceStatus, state]);
 
   const importJson = React.useCallback((json: string) => {
     const parsed = repository.parseJson(json);
     if (!parsed) return false;
     setState(parsed);
     return true;
-  }, [repository]);
+  }, [repository, setState]);
 
   const importCsvText = React.useCallback((csv: string, accountId: string) => {
     const account = state.accounts.find((item) => item.id === accountId);
@@ -207,7 +227,7 @@ export function FinanceProvider({ children, repository }: { children: React.Reac
     return result.errors;
   }, [repository, state.accounts, state.settings.preferredCurrency, updateState]);
 
-  const resetData = React.useCallback(() => setState(repository.reset()), [repository]);
+  const resetData = React.useCallback(() => setState(repository.reset()), [repository, setState]);
 
   const value = React.useMemo(() => ({
     state, loaded, persistenceStatus, persistenceError, persistenceErrorPhase, retryLoad, retryPersistence, updateState, addAccount, updateAccount, archiveAccount, restoreAccount, addTransaction, updateTransaction,

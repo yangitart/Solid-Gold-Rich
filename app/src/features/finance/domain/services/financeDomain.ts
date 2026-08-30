@@ -21,7 +21,7 @@ export function accountHasHistory(state: Pick<FinanceState, 'transactions' | 'tr
     || state.transfers.some((item) => item.fromAccountId === accountId || item.toAccountId === accountId);
 }
 
-export function isTransferTransaction(item: Transaction) {
+export function isTransferTransaction(item: { transferId?: string; kind: string }) {
   return Boolean(item.transferId) || item.kind === 'transfer';
 }
 
