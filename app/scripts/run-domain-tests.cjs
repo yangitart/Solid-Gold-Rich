@@ -72,6 +72,7 @@ const { recordDebtPayment, recordSavingsContribution, removeTransfer, resolveImp
 const { removeNoteFolder } = require('../src/features/notes/application/useCases/removeNoteFolder.ts');
 const { applyPrefixToCurrentLine, continueListAfterNewline, countNotesByFolderTree, insertDividerAfterCurrentLine } = require('../src/features/notes/domain/services/noteText.ts');
 const { removeCategory } = require('../src/features/finance/application/useCases/removeCategory.ts');
+const { exportFinanceCsv } = require('../src/features/finance/application/services/csvExport.ts');
 const {
   changeStoreCurrency,
   completeSale,
@@ -100,6 +101,7 @@ const {
   DEFAULT_CATEGORIES,
   DEFAULT_STORE_CATEGORIES,
   emptyFinanceState,
+  importCsv,
   loadFinanceState,
   normalizeFinanceState,
   saveFinanceState,
@@ -140,6 +142,22 @@ async function run() {
   assert.ok(Math.abs(cupSnapshot.baseAmount - (100 / 670)) < 1e-12);
   assert.equal(cupSnapshot.baseCurrency, 'USD');
   assert.equal(historicalAmountInCurrency({ amount: 100, currency: 'CUP', ...cupSnapshot }, 'USD', { USD: 1, CUP: 1 / 500 }), cupSnapshot.baseAmount);
+  const csvState = emptyFinanceState();
+  csvState.accounts = [account('cup-account', 'CUP')];
+  csvState.settings.preferredCurrency = 'USD';
+  csvState.settings.exchangeRates = cupRates;
+  csvState.transactions = [{ id: 'csv-cup', accountId: 'cup-account', kind: 'expense', amount: 629, currency: 'CUP', date: '2025-01-31T12:00:00.000Z', payee: 'Test', category: 'other', paymentMethod: 'cash', status: 'cleared', reference: 'csv-cup', description: 'Exchange rate test' }];
+  const csv = exportFinanceCsv(csvState);
+  assert.match(csv, /rateToBase,rateSource/);
+  assert.ok(csv.split('\n')[1].includes('0.938805970149,USD,0.00149253731343,configured'));
+  const importedCsv = importCsv(csv, 'cup-account', 'USD');
+  assert.equal(importedCsv.errors.length, 0);
+  assert.equal(importedCsv.items[0].currency, 'CUP');
+  assert.equal(importedCsv.items[0].baseCurrency, 'USD');
+  assert.ok(Math.abs(importedCsv.items[0].baseAmount - 0.938805970149) < 1e-12);
+  assert.deepEqual(importCsv('date,kind,amount,currency\n2025-01-31,expense,-1,USD', 'cup-account', 'USD').errors, ['row:2:amount']);
+  assert.deepEqual(importCsv('date,kind,amount\n2025-01-31,expense,-1', 'cup-account', 'USD').errors, ['header']);
+  assert.deepEqual(importCsv('date,kind,amount,currency\n"2025-01-31,expense,1,USD', 'cup-account', 'USD').errors, ['header']);
 
   const marchRange = periodBounds('month', new Date(2026, 2, 15, 12), 1);
   const februaryRange = previousPeriodBounds('month', marchRange);
@@ -382,6 +400,28 @@ async function run() {
   assert.equal(currencyChange.state.store.stockMovements[0].date, jan31);
   assert.equal(currencyChange.state.store.stockMovements[0].personalTransactionId, 'linked-purchase');
   assert.equal(currencyChange.state.store.cashMovements[0].transferId, 'linked-transfer');
+  const preservedHistory = changeStoreCurrency(currencyState, 'CUP', { USD: 1, CUP: 0.04 }, false);
+  assert.equal(preservedHistory.state.store.sales[0].total, 10);
+  assert.equal(preservedHistory.state.store.sales[0].currency, 'USD');
+  assert.equal(preservedHistory.state.store.cashMovements[0].amount, 10);
+  assert.equal(preservedHistory.state.store.cashMovements[0].currency, 'USD');
+  assert.equal(preservedHistory.state.store.products[0].salePrice, 250);
+  assert.equal(preservedHistory.state.store.products[0].currency, 'CUP');
+  assert.equal(preservedHistory.state.store.businessAccount.balance, 150);
+  const reloadedPreservedHistory = normalizeFinanceState(preservedHistory.state);
+  assert.equal(reloadedPreservedHistory.store.businessAccount.balance, 150);
+  assert.equal(reloadedPreservedHistory.store.businessAccount.currency, 'CUP');
+  const preferredCurrencyStore = emptyFinanceState();
+  preferredCurrencyStore.settings.preferredCurrency = 'CUP';
+  preferredCurrencyStore.settings.exchangeRates = { USD: 1, CUP: 0.04 };
+  delete preferredCurrencyStore.store.currency;
+  delete preferredCurrencyStore.store.businessAccount.currency;
+  preferredCurrencyStore.store.cashMovements = [{ id: 'legacy-cup-cash', type: 'opening', amount: 100, date: jan31, note: '' }];
+  const normalizedPreferredStore = normalizeFinanceState(preferredCurrencyStore);
+  assert.equal(normalizedPreferredStore.store.currency, 'CUP');
+  assert.equal(normalizedPreferredStore.store.businessAccount.currency, 'CUP');
+  assert.equal(normalizedPreferredStore.store.cashMovements[0].currency, 'CUP');
+  assert.equal(normalizedPreferredStore.store.businessAccount.balance, 100);
   const currencyRoundTrip = changeStoreCurrency(currencyChange.state, 'USD', { USD: 1, CUP: 0.04 }).state;
   assert.equal(currencyRoundTrip.store.products[0].salePrice, 10);
   assert.equal(currencyRoundTrip.store.sales[0].total, 10);
@@ -458,6 +498,9 @@ async function run() {
   const restoredApp = await restoreAppBackupToDevice(parseAppBackup(serializedAppBackup));
   const appArchive = await createAppArchive(completeState);
   assert.ok(appArchive.length > 4);
+  const corruptedArchive = new Uint8Array(appArchive);
+  corruptedArchive[50] ^= 1;
+  assert.throws(() => parseAppArchive(bytesToBase64(corruptedArchive)), /invalid-archive/);
   const restoredArchive = await restoreAppBackupToDevice(parseAppArchive(bytesToBase64(appArchive)));
   assert.ok(restoredArchive.store.products[0].picture.startsWith('file:///documents/product-images/photo-product-'));
   assert.equal(fileContents.get(restoredArchive.store.products[0].picture), 'aW1hZ2U=');

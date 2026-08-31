@@ -1,5 +1,5 @@
 import React from 'react';
-import { ActivityIndicator, Alert, BackHandler, FlatList, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Animated as NativeAnimated, BackHandler, FlatList, Image, Modal, PanResponder, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -9,7 +9,8 @@ import { useFinance } from '@/features/app-state/presentation/components/AppStat
 import type { PaymentMethod, StoreCategory, StoreClient, StoreDefaultOperation, StoreEmployee, StorePayFrequency, StorePayMode, StoreProduct, StoreProductType, StoreProvider, StoreSale, StoreSaleItem, StoreStockMovementType } from '@/features/store/domain/entities/Store';
 import { captureCurrencySnapshot, currencyRate } from '@/shared/domain/finance/currency';
 import { accountBalance, periodBounds, previousPeriodBounds } from '@/features/finance/domain/services/financeDomain';
-import { availableStock, changeStoreCurrency, completeSale as completeStoreSale, filterStoreProducts, filterStoreSales, productStock, storeReportData, storeStatistics, validateSale, voidSale as voidStoreSale, withStoreBalance, type StoreSalePeriod, type StoreStockFilter } from '@/features/store/domain/services/storeDomain';
+import { removeTransaction, removeTransfer } from '@/features/finance/application/commands/financeCommands';
+import { availableStock, changeStoreCurrency, completeSale as completeStoreSale, filterStoreProducts, productStock, storeAmount, storeReportData, storeStatistics, validateSale, voidSale as voidStoreSale, withStoreBalance, type StoreSalePeriod, type StoreStockFilter } from '@/features/store/domain/services/storeDomain';
 import type { AppStateRepository } from '@/features/app-state/application/ports/AppStateRepository';
 import type { BackupRepository } from '@/features/backup/application/ports/BackupRepository';
 import type { StoreBackup } from '@/features/backup/application/ports/BackupTypes';
@@ -21,7 +22,7 @@ import StoreProductForm, { PRODUCT_ICON_OPTIONS, type ProductFormDraft, type Pro
 import DateSelect from '@/shared/ui/DateSelect';
 import { C, SANS, SERIF, createThemeStyles } from '@/shared/theme/luxury';
 
-type StoreView = 'inventory' | 'archived' | 'sales' | 'employees' | 'clients' | 'providers' | 'services' | 'reports' | 'movements' | 'statistics' | 'settings';
+type StoreView = 'inventory' | 'archived' | 'operations' | 'employees' | 'clients' | 'providers' | 'services' | 'reports' | 'movements' | 'statistics' | 'settings';
 type DirectoryKind = 'employees' | 'clients' | 'providers';
 type StoreReportKind = 'export' | 'topProductsServices' | 'topClients';
 type StockFilter = StoreStockFilter;
@@ -30,11 +31,48 @@ type SalePeriod = StoreSalePeriod;
 type ReportRangeMode = 'all' | 'today' | 'week' | 'month' | 'year' | 'custom';
 type StoreStatsRange = 'today' | 'week' | 'month' | 'year';
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
+type StoreOperation = { id: string; date: string; kind: 'sale' | 'stock' | 'cash'; title: string; description: string; quantity?: number; amount?: number; currency?: string; saleId?: string; stockMovementId?: string; cashMovementId?: string; status?: 'completed' | 'void' };
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const numeric = (value: string) => Number(value.trim().replace(',', '.'));
+const compactRate = (value: number) => {
+  if (!Number.isFinite(value) || value <= 0) return '';
+  const rounded = Number(value.toPrecision(12));
+  return rounded >= 0.000001 ? String(rounded) : rounded.toFixed(16).replace(/0+$/, '').replace(/\.$/, '');
+};
+const validRateInput = (value: string) => Number.isFinite(numeric(value)) && numeric(value) > 0;
 const normalizedSearch = (value: string) => value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim();
 const COMMON_CURRENCIES = ['USD', 'EUR', 'CUP', 'MXN', 'CAD', 'GBP', 'BRL', 'ARS', 'CLP', 'COP', 'JPY', 'CHF'];
 const UNIT_OPTIONS = ['unit', 'piece', 'kg', 'g', 'liter', 'hour', 'box'] as const;
+type ProductSwipeAction = { icon: React.ComponentProps<typeof Ionicons>['name']; label: string; onPress: () => void; destructive?: boolean };
+const AnimatedProductPressable = NativeAnimated.createAnimatedComponent(Pressable);
+
+function ProductSwipeableRow({ children, actions }: { children: React.ReactNode | ((reveal: () => void, collapse: () => void, isExpanded: () => boolean) => React.ReactNode); actions: ProductSwipeAction[] }) {
+  const translateX = React.useRef(new NativeAnimated.Value(0)).current;
+  const position = React.useRef(0);
+  const gestureStart = React.useRef(0);
+  const actionWidth = 74;
+  const maxTranslate = actionWidth * actions.length;
+  const animateTo = React.useCallback((value: number) => {
+    position.current = value;
+    NativeAnimated.spring(translateX, { toValue: value, useNativeDriver: true, tension: 90, friction: 12 }).start();
+  }, [translateX]);
+  const panResponder = React.useMemo(() => PanResponder.create({
+    onMoveShouldSetPanResponder: (_, gesture) => Math.abs(gesture.dx) > 10 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+    onMoveShouldSetPanResponderCapture: (_, gesture) => Math.abs(gesture.dx) > 10 && Math.abs(gesture.dx) > Math.abs(gesture.dy),
+    onPanResponderGrant: () => { gestureStart.current = position.current; translateX.stopAnimation(); },
+    onPanResponderMove: (_, gesture) => { const next = Math.min(0, Math.max(-maxTranslate, gestureStart.current + gesture.dx)); position.current = next; translateX.setValue(next); },
+    onPanResponderRelease: (_, gesture) => animateTo(gestureStart.current < 0 && gesture.dx > 10 ? 0 : gestureStart.current + gesture.dx < -maxTranslate / 2 ? -maxTranslate : 0),
+    onPanResponderTerminate: () => animateTo(0),
+  }), [animateTo, maxTranslate, translateX]);
+  const reveal = React.useCallback(() => animateTo(-maxTranslate), [animateTo, maxTranslate]);
+  const collapse = React.useCallback(() => animateTo(0), [animateTo]);
+  const isExpanded = React.useCallback(() => position.current < 0, []);
+  const content = typeof children === 'function' ? children(reveal, collapse, isExpanded) : children;
+  return <View style={styles.productSwipeRow}>
+    <View style={styles.productSwipeActions}>{actions.map((action) => <Pressable key={action.label} style={[styles.productSwipeAction, action.destructive ? styles.productSwipeActionDanger : styles.productSwipeActionEdit]} onPress={() => { animateTo(0); action.onPress(); }} accessibilityRole="button" accessibilityLabel={action.label}><Ionicons name={action.icon} size={18} color={action.destructive ? C.red : C.gold} /><Text style={[styles.productSwipeActionText, action.destructive && styles.productSwipeActionTextDanger]} numberOfLines={1}>{action.label}</Text></Pressable>)}</View>
+    <AnimatedProductPressable style={[styles.productSwipeContent, { transform: [{ translateX }] }]} {...panResponder.panHandlers} onLongPress={reveal} delayLongPress={450}>{content}</AnimatedProductPressable>
+  </View>;
+}
 
 function money(value: number, currency: string) {
   return `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })} ${currency}`;
@@ -101,6 +139,8 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const [stockAction, setStockAction] = React.useState<StockAction>('entry');
   const [stockQuantity, setStockQuantity] = React.useState('');
   const [stockNote, setStockNote] = React.useState('');
+  const [stockProviderId, setStockProviderId] = React.useState('');
+  const [stockClientId, setStockClientId] = React.useState('');
   const [stockError, setStockError] = React.useState('');
   const [saleOpen, setSaleOpen] = React.useState(false);
   const [saleQuery, setSaleQuery] = React.useState('');
@@ -113,6 +153,8 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const [saleSubmitting, setSaleSubmitting] = React.useState(false);
   const saleSubmittingRef = React.useRef(false);
   const [selectedSaleId, setSelectedSaleId] = React.useState<string | null>(null);
+  const [selectedProviderId, setSelectedProviderId] = React.useState<string | null>(null);
+  const [pendingOperationDeletion, setPendingOperationDeletion] = React.useState<StoreOperation | null>(null);
   const [saleHistoryQuery, setSaleHistoryQuery] = React.useState('');
   const [salePeriod, setSalePeriod] = React.useState<SalePeriod>('today');
   const [directoryQuery, setDirectoryQuery] = React.useState('');
@@ -132,6 +174,12 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const [directoryActive, setDirectoryActive] = React.useState(true);
   const [directoryError, setDirectoryError] = React.useState('');
   const [storeCurrency, setStoreCurrency] = React.useState(currency);
+  const [currencyChangeOpen, setCurrencyChangeOpen] = React.useState(false);
+  const [pendingStoreCurrency, setPendingStoreCurrency] = React.useState('');
+  const [currentCurrencyPerUsd, setCurrentCurrencyPerUsd] = React.useState('');
+  const [storeCurrencyPerUsd, setStoreCurrencyPerUsd] = React.useState('');
+  const [storeCurrencyRateError, setStoreCurrencyRateError] = React.useState('');
+  const [convertStoreHistory, setConvertStoreHistory] = React.useState(false);
   const [movementQuery, setMovementQuery] = React.useState('');
   const [movementType, setMovementType] = React.useState<'all' | 'income' | 'expense'>('all');
   const [reportKind, setReportKind] = React.useState<StoreReportKind | null>(null);
@@ -146,6 +194,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const [backupBusy, setBackupBusy] = React.useState(false);
   const [importBusy, setImportBusy] = React.useState(false);
   const [pendingStoreBackup, setPendingStoreBackup] = React.useState<StoreBackup | null>(null);
+  const [pendingProductDeletion, setPendingProductDeletion] = React.useState<StoreProduct | null>(null);
 
   const nextPayDate = (value: string, frequency: StorePayFrequency) => { const date = new Date(value); if (frequency === 'weekly') date.setDate(date.getDate() + 7); else if (frequency === 'biweekly') date.setDate(date.getDate() + 14); else date.setMonth(date.getMonth() + 1); return date.toISOString(); };
 
@@ -161,7 +210,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       const currentEmployee = current.store.employees.find((item) => item.id === employeeId);
       if (!currentEmployee) return current;
       const paidEmployee = { ...currentEmployee, lastPaidDate: date, nextPayDate: nextPayDate(date, currentEmployee.payFrequency) };
-      return withStoreBalance({ ...current, store: { ...current.store, employees: current.store.employees.map((item) => item.id === employeeId ? paidEmployee : item), cashMovements: [...current.store.cashMovements, { id: uid('store-salary'), type: 'salary', amount: -currentEmployee.salary, date, note: `${t('finance.payroll.salaryFor')} ${currentEmployee.name}` }] } });
+      return withStoreBalance({ ...current, store: { ...current.store, employees: current.store.employees.map((item) => item.id === employeeId ? paidEmployee : item), cashMovements: [...current.store.cashMovements, { id: uid('store-salary'), type: 'salary', amount: -currentEmployee.salary, currency: currentEmployee.salaryCurrency ?? current.store.currency, date, note: `${t('finance.payroll.salaryFor')} ${currentEmployee.name}` }] } });
     });
   }, [finance, state.store.employees, store.businessAccount.balance, t]);
 
@@ -177,7 +226,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       : category?.name ?? t('finance.store.generalCategory');
   }, [store.categories, t]);
   const stockFor = React.useCallback((productId: string) => productStock(state, productId), [state]);
-  const inventoryValue = React.useMemo(() => store.products.reduce((total, product) => total + (product.type === 'product' ? stockFor(product.id) * product.purchasePrice : 0), 0), [store.products, stockFor]);
+  const inventoryValue = React.useMemo(() => store.products.reduce((total, product) => total + (product.type === 'product' ? stockFor(product.id) * storeAmount(state, product.purchasePrice, product.currency) : 0), 0), [state, store.products, stockFor]);
   const availableFor = React.useCallback((product: StoreProduct) => availableStock(state, product), [state]);
   const selectedSale = React.useMemo(() => store.sales.find((sale) => sale.id === selectedSaleId) ?? null, [selectedSaleId, store.sales]);
   const filtersActive = Boolean(categoryFilter || stockFilter);
@@ -210,8 +259,8 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       buckets.push({
         key,
         label,
-        sales: storeStatsData.sales.filter((sale) => includes(sale.date)).reduce((sum, sale) => sum + sale.total, 0),
-        outflow: storeStatsData.movements.filter((movement) => movement.amount < 0 && includes(movement.date)).reduce((sum, movement) => sum - movement.amount, 0),
+        sales: storeStatsData.sales.filter((sale) => includes(sale.date)).reduce((sum, sale) => sum + storeAmount(state, sale.total, sale.currency), 0),
+        outflow: storeStatsData.movements.filter((movement) => includes(movement.date)).reduce((sum, movement) => { const amount = storeAmount(state, movement.amount, movement.currency); return sum + (amount < 0 ? -amount : 0); }, 0),
       });
     };
     if (storeStatsRange === 'today') {
@@ -241,11 +290,18 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       }
     }
     return buckets;
-  }, [state.settings.language, statsReference, storeStatsBounds, storeStatsData.movements, storeStatsData.sales, storeStatsRange, today]);
+  }, [state, statsReference, storeStatsBounds, storeStatsData.movements, storeStatsData.sales, storeStatsRange, today]);
   const storeStatsFlowMax = Math.max(1, ...storeStatsFlowBuckets.flatMap((bucket) => [bucket.sales, bucket.outflow]));
   const storeStatsTopMax = Math.max(1, ...storeStatsData.topProducts.map((product) => product.total));
 
   React.useEffect(() => setDirectoryQuery(''), [view]);
+
+  React.useEffect(() => {
+    if (!stockProduct) {
+      setStockProviderId('');
+      setStockClientId('');
+    }
+  }, [stockProduct]);
 
   React.useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -255,6 +311,10 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       }
       if (drawerOpen) {
         setDrawerOpen(false);
+        return true;
+      }
+      if (selectedProviderId) {
+        setSelectedProviderId(null);
         return true;
       }
       if (addOpen || productOpen || filterOpen || categoryManagerOpen || stockProduct || saleOpen || selectedSaleId || directoryOpen || reportKind) {
@@ -278,7 +338,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       return true;
     });
     return () => subscription.remove();
-  }, [addOpen, categoryManagerOpen, directoryOpen, drawerOpen, exitPromptOpen, filterOpen, productOpen, reportKind, saleOpen, selectedSaleId, stockProduct, t, view]);
+  }, [addOpen, categoryManagerOpen, directoryOpen, drawerOpen, exitPromptOpen, filterOpen, productOpen, reportKind, saleOpen, selectedProviderId, selectedSaleId, stockProduct, t, view]);
 
   const categoryOptions = React.useMemo<SelectOption[]>(() => store.categories.map((item) => ({ value: item.id, label: categoryNameFor(item.id), icon: (item.icon as IconName | undefined) ?? (item.builtIn ? 'grid-outline' : 'pricetag-outline') })), [categoryNameFor, store.categories]);
   const providerOptions = React.useMemo<SelectOption[]>(() => [{ value: '', label: t('finance.store.noneSelected'), icon: 'remove-circle-outline' }, ...store.providers.filter((item) => item.active).map((item) => ({ value: item.id, label: item.name, icon: 'business-outline' as const }))], [store.providers, t]);
@@ -299,8 +359,8 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const saleItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const visibleMovements = React.useMemo(() => {
     const query = normalizedSearch(movementQuery);
-    return store.cashMovements.slice().sort((left, right) => right.date.localeCompare(left.date)).filter((movement) => normalizedSearch(`${movement.note} ${movement.type}`).includes(query)).filter((movement) => movementType === 'all' || (movementType === 'income' ? movement.amount >= 0 : movement.amount < 0));
-  }, [movementQuery, movementType, store.cashMovements]);
+    return store.cashMovements.slice().sort((left, right) => right.date.localeCompare(left.date)).filter((movement) => normalizedSearch(`${movement.note} ${movement.type}`).includes(query)).filter((movement) => { const amount = storeAmount(state, movement.amount, movement.currency); return movementType === 'all' || (movementType === 'income' ? amount >= 0 : amount < 0); });
+  }, [movementQuery, movementType, state, store.cashMovements]);
   const currencyOptions = React.useMemo(() => Array.from(new Set([currency, state.settings.preferredCurrency, ...state.accounts.map((item) => item.currency), ...COMMON_CURRENCIES])).sort().map((item) => ({ value: item, label: item })), [currency, state.accounts, state.settings.preferredCurrency]);
   const visibleDirectoryItems = React.useMemo<(StoreEmployee | StoreClient | StoreProvider)[]>(() => {
     const all: (StoreEmployee | StoreClient | StoreProvider)[] = view === 'clients' ? store.clients : view === 'employees' ? store.employees : view === 'providers' ? store.providers : [];
@@ -315,10 +375,40 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const normalizedSaleQuery = normalizedSearch(saleQuery);
   const saleProducts = React.useMemo(() => store.products.filter((product) => product.active && (!normalizedSaleQuery || normalizedSearch(`${product.name} ${product.key} ${product.sku ?? ''} ${categoryNameFor(product.categoryId)}`).includes(normalizedSaleQuery))), [categoryNameFor, normalizedSaleQuery, store.products]);
   const saleTotal = cart.reduce((sum, item) => sum + item.total, 0);
-  const visibleSales = React.useMemo(() => filterStoreSales(state, { query: saleHistoryQuery, period: salePeriod, firstDayOfWeek: state.settings.firstDayOfWeek, today }), [saleHistoryQuery, salePeriod, state, today]);
+  const visibleOperations = React.useMemo<StoreOperation[]>(() => {
+    const query = normalizedSearch(saleHistoryQuery);
+    const weekStart = new Date(today);
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() - state.settings.firstDayOfWeek + 7) % 7));
+    const weekEnd = new Date(weekStart);
+    weekEnd.setDate(weekEnd.getDate() + 7);
+    const matchesPeriod = (value: string) => {
+      const date = localDay(value);
+      if (salePeriod === 'all') return true;
+      if (salePeriod === 'today') return date.getTime() === today.getTime();
+      if (salePeriod === 'week') return date >= weekStart && date < weekEnd;
+      return date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth();
+    };
+    const matchesQuery = (operation: StoreOperation) => !query || normalizedSearch(`${operation.title} ${operation.description}`).includes(query);
+    const productsById = new Map(store.products.map((product) => [product.id, product]));
+    const clientsById = new Map(store.clients.map((client) => [client.id, client]));
+    const providersById = new Map(store.providers.map((provider) => [provider.id, provider]));
+    const sales: StoreOperation[] = store.sales.filter((sale) => sale.status === 'completed' && matchesPeriod(sale.date)).map((sale) => ({
+      id: `sale:${sale.id}`, date: sale.date, kind: 'sale', title: sale.items.map((item) => item.name).join(', '), description: clientsById.get(sale.clientId ?? '')?.name ?? t('finance.store.noneSelected'), amount: sale.total, currency: sale.currency, saleId: sale.id, status: sale.status,
+    }));
+    const stock: StoreOperation[] = store.stockMovements.filter((movement) => !['sale', 'saleReversal'].includes(movement.type) && matchesPeriod(movement.date)).map((movement) => {
+      const product = productsById.get(movement.productId);
+      const partner = movement.type === 'entry' ? providersById.get(movement.providerId ?? '')?.name : clientsById.get(movement.clientId ?? '')?.name;
+      return { id: `stock:${movement.id}`, date: movement.date, kind: 'stock', title: product?.name ?? movement.productId, description: `${t(`finance.store.stockAction.${movement.type === 'initial' ? 'entry' : movement.type === 'adjustment' ? 'adjustment' : movement.type}`)}${partner ? ` · ${partner}` : ''}`, quantity: movement.quantity, stockMovementId: movement.id };
+    });
+    const cash: StoreOperation[] = store.cashMovements.filter((movement) => !['sale', 'saleReversal'].includes(movement.type) && !(movement.type === 'purchase' && movement.productId) && matchesPeriod(movement.date)).map((movement) => ({
+      id: `cash:${movement.id}`, date: movement.date, kind: 'cash', title: movement.note || t(`finance.store.cashMovement.${movement.type}`), description: t(`finance.store.cashMovement.${movement.type}`), amount: movement.amount, currency: movement.currency, cashMovementId: movement.id,
+    }));
+    return [...sales, ...stock, ...cash].filter(matchesQuery).sort((left, right) => right.date.localeCompare(left.date));
+  }, [saleHistoryQuery, salePeriod, state, store.cashMovements, store.clients, store.products, store.providers, store.sales, store.stockMovements, t, today]);
   const switchView = (next: StoreView) => {
     setView(next);
     setDrawerOpen(false);
+    setSelectedProviderId(null);
     setReportKind(null);
     setProductQuery('');
     setSaleHistoryQuery('');
@@ -443,6 +533,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       unitAbbreviation: customUnitOpen ? productDraft.unitAbbreviation.trim() : undefined,
       categoryId: productDraft.categoryId,
       providerId: productDraft.providerId || undefined,
+      currency,
       sku: editingProduct?.sku ?? productKey,
       salePrice: numeric(productDraft.salePrice),
       purchasePrice,
@@ -471,7 +562,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
         ...captureCurrencySnapshot(sourceAmount, sourceAccount.currency, current.settings.preferredCurrency, current.settings.exchangeRates ?? { USD: 1 }),
       } : null;
       const cashMovement = cashMovementId ? {
-        id: cashMovementId, type: 'purchase' as const, amount: -purchaseTotal, date: now,
+        id: cashMovementId, type: 'purchase' as const, amount: -purchaseTotal, currency: current.store.currency, date: now,
         note: t('finance.storePurchase.inventoryPurchase'), productId: id,
       } : null;
       return withStoreBalance({
@@ -553,8 +644,8 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     const currentStock = stockFor(stockProduct.id);
     const delta = stockAction === 'entry' ? value : stockAction === 'exit' ? -value : value - currentStock;
     if (currentStock + delta < stockProduct.reservedQuantity) { setStockError(t('finance.store.errors.reserve')); return; }
-    finance.updateState((current) => ({ ...current, store: { ...current.store, stockMovements: [...current.store.stockMovements, { id: uid('store-stock'), productId: stockProduct.id, type: stockAction as StoreStockMovementType, quantity: delta, date: new Date().toISOString(), note: stockNote.trim() || t(`finance.store.stockAction.${stockAction}`) }] } }));
-    setStockProduct(null); setStockQuantity(''); setStockNote(''); setStockError('');
+    finance.updateState((current) => ({ ...current, store: { ...current.store, stockMovements: [...current.store.stockMovements, { id: uid('store-stock'), productId: stockProduct.id, type: stockAction as StoreStockMovementType, quantity: delta, date: new Date().toISOString(), note: stockNote.trim() || t(`finance.store.stockAction.${stockAction}`), providerId: stockAction === 'entry' ? stockProviderId || undefined : undefined, clientId: stockAction === 'exit' ? stockClientId || undefined : undefined }] } }));
+    setStockProduct(null); setStockQuantity(''); setStockNote(''); setStockProviderId(''); setStockClientId(''); setStockError('');
   };
 
   const addToCart = (product: StoreProduct) => {
@@ -591,7 +682,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     if (saleSubmittingRef.current || !cart.length) return;
     saleSubmittingRef.current = true;
     setSaleSubmitting(true);
-    const sale: StoreSale = { id: uid('store-sale'), date: new Date().toISOString(), items: cart, total: saleTotal, paymentMethod: paymentMethod as PaymentMethod || undefined, status: 'completed', note: saleNote.trim(), clientId: saleClientId || undefined, employeeId: saleEmployeeId || undefined };
+    const sale: StoreSale = { id: uid('store-sale'), date: new Date().toISOString(), items: cart, total: saleTotal, currency, paymentMethod: paymentMethod as PaymentMethod || undefined, status: 'completed', note: saleNote.trim(), clientId: saleClientId || undefined, employeeId: saleEmployeeId || undefined };
     const error = validateSale(state, sale);
     if (!error) finance.updateState((current) => completeStoreSale(current, sale, uid, t('finance.store.saleStock'), t('finance.store.saleIncome')).state);
     saleSubmittingRef.current = false;
@@ -627,7 +718,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       if (directoryKind === 'employees') {
         const old = current.store.employees.find((item) => item.id === directoryId);
         const salary = numeric(directorySalary);
-        const item: StoreEmployee = { id: directoryId ?? uid('employee'), name, role: directoryRole.trim() || undefined, phone: directoryPhone.trim() || undefined, salary: Number.isFinite(salary) && salary > 0 ? salary : 0, payFrequency: directoryPayFrequency, payMode: directoryPayMode, nextPayDate: directoryNextPayDate || now, lastPaidDate: old?.lastPaidDate, active: directoryActive, createdAt: old?.createdAt ?? now };
+        const item: StoreEmployee = { id: directoryId ?? uid('employee'), name, role: directoryRole.trim() || undefined, phone: directoryPhone.trim() || undefined, salary: Number.isFinite(salary) && salary > 0 ? salary : 0, salaryCurrency: current.store.currency, payFrequency: directoryPayFrequency, payMode: directoryPayMode, nextPayDate: directoryNextPayDate || now, lastPaidDate: old?.lastPaidDate, active: directoryActive, createdAt: old?.createdAt ?? now };
         return { ...current, store: { ...current.store, employees: old ? current.store.employees.map((entry) => entry.id === item.id ? item : entry) : [item, ...current.store.employees] } };
       }
       if (directoryKind === 'providers') {
@@ -665,7 +756,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       return product ? { productId: product.id, name: product.name, type: product.type, quantity: operation.quantity, unitPrice: product.salePrice, total: product.salePrice * operation.quantity } : null;
     }).filter((item): item is StoreSaleItem => Boolean(item));
     if (!items.length) return;
-    const sale: StoreSale = { id: uid('store-sale'), date: now, items, total: items.reduce((sum, item) => sum + item.total, 0), status: 'completed', note: t('finance.store.defaultOperations'), clientId: client.id };
+    const sale: StoreSale = { id: uid('store-sale'), date: now, items, total: items.reduce((sum, item) => sum + item.total, 0), currency, status: 'completed', note: t('finance.store.defaultOperations'), clientId: client.id };
     const result = completeStoreSale(state, sale, uid, t('finance.store.saleStock'), t('finance.store.cashMovement.sale'));
     if (result.error) { Alert.alert(t(`finance.store.errors.${result.error}`)); return; }
     finance.updateState((current) => completeStoreSale(current, sale, uid, t('finance.store.saleStock'), t('finance.store.cashMovement.sale')).state);
@@ -680,22 +771,29 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       return;
     }
     if (!source) {
-      finance.updateState((current) => withStoreBalance({ ...current, store: { ...current.store, cashMovements: [...current.store.cashMovements, { id: uid('store-cash'), type: 'funding', amount, date: new Date().toISOString(), note: fundingNote.trim() }] } }));
+      finance.updateState((current) => withStoreBalance({ ...current, store: { ...current.store, cashMovements: [...current.store.cashMovements, { id: uid('store-cash'), type: 'funding', amount, currency: current.store.currency, date: new Date().toISOString(), note: fundingNote.trim() }] } }));
       setAddOpen(false); return;
     }
-    const rate = currencyRate(currency, source.currency, state.settings.exchangeRates ?? { USD: 1 });
-    if (!rate) { setFundingError(t('finance.storeFunding.missingRate')); return; }
-    const sourceAmount = amount * rate;
+    const sourceToStoreRate = currencyRate(source.currency, currency, state.settings.exchangeRates ?? { USD: 1 });
+    if (!sourceToStoreRate) { setFundingError(t('finance.storeFunding.missingRate')); return; }
+    const rawSourceAmount = amount / sourceToStoreRate;
+    if (!Number.isFinite(rawSourceAmount) || rawSourceAmount <= 0) { setFundingError(t('finance.storeFunding.invalid')); return; }
+    const sourceAmount = Number(rawSourceAmount.toPrecision(12));
     if (!allowNegative && accountBalance(state, source.id) < sourceAmount) {
       Alert.alert(t('finance.negativeBalance.title'), t('finance.negativeBalance.body'), [{ text: t('finance.cancel'), style: 'cancel' }, { text: t('finance.negativeBalance.confirm'), onPress: () => commitFunding(true) }]);
       return;
     }
-    finance.addTransfer({ id: uid('store-funding'), fromAccountId: source.id, toAccountId: 'store-business', fromAmount: sourceAmount, toAmount: amount, fromCurrency: source.currency, toCurrency: currency, rate: amount / sourceAmount, fee: 0, date: new Date().toISOString(), note: fundingNote.trim(), status: 'cleared' });
+    finance.addTransfer({ id: uid('store-funding'), fromAccountId: source.id, toAccountId: 'store-business', fromAmount: sourceAmount, toAmount: amount, fromCurrency: source.currency, toCurrency: currency, rate: Number(sourceToStoreRate.toPrecision(12)), fee: 0, date: new Date().toISOString(), note: fundingNote.trim(), status: 'cleared' });
     setAddOpen(false);
   };
 
   const openSettings = () => {
     setStoreCurrency(currency);
+    setCurrencyChangeOpen(false);
+    setPendingStoreCurrency('');
+    setCurrentCurrencyPerUsd('');
+    setStoreCurrencyRateError('');
+    setConvertStoreHistory(false);
     switchView('settings');
   };
 
@@ -703,16 +801,45 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     const target = nextCurrency.trim().toUpperCase();
     if (!target || target === currency) { setStoreCurrency(currency); return; }
     const rates = state.settings.exchangeRates ?? { USD: 1 };
-    if (currencyRate(currency, target, rates) === undefined) {
-      setStoreCurrency(currency);
-      Alert.alert(t('finance.storeCurrency.changeTitle'), t('finance.releaseErrors.missingRate'));
-      return;
-    }
     setStoreCurrency(target);
-    Alert.alert(t('finance.storeCurrency.changeTitle'), t('finance.storeCurrency.confirmCopy', { from: currency, to: target }), [
-      { text: t('finance.cancel'), style: 'cancel', onPress: () => setStoreCurrency(currency) },
-      { text: t('finance.storeCurrency.confirm'), onPress: () => finance.updateState((current) => changeStoreCurrency(current, target, current.settings.exchangeRates ?? { USD: 1 }).state) },
-    ], { cancelable: false });
+    setPendingStoreCurrency(target);
+    setConvertStoreHistory(false);
+    const currentUsdRate = currency === 'USD' ? 1 : Number(rates[currency]);
+    setCurrentCurrencyPerUsd(currency === 'USD' ? '1' : compactRate(1 / currentUsdRate));
+    const targetUsdRate = target === 'USD' ? 1 : Number(rates[target]);
+    setStoreCurrencyPerUsd(target === 'USD' ? '1' : compactRate(1 / targetUsdRate));
+    setStoreCurrencyRateError('');
+    setCurrencyChangeOpen(true);
+  };
+
+  const closeStoreCurrencyChange = () => {
+    setCurrencyChangeOpen(false);
+    setPendingStoreCurrency('');
+    setCurrentCurrencyPerUsd('');
+    setStoreCurrency(currency);
+    setStoreCurrencyRateError('');
+    setConvertStoreHistory(false);
+  };
+
+  const confirmStoreCurrencyChange = () => {
+    const target = pendingStoreCurrency;
+    const currentUnitsPerUsd = currency === 'USD' ? 1 : numeric(currentCurrencyPerUsd);
+    const targetUnitsPerUsd = target === 'USD' ? 1 : numeric(storeCurrencyPerUsd);
+    if (!target || !Number.isFinite(currentUnitsPerUsd) || currentUnitsPerUsd <= 0 || !Number.isFinite(targetUnitsPerUsd) || targetUnitsPerUsd <= 0) { setStoreCurrencyRateError(t('finance.exchangeRateRequired')); return; }
+    const currentUsdRate = 1 / currentUnitsPerUsd;
+    const targetUsdRate = 1 / targetUnitsPerUsd;
+    finance.updateState((current) => {
+      const exchangeRates = { ...(current.settings.exchangeRates ?? {}), USD: 1, [currency]: currentUsdRate, [target]: targetUsdRate };
+      const changed = changeStoreCurrency(current, target, exchangeRates, convertStoreHistory);
+      if (changed.error) return current;
+      return { ...changed.state, settings: { ...changed.state.settings, exchangeRates } };
+    });
+    setStoreCurrency(target);
+    setCurrencyChangeOpen(false);
+    setPendingStoreCurrency('');
+    setCurrentCurrencyPerUsd('');
+    setStoreCurrencyRateError('');
+    setConvertStoreHistory(false);
   };
 
   const reportLanguage = state.settings.language ?? 'en';
@@ -813,26 +940,70 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     }
   };
 
+  const confirmProductDeletion = () => {
+    const product = pendingProductDeletion;
+    if (!product) return;
+    finance.updateState((current) => ({
+      ...current,
+      store: {
+        ...current.store,
+        products: current.store.products.filter((item) => item.id !== product.id),
+        clients: current.store.clients.map((client) => ({ ...client, defaultOperations: client.defaultOperations?.filter((operation) => operation.productId !== product.id) })),
+        providers: current.store.providers.map((provider) => ({ ...provider, defaultOperations: provider.defaultOperations?.filter((operation) => operation.productId !== product.id) })),
+      },
+    }));
+    if (editingProduct?.id === product.id) setProductOpen(false);
+    setPendingProductDeletion(null);
+  };
+
   const renderProduct = ({ item }: { item: StoreProduct }) => {
     const stock = stockFor(item.id); const available = availableFor(item); const low = item.type === 'product' && stock <= item.stockMinimum;
     const expired = Boolean(item.expirationDate && localDay(item.expirationDate) < today);
-    return <View style={[styles.productRow, !item.active && styles.inactive]}><Pressable style={styles.productMain} onPress={() => openProduct(item)} accessibilityRole="button"><View style={styles.productIcon}><ProductPicture product={item} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{item.name}</Text><Text style={styles.rowMeta} numberOfLines={1}>{item.key} · {categoryNameFor(item.categoryId)} · {money(item.salePrice, currency)}</Text>{expired ? <Text style={styles.dangerMeta} numberOfLines={1}>{t('finance.storeFilters.expired')}</Text> : null}</View></Pressable>{item.type === 'product' ? <View style={styles.stockSide}><Text style={[styles.stockValue, low && styles.dangerMeta]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{available}</Text><Pressable style={styles.iconButton} onPress={() => { setStockProduct(item); setStockAction('entry'); setStockQuantity(''); setStockNote(''); setStockError(''); }} accessibilityRole="button" accessibilityLabel={t('finance.store.adjustStock')}><Ionicons name="swap-vertical-outline" size={18} color={C.gold} /></Pressable></View> : <Text style={styles.rowMeta} numberOfLines={1}>{t('finance.store.service')}</Text>}</View>;
+    return <ProductSwipeableRow actions={[{ icon: 'pencil-outline', label: t('finance.editAction'), onPress: () => openProduct(item) }, { icon: 'trash-outline', label: t('finance.deleteAction'), onPress: () => setPendingProductDeletion(item), destructive: true }]}>{(reveal, collapse, isExpanded) => <View style={[styles.productRow, !item.active && styles.inactive]}><Pressable style={styles.productMain} onPress={() => isExpanded() ? collapse() : openProduct(item)} onLongPress={reveal} delayLongPress={450} accessibilityRole="button"><View style={styles.productIcon}><ProductPicture product={item} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{item.name}</Text><Text style={styles.rowMeta} numberOfLines={1}>{item.key} · {categoryNameFor(item.categoryId)} · {money(item.salePrice, currency)}</Text>{expired ? <Text style={styles.dangerMeta} numberOfLines={1}>{t('finance.storeFilters.expired')}</Text> : null}</View></Pressable>{item.type === 'product' ? <View style={styles.stockSide}><Text style={[styles.stockValue, low && styles.dangerMeta]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{available}</Text><Pressable style={styles.iconButton} onPress={() => { setStockProduct(item); setStockAction('entry'); setStockQuantity(''); setStockNote(''); setStockError(''); }} accessibilityRole="button" accessibilityLabel={t('finance.store.adjustStock')}><Ionicons name="swap-vertical-outline" size={18} color={C.gold} /></Pressable></View> : <Text style={styles.rowMeta} numberOfLines={1}>{t('finance.store.service')}</Text>}</View>}</ProductSwipeableRow>;
   };
 
   const renderProducts = () => <View style={styles.flex}><View style={styles.toolbar}><View style={styles.search}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={productQuery} onChangeText={setProductQuery} placeholder={t('finance.storeFilters.search')} placeholderTextColor={C.textSubtle} style={styles.searchInput} accessibilityLabel={t('finance.storeFilters.search')} /><Pressable style={[styles.filterButton, filtersActive && styles.filterButtonActive]} onPress={() => setFilterOpen(true)} accessibilityRole="button" accessibilityLabel={t('finance.storeFilters.filters')}><Ionicons name="options-outline" size={19} color={filtersActive ? C.void : C.gold} /></Pressable>{view === 'inventory' ? <Pressable style={styles.filterButton} onPress={() => { setFundingAccountId('none'); setFundingAmount(''); setFundingNote(''); setFundingError(''); setAddOpen(true); }} accessibilityRole="button" accessibilityLabel={t('finance.storeFunding.tab')}><Ionicons name="add-circle-outline" size={19} color={C.gold} /></Pressable> : null}</View></View><FlatList data={visibleProducts} keyExtractor={(item) => item.id} renderItem={renderProduct} contentContainerStyle={[styles.list, !visibleProducts.length && styles.listEmpty]} keyboardShouldPersistTaps="handled" ListEmptyComponent={<Empty title={t('finance.store.noProducts')} copy={filtersActive || productQuery ? t('finance.storeFilters.noResults') : t('finance.store.noProductsCopy')} icon="cube-outline" />} /></View>;
 
-  const renderArchivedProducts = () => <View style={styles.flex}><View style={styles.toolbar}><View style={styles.search}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={productQuery} onChangeText={setProductQuery} placeholder={t('finance.storeFilters.search')} placeholderTextColor={C.textSubtle} style={styles.searchInput} accessibilityLabel={t('finance.storeFilters.search')} /></View></View><FlatList data={visibleArchivedProducts} keyExtractor={(item) => item.id} contentContainerStyle={[styles.list, !visibleArchivedProducts.length && styles.listEmpty]} keyboardShouldPersistTaps="handled" renderItem={({ item }) => <View style={styles.productRow}><Pressable style={styles.productMain} onPress={() => openProduct(item)} accessibilityRole="button"><View style={styles.productIcon}><ProductPicture product={item} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{item.name}</Text><Text style={styles.rowMeta} numberOfLines={1}>{item.type === 'service' ? t('finance.store.service') : t('finance.store.product')} · {categoryNameFor(item.categoryId)}</Text></View></Pressable><Pressable style={styles.archiveRestoreButton} onPress={() => finance.updateState((current) => ({ ...current, store: { ...current.store, products: current.store.products.map((product) => product.id === item.id ? { ...product, active: true } : product) } }))} accessibilityRole="button" accessibilityLabel={t('finance.store.restoreProduct')}><Ionicons name="refresh-outline" size={16} color={C.void} /><Text style={styles.archiveRestoreText} numberOfLines={1}>{t('finance.store.restoreProduct')}</Text></Pressable></View>} ListEmptyComponent={<Empty title={t('finance.store.noArchivedProducts')} copy={productQuery ? t('finance.storeFilters.noResults') : t('finance.store.archivedProductsCopy')} icon="archive-outline" />} /></View>;
+  const renderArchivedProducts = () => <View style={styles.flex}><View style={styles.toolbar}><View style={styles.search}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={productQuery} onChangeText={setProductQuery} placeholder={t('finance.storeFilters.search')} placeholderTextColor={C.textSubtle} style={styles.searchInput} accessibilityLabel={t('finance.storeFilters.search')} /></View></View><FlatList data={visibleArchivedProducts} keyExtractor={(item) => item.id} contentContainerStyle={[styles.list, !visibleArchivedProducts.length && styles.listEmpty]} keyboardShouldPersistTaps="handled" renderItem={({ item }) => <ProductSwipeableRow actions={[{ icon: 'pencil-outline', label: t('finance.editAction'), onPress: () => openProduct(item) }, { icon: 'trash-outline', label: t('finance.deleteAction'), onPress: () => setPendingProductDeletion(item), destructive: true }]}>{(reveal, collapse, isExpanded) => <View style={styles.productRow}><Pressable style={styles.productMain} onPress={() => isExpanded() ? collapse() : openProduct(item)} onLongPress={reveal} delayLongPress={450} accessibilityRole="button"><View style={styles.productIcon}><ProductPicture product={item} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{item.name}</Text><Text style={styles.rowMeta} numberOfLines={1}>{item.type === 'service' ? t('finance.store.service') : t('finance.store.product')} · {categoryNameFor(item.categoryId)}</Text></View></Pressable><Pressable style={styles.archiveRestoreButton} onPress={() => finance.updateState((current) => ({ ...current, store: { ...current.store, products: current.store.products.map((product) => product.id === item.id ? { ...product, active: true } : product) } }))} accessibilityRole="button" accessibilityLabel={t('finance.store.restoreProduct')}><Ionicons name="refresh-outline" size={16} color={C.void} /><Text style={styles.archiveRestoreText} numberOfLines={1}>{t('finance.store.restoreProduct')}</Text></Pressable></View>}</ProductSwipeableRow>} ListEmptyComponent={<Empty title={t('finance.store.noArchivedProducts')} copy={productQuery ? t('finance.storeFilters.noResults') : t('finance.store.archivedProductsCopy')} icon="archive-outline" />} /></View>;
 
-  const renderSales = () => <View style={styles.flex}><View style={styles.toolbar}><View style={styles.search}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={saleHistoryQuery} onChangeText={setSaleHistoryQuery} placeholder={t('finance.store.searchSales')} placeholderTextColor={C.textSubtle} style={styles.searchInput} /></View><SegmentedControl options={(['all', 'today', 'week', 'month'] as SalePeriod[]).map((item) => ({ value: item, label: t(`finance.store.salePeriod.${item}`) }))} value={salePeriod} onChange={(value) => setSalePeriod(value as SalePeriod)} /></View><FlatList data={visibleSales} keyExtractor={(item) => item.id} contentContainerStyle={[styles.list, !visibleSales.length && styles.listEmpty]} renderItem={({ item }) => <Pressable style={[styles.saleRow, item.status === 'void' && styles.inactive]} onPress={() => setSelectedSaleId(item.id)}><View style={[styles.saleIcon, item.status === 'void' && styles.saleIconVoided]}><Ionicons name={item.status === 'void' ? 'close-circle-outline' : 'receipt-outline'} size={20} color={item.status === 'void' ? C.textSubtle : C.gold} /></View><View style={styles.saleRowContent}><View style={styles.saleRowTop}><Text style={[styles.rowTitle, item.status === 'void' && styles.inactiveText]} numberOfLines={1}>{item.items.length} {t('finance.store.items')}</Text><Text style={[styles.saleStatusText, item.status === 'void' && styles.saleStatusVoided]}>{t(item.status === 'void' ? 'finance.store.voided' : 'finance.store.completed')}</Text></View><Text style={styles.saleMetaLine} numberOfLines={1}>{new Date(item.date).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' })} · {store.clients.find((client) => client.id === item.clientId)?.name ?? t('finance.store.noneSelected')}</Text></View><View style={styles.saleAmountSide}><Text style={[styles.amount, item.status === 'void' && styles.inactiveText]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>{money(item.total, currency)}</Text><Ionicons name="chevron-forward" size={16} color={C.textSubtle} /></View></Pressable>} ListEmptyComponent={<Empty title={t('finance.store.noSales')} copy={saleHistoryQuery || salePeriod !== 'all' ? t('finance.storeFilters.noResults') : t('finance.store.noSalesCopy')} icon="receipt-outline" />} /></View>;
+  const confirmOperationDeletion = () => {
+    const operation = pendingOperationDeletion;
+    if (!operation) return;
+    finance.updateState((current) => {
+      if (operation.saleId) {
+        return voidStoreSale(current, operation.saleId, uid, t('finance.store.saleReversal'), t('finance.store.saleReversal')).state;
+      }
+      if (operation.stockMovementId) {
+        const movement = current.store.stockMovements.find((item) => item.id === operation.stockMovementId);
+        if (!movement) return current;
+        const withLinkedFinance = movement.personalTransactionId ? removeTransaction(current, movement.personalTransactionId) : current;
+        return withStoreBalance({ ...withLinkedFinance, store: { ...withLinkedFinance.store, stockMovements: withLinkedFinance.store.stockMovements.filter((item) => item.id !== movement.id), cashMovements: movement.cashMovementId ? withLinkedFinance.store.cashMovements.filter((item) => item.id !== movement.cashMovementId) : withLinkedFinance.store.cashMovements } });
+      }
+      const movement = current.store.cashMovements.find((item) => item.id === operation.cashMovementId);
+      if (!movement) return current;
+      return movement.transferId ? removeTransfer(current, movement.transferId) : withStoreBalance({ ...current, store: { ...current.store, cashMovements: current.store.cashMovements.filter((item) => item.id !== movement.id) } });
+    });
+    setPendingOperationDeletion(null);
+  };
+
+  const renderOperations = () => <View style={styles.flex}><View style={styles.toolbar}><View style={styles.search}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={saleHistoryQuery} onChangeText={setSaleHistoryQuery} placeholder={t('finance.modules.searchActivity')} placeholderTextColor={C.textSubtle} style={styles.searchInput} /></View><SegmentedControl options={(['all', 'today', 'week', 'month'] as SalePeriod[]).map((item) => ({ value: item, label: t(`finance.store.salePeriod.${item}`) }))} value={salePeriod} onChange={(value) => setSalePeriod(value as SalePeriod)} /></View><FlatList data={visibleOperations} keyExtractor={(item) => item.id} contentContainerStyle={[styles.list, !visibleOperations.length && styles.listEmpty]} renderItem={({ item }) => { const amount = item.amount === undefined ? undefined : storeAmount(state, item.amount, item.currency); const quantity = item.quantity; return <Pressable style={styles.storeOperationRow} onPress={() => item.saleId && setSelectedSaleId(item.saleId)}><View style={[styles.saleIcon, item.kind === 'cash' && styles.operationCashIcon, item.kind === 'stock' && styles.operationStockIcon]}><Ionicons name={item.kind === 'sale' ? 'receipt-outline' : item.kind === 'stock' ? 'cube-outline' : 'wallet-outline'} size={20} color={C.gold} /></View><View style={styles.rowMain}><Text style={styles.rowTitle} numberOfLines={2}>{item.title}</Text><Text style={styles.saleMetaLine} numberOfLines={2}>{item.description} · {new Date(item.date).toLocaleString()}</Text></View><View style={styles.operationAmountSide}>{amount !== undefined ? <Text style={[styles.operationAmountValue, amount < 0 && styles.negative]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>{amount >= 0 ? '+' : ''}{money(amount, currency)}</Text> : <Text style={[styles.operationAmountValue, quantity !== undefined && quantity < 0 && styles.negative]}>{quantity !== undefined && quantity >= 0 ? '+' : ''}{quantity} {t('finance.store.units')}</Text>}<Pressable style={styles.operationDeleteButton} onPress={() => setPendingOperationDeletion(item)} accessibilityRole="button" accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View></Pressable>; }} ListEmptyComponent={<Empty title={t('finance.operations')} copy={saleHistoryQuery || salePeriod !== 'all' ? t('finance.storeFilters.noResults') : t('finance.store.noBusinessMovementsCopy')} icon="list-outline" />} /></View>;
+
+  const renderProviderDetails = () => {
+    const provider = store.providers.find((item) => item.id === selectedProviderId);
+    if (!provider) return null;
+    const operations = provider.defaultOperations ?? [];
+    return <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"><View style={styles.providerDetailHero}><View style={styles.avatar}><Text style={styles.avatarText}>{provider.name.charAt(0).toUpperCase()}</Text></View><View style={styles.rowMain}><Text style={styles.viewIntroTitle}>{provider.name}</Text><Text style={styles.rowMeta}>{[provider.phone, provider.email].filter(Boolean).join(' · ') || t('finance.store.clientContactEmpty')}</Text></View><Pressable style={styles.iconButton} onPress={() => openDirectory('providers', provider)} accessibilityRole="button" accessibilityLabel={t('finance.editAction')}><Ionicons name="pencil-outline" size={19} color={C.gold} /></Pressable></View><Text style={styles.sectionTitle}>{t('finance.store.defaultOperations')}</Text>{operations.length ? <View style={styles.providerOperationsCard}>{operations.map((operation) => { const product = store.products.find((item) => item.id === operation.productId); return <View key={operation.id} style={styles.providerOperationRow}><View style={styles.productIcon}><Ionicons name={product?.type === 'service' ? 'construct-outline' : 'cube-outline'} size={19} color={C.gold} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{product?.name ?? operation.productId}</Text><Text style={styles.rowMeta}>{operation.quantity} {t('finance.store.units')}</Text></View></View>; })}</View> : <Empty title={t('finance.store.noOperations')} copy={t('finance.store.providersCopy')} icon="list-outline" />}<Pressable style={[styles.primaryButton, !operations.length && styles.buttonDisabled]} onPress={() => executeDefaultOperations('providers', provider.id)} disabled={!operations.length}><Ionicons name="play-outline" size={17} color={C.void} /><Text style={styles.primaryButtonText}>{t('finance.store.executeOperations')}</Text></Pressable></ScrollView>;
+  };
 
   const renderDirectory = (kind: DirectoryKind) => {
+    if (kind === 'providers' && selectedProviderId) return renderProviderDetails();
     const all = kind === 'clients' ? store.clients : kind === 'providers' ? store.providers : store.employees;
     const items = visibleDirectoryItems;
     const directoryLabel = kind === 'clients' ? 'finance.store.client' : kind === 'providers' ? 'finance.store.provider' : 'finance.store.employee';
     const emptyTitle = kind === 'clients' ? 'finance.store.noClients' : kind === 'providers' ? 'finance.store.noProviders' : 'finance.store.noEmployees';
     const emptyCopy = kind === 'clients' ? 'finance.store.clientsCopy' : kind === 'providers' ? 'finance.store.providersCopy' : 'finance.store.employeesCopy';
     const directoryIcon = kind === 'clients' ? 'person-outline' : kind === 'providers' ? 'business-outline' : 'people-outline';
-    return <View style={styles.flex}><View style={styles.toolbar}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={[styles.search, { flex: 1 }]}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={directoryQuery} onChangeText={setDirectoryQuery} placeholder={t('finance.store.directorySearch')} placeholderTextColor={C.textSubtle} style={styles.searchInput} /></View><Pressable style={styles.addSmall} onPress={() => openDirectory(kind)} accessibilityLabel={`${t('finance.store.addDirectory')} ${t(directoryLabel)}`}><Ionicons name="add" size={20} color={C.gold} /></Pressable></View></View><FlatList data={items} keyExtractor={(item) => item.id} contentContainerStyle={[styles.list, !items.length && styles.listEmpty]} renderItem={({ item }) => <View style={[styles.directoryRow, !item.active && styles.inactive]}><Pressable style={styles.directoryMain} onPress={() => openDirectory(kind, item)}><View style={styles.avatar}><Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{item.name}</Text><Text style={styles.rowMeta}>{kind === 'employees' ? [('role' in item && item.role) || t('finance.store.employeeRoleEmpty'), 'salary' in item && item.salary > 0 ? `${money(item.salary, currency)} · ${t(`finance.payroll.frequency.${item.payFrequency}`)}` : t('finance.payroll.notConfigured')].join(' · ') : [item.phone, 'email' in item ? item.email : ''].filter(Boolean).join(' · ') || t('finance.store.clientContactEmpty')}</Text></View></Pressable>{(kind === 'providers' || kind === 'clients') && 'defaultOperations' in item && item.defaultOperations?.length ? <Pressable style={styles.operationButton} onPress={() => executeDefaultOperations(kind, item.id)}><Ionicons name="play-outline" size={15} color={C.void} /><Text style={styles.payButtonText}>{t('finance.store.executeOperations')}</Text></Pressable> : null}{kind === 'employees' && item.active && 'salary' in item && item.salary > 0 ? <Pressable style={styles.payButton} onPress={() => payEmployee(item.id)}><Ionicons name="cash-outline" size={15} color={C.void} /><Text style={styles.payButtonText}>{t('finance.payroll.pay')}</Text></Pressable> : null}<Ionicons name="chevron-forward" size={17} color={C.textSubtle} /></View>} ListEmptyComponent={<Empty title={t(emptyTitle)} copy={all.length ? t('finance.storeFilters.noResults') : t(emptyCopy)} icon={directoryIcon as IconName} />} /></View>;
+    return <View style={styles.flex}><View style={styles.toolbar}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={[styles.search, { flex: 1 }]}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={directoryQuery} onChangeText={setDirectoryQuery} placeholder={t('finance.store.directorySearch')} placeholderTextColor={C.textSubtle} style={styles.searchInput} /></View><Pressable style={styles.addSmall} onPress={() => openDirectory(kind)} accessibilityLabel={`${t('finance.store.addDirectory')} ${t(directoryLabel)}`}><Ionicons name="add" size={20} color={C.gold} /></Pressable></View></View><FlatList data={items} keyExtractor={(item) => item.id} contentContainerStyle={[styles.list, !items.length && styles.listEmpty]} renderItem={({ item }) => <View style={[styles.directoryRow, !item.active && styles.inactive]}><Pressable style={styles.directoryMain} onPress={() => kind === 'providers' ? setSelectedProviderId(item.id) : openDirectory(kind, item)}><View style={styles.avatar}><Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{item.name}</Text><Text style={styles.rowMeta}>{kind === 'employees' ? [('role' in item && item.role) || t('finance.store.employeeRoleEmpty'), 'salary' in item && item.salary > 0 ? `${money(item.salary, currency)} · ${t(`finance.payroll.frequency.${item.payFrequency}`)}` : t('finance.payroll.notConfigured')].join(' · ') : [item.phone, 'email' in item ? item.email : ''].filter(Boolean).join(' · ') || t('finance.store.clientContactEmpty')}</Text></View></Pressable>{(kind === 'providers' || kind === 'clients') && 'defaultOperations' in item && item.defaultOperations?.length ? <Pressable style={styles.operationButton} onPress={() => executeDefaultOperations(kind, item.id)}><Ionicons name="play-outline" size={15} color={C.void} /><Text style={styles.payButtonText}>{t('finance.store.executeOperations')}</Text></Pressable> : null}{kind === 'employees' && item.active && 'salary' in item && item.salary > 0 ? <Pressable style={styles.payButton} onPress={() => payEmployee(item.id)}><Ionicons name="cash-outline" size={15} color={C.void} /><Text style={styles.payButtonText}>{t('finance.payroll.pay')}</Text></Pressable> : null}<Ionicons name="chevron-forward" size={17} color={C.textSubtle} /></View>} ListEmptyComponent={<Empty title={t(emptyTitle)} copy={all.length ? t('finance.storeFilters.noResults') : t(emptyCopy)} icon={directoryIcon as IconName} />} /></View>;
   };
 
   const renderMovements = () => {
@@ -840,7 +1011,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       <View style={styles.viewIntro}><View style={styles.viewIntroIcon}><Ionicons name="wallet-outline" size={22} color={C.gold} /></View><View style={styles.rowMain}><Text style={styles.viewIntroTitle}>{t('finance.store.businessMovements')}</Text></View></View>
       <View style={styles.search}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={movementQuery} onChangeText={setMovementQuery} placeholder={t('finance.modules.searchActivity')} placeholderTextColor={C.textSubtle} style={styles.searchInput} /></View>
       <SegmentedControl label={t('finance.workspace.resourceFlow')} options={[{ value: 'all', label: t('finance.filters.all') }, { value: 'income', label: t('finance.income') }, { value: 'expense', label: t('finance.expenses') }]} value={movementType} onChange={(value) => setMovementType(value as 'all' | 'income' | 'expense')} />
-      <View style={styles.movementList}>{visibleMovements.map((movement) => <View key={movement.id} style={styles.movementRow}><View style={[styles.movementIcon, movement.amount >= 0 ? styles.movementIconIncome : styles.movementIconExpense]}><Ionicons name={movement.amount >= 0 ? 'arrow-down-outline' : 'arrow-up-outline'} size={17} color={movement.amount >= 0 ? C.gold : C.red} /></View><View style={styles.rowMain}><Text style={styles.rowTitle} numberOfLines={2}>{movement.note || t(`finance.store.cashMovement.${movement.type}`)}</Text><Text style={styles.rowMeta}>{t(`finance.store.cashMovement.${movement.type}`)} · {new Date(movement.date).toLocaleString()}</Text></View><Text style={movement.amount >= 0 ? styles.positive : styles.negative} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>{movement.amount >= 0 ? '+' : ''}{money(movement.amount, currency)}</Text></View>)}{!visibleMovements.length ? <Empty title={t('finance.store.noBusinessMovements')} copy={movementQuery || movementType !== 'all' ? t('finance.storeFilters.noResults') : t('finance.store.noBusinessMovementsCopy')} icon="wallet-outline" /> : null}</View>
+      <View style={styles.movementList}>{visibleMovements.map((movement) => { const amount = storeAmount(state, movement.amount, movement.currency); return <View key={movement.id} style={styles.movementRow}><View style={[styles.movementIcon, amount >= 0 ? styles.movementIconIncome : styles.movementIconExpense]}><Ionicons name={amount >= 0 ? 'arrow-down-outline' : 'arrow-up-outline'} size={17} color={amount >= 0 ? C.gold : C.red} /></View><View style={styles.rowMain}><Text style={styles.rowTitle} numberOfLines={2}>{movement.note || t(`finance.store.cashMovement.${movement.type}`)}</Text><Text style={styles.rowMeta}>{t(`finance.store.cashMovement.${movement.type}`)} · {new Date(movement.date).toLocaleString()}</Text></View><Text style={amount >= 0 ? styles.positive : styles.negative} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>{amount >= 0 ? '+' : ''}{money(amount, currency)}</Text></View>; })}{!visibleMovements.length ? <Empty title={t('finance.store.noBusinessMovements')} copy={movementQuery || movementType !== 'all' ? t('finance.storeFilters.noResults') : t('finance.store.noBusinessMovementsCopy')} icon="wallet-outline" /> : null}</View>
     </ScrollView>;
   };
 
@@ -915,15 +1086,18 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     </View>
   </ScrollView>;
 
-  const title = view === 'movements' ? t('finance.store.viewMovements') : view === 'statistics' ? t('finance.storeStats.title') : view === 'archived' ? t('finance.store.archivedProducts') : view === 'settings' ? t('finance.store.settings') : t(`finance.store.${view}`);
-  const content = view === 'inventory' || view === 'services' ? renderProducts() : view === 'archived' ? renderArchivedProducts() : view === 'sales' ? renderSales() : view === 'reports' ? renderReports() : view === 'movements' ? renderMovements() : view === 'statistics' ? renderStatistics() : view === 'settings' ? renderSettings() : renderDirectory(view);
+  const isProviderDetails = view === 'providers' && Boolean(selectedProviderId);
+  const title = isProviderDetails ? store.providers.find((provider) => provider.id === selectedProviderId)?.name ?? t('finance.store.provider') : view === 'operations' ? t('finance.operations') : view === 'movements' ? t('finance.store.viewMovements') : view === 'statistics' ? t('finance.storeStats.title') : view === 'archived' ? t('finance.store.archivedProducts') : view === 'settings' ? t('finance.store.settings') : t(`finance.store.${view}`);
+  const content = view === 'inventory' || view === 'services' ? renderProducts() : view === 'archived' ? renderArchivedProducts() : view === 'operations' ? renderOperations() : view === 'reports' ? renderReports() : view === 'movements' ? renderMovements() : view === 'statistics' ? renderStatistics() : view === 'settings' ? renderSettings() : renderDirectory(view);
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}><View style={styles.root}>
-    <View style={styles.header}>{view === 'statistics' ? <Pressable style={styles.headerButton} onPress={() => switchView('inventory')} accessibilityRole="button" accessibilityLabel={t('finance.back')}><Ionicons name="arrow-back" size={20} color={C.gold} /></Pressable> : <Pressable style={styles.headerButton} onPress={() => setDrawerOpen(true)} accessibilityRole="button" accessibilityLabel={t('finance.menu')}><MenuGlyph /></Pressable>}<Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>{view === 'statistics' ? <Pressable style={styles.headerButton} onPress={() => setDrawerOpen(true)} accessibilityRole="button" accessibilityLabel={t('finance.menu')}><MenuGlyph /></Pressable> : <Pressable style={styles.headerButton} onPress={() => switchView('statistics')} accessibilityRole="button" accessibilityLabel={t('finance.storeStats.title')}><Ionicons name="stats-chart-outline" size={20} color={C.gold} /></Pressable>}</View>
+    <View style={styles.header}>{view === 'statistics' || isProviderDetails ? <Pressable style={styles.headerButton} onPress={() => isProviderDetails ? setSelectedProviderId(null) : switchView('inventory')} accessibilityRole="button" accessibilityLabel={t('finance.back')}><Ionicons name="arrow-back" size={20} color={C.gold} /></Pressable> : <Pressable style={styles.headerButton} onPress={() => setDrawerOpen(true)} accessibilityRole="button" accessibilityLabel={t('finance.menu')}><MenuGlyph /></Pressable>}<Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>{view === 'statistics' ? <Pressable style={styles.headerButton} onPress={() => setDrawerOpen(true)} accessibilityRole="button" accessibilityLabel={t('finance.menu')}><MenuGlyph /></Pressable> : isProviderDetails ? <View style={styles.headerButton} /> : <Pressable style={styles.headerButton} onPress={() => switchView('statistics')} accessibilityRole="button" accessibilityLabel={t('finance.storeStats.title')}><Ionicons name="stats-chart-outline" size={20} color={C.gold} /></Pressable>}</View>
     <Animated.View key={view} entering={FadeIn.duration(reduceMotion ? 0 : 190).easing(Easing.out(Easing.cubic))} exiting={FadeOut.duration(reduceMotion ? 0 : 120)} style={styles.flex}>{content}</Animated.View>
-    <Pressable style={[styles.workspaceFab, view === 'inventory' || view === 'services' || view === 'sales' ? styles.workspaceFabStacked : styles.workspaceFabSolo]} onPress={switchWorkspace} accessibilityRole="button" accessibilityLabel={t('finance.workspace.personal')}><Ionicons name="wallet-outline" size={20} color={C.gold} /></Pressable>
-    {(view === 'inventory' || view === 'services' || view === 'sales') ? <Pressable style={styles.fab} onPress={view === 'sales' ? openSale : () => openProduct()} accessibilityRole="button" accessibilityLabel={view === 'sales' ? t('finance.store.newSale') : t('finance.store.addProduct')}><Ionicons name="add" size={25} color={C.gold} /></Pressable> : null}
+    <Pressable style={[styles.workspaceFab, view === 'inventory' || view === 'services' || view === 'operations' ? styles.workspaceFabStacked : styles.workspaceFabSolo]} onPress={switchWorkspace} accessibilityRole="button" accessibilityLabel={t('finance.workspace.personal')}><Ionicons name="wallet-outline" size={20} color={C.gold} /></Pressable>
+    {(view === 'inventory' || view === 'services' || view === 'operations') ? <Pressable style={styles.fab} onPress={view === 'operations' ? openSale : () => openProduct()} accessibilityRole="button" accessibilityLabel={view === 'operations' ? t('finance.store.newSale') : t('finance.store.addProduct')}><Ionicons name="add" size={25} color={C.gold} /></Pressable> : null}
     <ConfirmDialog visible={exitPromptOpen} title={t('finance.exit.title')} message={t('finance.exit.copy')} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.exit.confirm')} icon="power-outline" destructive={false} onCancel={() => setExitPromptOpen(false)} onConfirm={() => { setExitPromptOpen(false); BackHandler.exitApp(); }} />
     <ConfirmDialog visible={Boolean(pendingStoreBackup)} title={t('finance.storeBackup.importStore')} message={t('finance.storeBackup.importConfirmCopy')} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.storeBackup.importStore')} icon="cloud-download-outline" destructive onCancel={() => setPendingStoreBackup(null)} onConfirm={() => void confirmStoreImport()} />
+    <ConfirmDialog visible={Boolean(pendingProductDeletion)} title={t('finance.deleteProduct')} message={t('finance.deleteProductConfirm')} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.deleteAction')} icon="trash-outline" destructive onCancel={() => setPendingProductDeletion(null)} onConfirm={confirmProductDeletion} />
+    <ConfirmDialog visible={Boolean(pendingOperationDeletion)} title={t('finance.deleteEntry')} message={t('finance.deleteEntryConfirm')} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.deleteAction')} icon="trash-outline" destructive onCancel={() => setPendingOperationDeletion(null)} onConfirm={confirmOperationDeletion} />
     <Modal visible={importBusy} transparent animationType="fade" statusBarTranslucent><View style={styles.importBackdrop}><View style={styles.importCard}><ActivityIndicator size="large" color={C.gold} /><Text style={styles.importTitle}>{t('finance.releaseImport.importing')}</Text><Text style={styles.importCopy}>{t('finance.releaseImport.importingCopy')}</Text></View></View></Modal>
 
     <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}>
@@ -933,7 +1107,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
           <SafeAreaView style={styles.flex} edges={['top', 'bottom']}>
             <ScrollView style={styles.drawerScroll} contentContainerStyle={styles.drawerContent} showsVerticalScrollIndicator={false}>
               <View style={styles.balanceCard}><Text style={styles.eyebrow}>{t('finance.storeDrawer.inventoryValue')}</Text><Text style={styles.balance} numberOfLines={1} adjustsFontSizeToFit>{money(inventoryValue, currency)}</Text><Text style={styles.rowMeta}>{t('finance.storeBackup.businessBalance')}: {money(store.businessAccount.balance, currency)}</Text></View>
-              {([['inventory', 'cube-outline'], ['employees', 'people-outline'], ['clients', 'person-outline'], ['providers', 'business-outline'], ['services', 'construct-outline'], ['sales', 'cart-outline'], ['reports', 'bar-chart-outline']] as [StoreView, IconName][]).map(([item, icon]) => <Pressable key={item} style={[styles.drawerItem, view === item && styles.drawerItemActive]} onPress={() => switchView(item)} accessibilityRole="button" accessibilityLabel={t(`finance.store.${item}`)}><Ionicons name={icon} size={20} color={view === item ? C.goldLight : C.gold} /><Text style={styles.drawerText}>{t(`finance.store.${item}`)}</Text><Ionicons name="chevron-forward" size={16} color={C.textSubtle} /></Pressable>)}
+              {([['inventory', 'cube-outline'], ['employees', 'people-outline'], ['clients', 'person-outline'], ['providers', 'business-outline'], ['services', 'construct-outline'], ['operations', 'list-outline'], ['reports', 'bar-chart-outline']] as [StoreView, IconName][]).map(([item, icon]) => <Pressable key={item} style={[styles.drawerItem, view === item && styles.drawerItemActive]} onPress={() => switchView(item)} accessibilityRole="button" accessibilityLabel={item === 'operations' ? t('finance.operations') : t(`finance.store.${item}`)}><Ionicons name={icon} size={20} color={view === item ? C.goldLight : C.gold} /><Text style={styles.drawerText}>{item === 'operations' ? t('finance.operations') : t(`finance.store.${item}`)}</Text><Ionicons name="chevron-forward" size={16} color={C.textSubtle} /></Pressable>)}
               <Pressable style={[styles.drawerItem, view === 'movements' && styles.drawerItemActive]} onPress={() => switchView('movements')} accessibilityRole="button" accessibilityLabel={t('finance.store.viewMovements')}><Ionicons name="wallet-outline" size={20} color={view === 'movements' ? C.goldLight : C.gold} /><Text style={styles.drawerText}>{t('finance.store.viewMovements')}</Text><Ionicons name="chevron-forward" size={16} color={C.textSubtle} /></Pressable>
               <Pressable style={[styles.drawerItem, view === 'archived' && styles.drawerItemActive]} onPress={() => switchView('archived')} accessibilityRole="button" accessibilityLabel={t('finance.store.archived')}><Ionicons name="archive-outline" size={20} color={view === 'archived' ? C.goldLight : C.gold} /><Text style={styles.drawerText}>{t('finance.store.archived')}</Text><Ionicons name="chevron-forward" size={16} color={C.textSubtle} /></Pressable>
               <Pressable style={[styles.drawerItem, view === 'settings' && styles.drawerItemActive]} onPress={openSettings} accessibilityRole="button" accessibilityLabel={t('finance.store.settings')}><Ionicons name="settings-outline" size={20} color={view === 'settings' ? C.goldLight : C.gold} /><Text style={styles.drawerText}>{t('finance.store.settings')}</Text><Ionicons name="chevron-forward" size={16} color={C.textSubtle} /></Pressable>
@@ -942,6 +1116,17 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
         </Animated.View>
       </View>
     </Modal>
+
+    <ResponsiveSheet visible={currencyChangeOpen} title={t('finance.storeCurrency.changeTitle')} onClose={closeStoreCurrencyChange} closeLabel={t('finance.close')} footer={<FormActions cancelLabel={t('finance.cancel')} saveLabel={t('finance.storeCurrency.confirm')} onCancel={closeStoreCurrencyChange} onSave={confirmStoreCurrencyChange} disabled={!pendingStoreCurrency || (currency !== 'USD' && !validRateInput(currentCurrencyPerUsd)) || (pendingStoreCurrency !== 'USD' && !validRateInput(storeCurrencyPerUsd))} />}>
+      <View style={styles.flowHero}><View style={styles.flowHeroSide}><Text style={styles.flowHeroLabel}>{t('finance.storeCurrency.sectionTitle')}</Text><Text style={styles.flowHeroValue}>{currency}</Text></View><Ionicons name="arrow-forward-outline" size={20} color={C.gold} /><View style={styles.flowHeroSide}><Text style={styles.flowHeroLabel}>{t('finance.storeCurrency.confirm')}</Text><Text style={styles.flowHeroValue}>{pendingStoreCurrency || '—'}</Text></View></View>
+      <Text style={styles.helper}>{t('finance.storeCurrency.confirmCopy', { from: currency, to: pendingStoreCurrency })}</Text>
+      <SegmentedControl label={t('finance.storeCurrency.historyChoice')} value={convertStoreHistory ? 'convert' : 'keep'} options={[{ value: 'keep', label: t('finance.storeCurrency.keepHistory'), icon: 'time-outline' }, { value: 'convert', label: t('finance.storeCurrency.convertHistory'), icon: 'swap-horizontal-outline' }]} onChange={(value) => setConvertStoreHistory(value === 'convert')} />
+      <Text style={styles.helper}>{t('finance.storeCurrency.historyCopy')}</Text>
+      {currency !== 'USD' ? <FormField label={t('finance.storeCurrency.usdRateLabel', { currency })} value={currentCurrencyPerUsd} onChangeText={(value) => { setCurrentCurrencyPerUsd(value); setStoreCurrencyRateError(''); }} numeric required placeholder="1.00" /> : null}
+      {pendingStoreCurrency !== 'USD' ? <FormField label={t('finance.storeCurrency.usdRateLabel', { currency: pendingStoreCurrency })} value={storeCurrencyPerUsd} onChangeText={(value) => { setStoreCurrencyPerUsd(value); setStoreCurrencyRateError(''); }} numeric required placeholder="1.00" /> : null}
+      {storeCurrencyRateError ? <Text style={styles.error}>{storeCurrencyRateError}</Text> : null}
+      <Text style={styles.helper}>{t('finance.storeCurrency.usdRateCopy')}</Text>
+    </ResponsiveSheet>
 
     <ResponsiveSheet visible={filterOpen} title={t('finance.storeFilters.filters')} onClose={() => setFilterOpen(false)} closeLabel={t('finance.close')}>
       <SearchableSelect label={t('finance.store.category')} value={categoryFilter} options={[{ value: '', label: t('finance.filters.all'), icon: 'apps-outline' }, ...categoryOptions]} onChange={setCategoryFilter} placeholder={t('finance.filters.all')} searchPlaceholder={t('finance.search')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} />
@@ -1007,6 +1192,8 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     <ResponsiveSheet visible={Boolean(stockProduct)} title={stockProduct?.name ?? t('finance.store.adjustStock')} onClose={() => setStockProduct(null)} closeLabel={t('finance.close')} footer={<FormActions cancelLabel={t('finance.cancel')} saveLabel={t('finance.save')} onCancel={() => setStockProduct(null)} onSave={saveStock} disabled={!Number.isFinite(numeric(stockQuantity)) || numeric(stockQuantity) < 0 || (stockAction !== 'adjustment' && numeric(stockQuantity) === 0)} />}>
       <SegmentedControl label={t('finance.store.stockMovement')} options={(['entry', 'exit', 'adjustment'] as StockAction[]).map((item) => ({ value: item, label: t(`finance.store.stockAction.${item}`) }))} value={stockAction} onChange={(value) => { setStockAction(value as StockAction); setStockError(''); }} />
       <FormField label={t('finance.store.quantity')} value={stockQuantity} onChangeText={(value) => { setStockQuantity(value); setStockError(''); }} numeric required error={stockError} />
+      {stockAction === 'entry' ? <SearchableSelect label={t('finance.store.provider')} value={stockProviderId} options={providerOptions} onChange={setStockProviderId} placeholder={t('finance.store.noneSelected')} searchPlaceholder={t('finance.search')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} /> : null}
+      {stockAction === 'exit' ? <SearchableSelect label={t('finance.store.client')} value={stockClientId} options={clientOptions} onChange={setStockClientId} placeholder={t('finance.store.noneSelected')} searchPlaceholder={t('finance.search')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} /> : null}
       <FormField label={t('finance.store.stockReason')} value={stockNote} onChangeText={(value) => { setStockNote(value); setStockError(''); }} placeholder={t('finance.store.stockReason')} />
     </ResponsiveSheet>
 
@@ -1024,7 +1211,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     </ResponsiveSheet>
 
     <ResponsiveSheet visible={Boolean(selectedSale)} title={t('finance.store.saleDetails')} onClose={() => setSelectedSaleId(null)} closeLabel={t('finance.close')}>
-      {selectedSale ? <><Text style={styles.helper}>{new Date(selectedSale.date).toLocaleString()}</Text>{selectedSale.items.map((item) => <ReportRow key={item.productId} title={`${item.name} × ${item.quantity}`} copy={money(item.unitPrice, currency)} amount={money(item.total, currency)} />)}<View style={styles.totalRow}><Text style={styles.totalLabel}>{t('finance.store.total')}</Text><Text style={styles.totalValue}>{money(selectedSale.total, currency)}</Text></View><Detail label={t('finance.store.client')} value={store.clients.find((item) => item.id === selectedSale.clientId)?.name ?? t('finance.store.noneSelected')} /><Detail label={t('finance.store.employee')} value={store.employees.find((item) => item.id === selectedSale.employeeId)?.name ?? t('finance.store.noneSelected')} /><Detail label={t('finance.store.paymentMethod')} value={selectedSale.paymentMethod ? t(`finance.accountTypes.${selectedSale.paymentMethod}`) : t('finance.store.noPaymentMethod')} />{selectedSale.note ? <Detail label={t('finance.store.saleNote')} value={selectedSale.note} /> : null}<Text style={selectedSale.status === 'void' ? styles.negative : styles.positive}>{t(`finance.store.${selectedSale.status === 'void' ? 'voided' : 'completed'}`)}</Text>{selectedSale.status === 'completed' ? <Pressable style={styles.dangerButton} onPress={() => confirmVoidSale(selectedSale.id)}><Text style={styles.dangerLink}>{t('finance.store.voidSale')}</Text></Pressable> : null}</> : null}
+      {selectedSale ? <><Text style={styles.helper}>{new Date(selectedSale.date).toLocaleString()}</Text>{selectedSale.items.map((item) => <ReportRow key={item.productId} title={`${item.name} × ${item.quantity}`} copy={money(storeAmount(state, item.unitPrice, selectedSale.currency), currency)} amount={money(storeAmount(state, item.total, selectedSale.currency), currency)} />)}<View style={styles.totalRow}><Text style={styles.totalLabel}>{t('finance.store.total')}</Text><Text style={styles.totalValue}>{money(storeAmount(state, selectedSale.total, selectedSale.currency), currency)}</Text></View><Detail label={t('finance.store.client')} value={store.clients.find((item) => item.id === selectedSale.clientId)?.name ?? t('finance.store.noneSelected')} /><Detail label={t('finance.store.employee')} value={store.employees.find((item) => item.id === selectedSale.employeeId)?.name ?? t('finance.store.noneSelected')} /><Detail label={t('finance.store.paymentMethod')} value={selectedSale.paymentMethod ? t(`finance.accountTypes.${selectedSale.paymentMethod}`) : t('finance.store.noPaymentMethod')} />{selectedSale.note ? <Detail label={t('finance.store.saleNote')} value={selectedSale.note} /> : null}<Text style={selectedSale.status === 'void' ? styles.negative : styles.positive}>{t(`finance.store.${selectedSale.status === 'void' ? 'voided' : 'completed'}`)}</Text>{selectedSale.status === 'completed' ? <Pressable style={styles.dangerButton} onPress={() => confirmVoidSale(selectedSale.id)}><Text style={styles.dangerLink}>{t('finance.store.voidSale')}</Text></Pressable> : null}</> : null}
     </ResponsiveSheet>
 
     <ResponsiveSheet visible={directoryOpen} title={`${t(directoryId ? 'finance.store.editDirectory' : 'finance.store.addDirectory')} ${t(directoryKind === 'clients' ? 'finance.store.client' : directoryKind === 'providers' ? 'finance.store.provider' : 'finance.store.employee')}`} onClose={() => setDirectoryOpen(false)} closeLabel={t('finance.close')} footer={<FormActions cancelLabel={t('finance.cancel')} saveLabel={t('finance.save')} onCancel={() => setDirectoryOpen(false)} onSave={saveDirectory} disabled={!directoryName.trim()} />}>
@@ -1065,9 +1252,9 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   toolbar: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 12, paddingBottom: 5 }, search: { minHeight: 48, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12 },
   searchInput: { flex: 1, minWidth: 0, minHeight: 46, color: C.goldLight, fontFamily: SANS, fontSize: 13 }, filterButton: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, filterButtonActive: { backgroundColor: C.gold }, addSmall: { width: 44, height: 44, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.ink, alignItems: 'center', justifyContent: 'center' },
   list: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 136 }, listEmpty: { flexGrow: 1 }, content: { width: '100%', maxWidth: 760, alignSelf: 'center', padding: 16, paddingBottom: 136 },
-  productRow: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 8 }, productMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 }, productIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, productImage: { width: '100%', height: '100%' }, productIconChoices: { gap: 8, paddingVertical: 7 }, productIconChoice: { width: 44, height: 44, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.035)', alignItems: 'center', justifyContent: 'center' }, productIconChoiceActive: { backgroundColor: C.gold, borderColor: C.gold }, rowMain: { flex: 1, minWidth: 0 }, rowTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13 }, rowMeta: { color: 'rgba(255,244,208,0.46)', fontFamily: SANS, fontSize: 10, lineHeight: 15, marginTop: 3 }, dangerMeta: { color: '#F08B88', fontFamily: SANS, fontSize: 10, marginTop: 3 }, stockSide: { flexDirection: 'row', alignItems: 'center' }, stockValue: { minWidth: 34, textAlign: 'right', color: C.goldLight, fontFamily: SERIF, fontSize: 15 }, iconButton: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, inactive: { opacity: 0.48 }, inactiveText: { color: 'rgba(255,244,208,0.28)' },
+  productSwipeRow: { position: 'relative', overflow: 'hidden' }, productSwipeActions: { ...StyleSheet.absoluteFillObject, flexDirection: 'row', justifyContent: 'flex-end' }, productSwipeAction: { width: 74, alignItems: 'center', justifyContent: 'center', gap: 3 }, productSwipeActionEdit: { backgroundColor: 'rgba(233,200,119,0.12)' }, productSwipeActionDanger: { backgroundColor: 'rgba(240,139,136,0.13)' }, productSwipeActionText: { color: C.gold, fontFamily: SANS, fontSize: 8, fontWeight: '700' }, productSwipeActionTextDanger: { color: C.red }, productSwipeContent: { backgroundColor: C.background }, productRow: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 8 }, productMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 }, productIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, productImage: { width: '100%', height: '100%' }, productIconChoices: { gap: 8, paddingVertical: 7 }, productIconChoice: { width: 44, height: 44, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.035)', alignItems: 'center', justifyContent: 'center' }, productIconChoiceActive: { backgroundColor: C.gold, borderColor: C.gold }, rowMain: { flex: 1, minWidth: 0 }, rowTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13 }, rowMeta: { color: 'rgba(255,244,208,0.46)', fontFamily: SANS, fontSize: 10, lineHeight: 15, marginTop: 3 }, dangerMeta: { color: '#F08B88', fontFamily: SANS, fontSize: 10, marginTop: 3 }, stockSide: { flexDirection: 'row', alignItems: 'center' }, stockValue: { minWidth: 34, textAlign: 'right', color: C.goldLight, fontFamily: SERIF, fontSize: 15 }, iconButton: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, inactive: { opacity: 0.48 }, inactiveText: { color: 'rgba(255,244,208,0.28)' },
   saleRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 10 }, saleIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center' }, saleIconVoided: { backgroundColor: 'rgba(240,139,136,0.08)' }, saleRowContent: { flex: 1, minWidth: 0 }, saleRowTop: { flexDirection: 'row', alignItems: 'center', gap: 8 }, saleStatusText: { color: C.gold, fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 0.4 }, saleStatusVoided: { color: C.red }, saleMetaLine: { color: 'rgba(255,244,208,0.46)', fontFamily: SANS, fontSize: 10, marginTop: 5 }, saleAmountSide: { alignItems: 'flex-end', gap: 2 }, amount: { color: C.goldLight, fontFamily: SERIF, fontSize: 14, maxWidth: '38%' },
-  directoryRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 8 }, directoryMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 }, payButton: { minHeight: 32, borderRadius: 10, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.gold }, operationButton: { minHeight: 32, borderRadius: 10, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.gold }, payButtonText: { color: C.void, fontFamily: SANS, fontSize: 9, fontWeight: '700' }, avatar: { width: 40, height: 40, borderRadius: 13, backgroundColor: 'rgba(233,200,119,0.1)', alignItems: 'center', justifyContent: 'center' }, avatarText: { color: C.goldLight, fontFamily: SERIF, fontSize: 17 },
+  directoryRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 8 }, directoryMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 }, payButton: { minHeight: 32, borderRadius: 10, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.gold }, operationButton: { minHeight: 32, borderRadius: 10, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.gold }, payButtonText: { color: C.void, fontFamily: SANS, fontSize: 9, fontWeight: '700' }, avatar: { width: 40, height: 40, borderRadius: 13, backgroundColor: 'rgba(233,200,119,0.1)', alignItems: 'center', justifyContent: 'center' }, avatarText: { color: C.goldLight, fontFamily: SERIF, fontSize: 17 }, providerDetailHero: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingBottom: 18 }, providerOperationsCard: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, paddingHorizontal: 13 }, providerOperationRow: { minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, primaryButton: { minHeight: 45, borderRadius: 13, backgroundColor: C.gold, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 16 }, primaryButtonText: { color: C.void, fontFamily: SANS, fontSize: 11, fontWeight: '800' }, storeOperationRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 9 }, operationCashIcon: { backgroundColor: 'rgba(233,200,119,0.12)' }, operationStockIcon: { backgroundColor: 'rgba(147,197,253,0.1)' }, operationAmountSide: { alignItems: 'flex-end', gap: 4, maxWidth: 125 }, operationAmountValue: { color: C.goldLight, fontFamily: SERIF, fontSize: 13, maxWidth: 125 }, operationDeleteButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
   flowHero: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, padding: 12, marginBottom: 5 }, flowHeroSide: { flex: 1, minWidth: 0 }, flowHeroLabel: { color: 'rgba(233,200,119,0.58)', fontFamily: SANS, fontSize: 8, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }, flowHeroValue: { color: C.goldLight, fontFamily: SERIF, fontSize: 16, marginTop: 4 }, flowHeroMeta: { color: 'rgba(255,244,208,0.44)', fontFamily: SANS, fontSize: 9, marginTop: 3 }, stockSummary: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, padding: 12, marginBottom: 3 }, saleSummary: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, padding: 11, marginBottom: 4 }, directoryHero: { flexDirection: 'row', alignItems: 'center', gap: 12, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, padding: 13, marginBottom: 5 }, directoryHeroAvatar: { width: 48, height: 48, borderRadius: 16, backgroundColor: 'rgba(233,200,119,0.14)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 3 }, directoryHeroAvatarText: { color: C.goldLight, fontFamily: SERIF, fontSize: 17 }, directoryHeroTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 17 }, formSectionTitle: { color: 'rgba(233,200,119,0.62)', fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 1.3, marginTop: 17, marginBottom: 1, textTransform: 'uppercase' },
   drawerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.68)' },
   drawerPanel: { width: '84%', maxWidth: 420, height: '100%', backgroundColor: '#090B12', borderRightWidth: StyleSheet.hairlineWidth, borderRightColor: C.line, paddingHorizontal: 18 },

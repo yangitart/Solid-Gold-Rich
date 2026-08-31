@@ -137,6 +137,8 @@ function unzip(bytes: Uint8Array) {
     const dataEnd = dataStart + compressedSize;
     if (dataEnd > bytes.length) throw new Error('invalid-archive');
     const name = textFromBytes(bytes.slice(nameStart, nameStart + nameLength));
+    if (files.has(name) || (name !== 'backup.json' && !/^images\/[A-Za-z0-9_-]+\.(?:jpg|png|webp|gif)$/i.test(name))) throw new Error('invalid-archive');
+    if (crc32(bytes.slice(dataStart, dataEnd)) !== view.getUint32(14, true)) throw new Error('invalid-archive');
     files.set(name, bytes.slice(dataStart, dataEnd));
     offset = dataEnd;
   }
@@ -236,7 +238,7 @@ export function parseAppArchive(base64: string): AppBackup {
     if (!isRecord(product)) throw new Error('invalid-app-archive');
     const picture = product.picture;
     if (picture === undefined) return product;
-    if (!isRecord(picture) || typeof picture.mimeType !== 'string' || typeof picture.path !== 'string' || !picture.path.startsWith('images/')) throw new Error('invalid-app-archive');
+    if (!isRecord(picture) || typeof picture.mimeType !== 'string' || typeof picture.path !== 'string' || !/^images\/[A-Za-z0-9_-]+\.(?:jpg|png|webp|gif)$/i.test(picture.path)) throw new Error('invalid-app-archive');
     const image = files.get(picture.path);
     if (!image) throw new Error('invalid-app-archive');
     return { ...product, picture: { mimeType: picture.mimeType, data: bytesToBase64(image) } };

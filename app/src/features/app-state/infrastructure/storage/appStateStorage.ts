@@ -10,7 +10,7 @@ import type {
 } from '@/features/finance/domain/entities/financeTypes';
 import type { NoteFolder } from '@/features/notes/domain/entities/Note';
 import type { StoreClient, StoreCategory, StoreCashMovement, StoreDefaultOperation, StoreEmployee, StoreProduct, StoreProvider, StoreSale, StoreSaleItem, StoreState, StoreStockMovement } from '@/features/store/domain/entities/Store';
-import { captureCurrencySnapshot } from '@/shared/domain/finance/currency';
+import { captureCurrencySnapshot, currencyRate } from '@/shared/domain/finance/currency';
 import { DEFAULT_COLORS } from '@/features/finance/domain/entities/defaultColors';
 
 export { DEFAULT_COLORS } from '@/features/finance/domain/entities/defaultColors';
@@ -165,7 +165,7 @@ function normalizeTransaction(value: Partial<Transaction>, accountId: string): T
     accountId: text(value.accountId, accountId),
     kind: kind as TransactionKind,
     amount: number(value.amount),
-    currency: text(value.currency, 'USD'),
+    currency: text(value.currency, 'USD').trim().toUpperCase(),
     date: text(value.date, new Date().toISOString()),
     payee: text(value.payee),
     category: text(value.category, 'other'),
@@ -193,8 +193,9 @@ function normalizedName(value: string) {
   return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim();
 }
 
-function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState {
+function normalizeStoreState(value: Partial<StoreState> | undefined, fallbackCurrency = 'USD'): StoreState {
   const source = value && typeof value === 'object' ? value as Partial<StoreState> & Record<string, unknown> : {};
+  const storeCurrency = text(source.currency, text(source.businessAccount?.currency, fallbackCurrency)).trim().toUpperCase();
   const rawCategories: unknown[] = Array.isArray(source.categories) ? source.categories as unknown[] : [];
   const categories: StoreCategory[] = DEFAULT_STORE_CATEGORIES.map((category) => ({ ...category }));
   const usedCategoryIds = new Set<string>();
@@ -235,6 +236,7 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       unitAbbreviation: Array.from(text(item.unitAbbreviation).trim()).slice(0, 4).join('') || undefined,
        categoryId: categoryIdFor(item.categoryId, item.category),
        providerId: text(item.providerId) || undefined,
+       currency: text(item.currency, storeCurrency).trim().toUpperCase(),
       sku: text(item.sku) || undefined,
       salePrice: Math.max(0, number(item.salePrice)),
       purchasePrice: Math.max(0, purchasePrice),
@@ -261,11 +263,13 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       quantity: number(item.quantity),
       date: text(item.date, new Date().toISOString()),
       note: text(item.note),
+      providerId: text(item.providerId) || undefined,
+      clientId: text(item.clientId) || undefined,
       saleId: text(item.saleId) || undefined,
       cashMovementId: text(item.cashMovementId) || undefined,
       personalTransactionId: text(item.personalTransactionId) || undefined,
     } satisfies StoreStockMovement;
-  }).filter((movement) => productIds.has(movement.productId)));
+  }));
   const sales = uniqueById(recordArray(source.sales).map((sale, index) => {
     const item = sale as Partial<StoreSale>;
     const items: StoreSaleItem[] = recordArray(item.items).map((line) => ({
@@ -275,7 +279,7 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       quantity: Math.max(0, number(line.quantity)),
       unitPrice: Math.max(0, number(line.unitPrice)),
       total: Math.max(0, number(line.total, number(line.quantity) * number(line.unitPrice))),
-    })).filter((line) => productIds.has(line.productId) && line.quantity > 0);
+    })).filter((line) => line.quantity > 0);
     const paymentMethod = ['cash', 'card', 'bank', 'transfer', 'other'].includes(item.paymentMethod ?? '')
       ? item.paymentMethod as PaymentMethod : undefined;
     return {
@@ -283,6 +287,7 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       date: text(item.date, new Date().toISOString()),
       items,
       total: Math.max(0, number(item.total, items.reduce((sum, line) => sum + line.total, 0))),
+      currency: text(item.currency, storeCurrency).trim().toUpperCase(),
       paymentMethod,
       status: item.status === 'void' ? 'void' : 'completed',
       note: text(item.note),
@@ -298,6 +303,7 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       role: text(item.role) || undefined,
       phone: text(item.phone) || undefined,
       salary: Math.max(0, number(item.salary)),
+      salaryCurrency: text(item.salaryCurrency, storeCurrency).trim().toUpperCase(),
       payFrequency: ['weekly', 'biweekly', 'monthly'].includes(item.payFrequency ?? '') ? item.payFrequency as StoreEmployee['payFrequency'] : 'monthly',
       payMode: item.payMode === 'automatic' ? 'automatic' : 'manual',
       nextPayDate: text(item.nextPayDate) || undefined,
@@ -347,6 +353,7 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
       id: text(item.id, `store-cash-${index}`),
       type,
       amount: number(item.amount),
+      currency: text(item.currency, storeCurrency).trim().toUpperCase(),
       date: text(item.date, new Date().toISOString()),
       note: text(item.note),
       transferId: text(item.transferId) || undefined,
@@ -356,10 +363,9 @@ function normalizeStoreState(value: Partial<StoreState> | undefined): StoreState
     };
   }).filter((movement) => movement.amount !== 0));
   if (!cashMovements.length && rawBalance !== 0) {
-    cashMovements.push({ id: 'store-cash-opening-v5', type: 'opening', amount: rawBalance, date: new Date().toISOString(), note: '' });
+    cashMovements.push({ id: 'store-cash-opening-v5', type: 'opening', amount: rawBalance, currency: storeCurrency, date: new Date().toISOString(), note: '' });
   }
   const businessBalance = cashMovements.reduce((total, movement) => total + movement.amount, 0);
-  const storeCurrency = text(source.currency, text(source.businessAccount?.currency, 'USD')).toUpperCase();
   const storeName = text(source.name, text(source.businessAccount?.name));
   return {
     name: storeName,
@@ -388,7 +394,7 @@ export function normalizeFinanceState(value: Partial<FinanceState>): FinanceStat
     id: text(account.id, `account-${index}`),
     name: text(account.name, `Account ${index + 1}`),
     type: ['cash', 'bank', 'card', 'savings', 'debt'].includes(text(account.type)) ? text(account.type) as FinanceState['accounts'][number]['type'] : 'other',
-    currency: text(account.currency, 'USD'),
+    currency: text(account.currency, 'USD').trim().toUpperCase(),
     exchangeRate: typeof account.exchangeRate === 'number' && Number.isFinite(account.exchangeRate) && account.exchangeRate > 0 ? account.exchangeRate : undefined,
     openingBalance: number(account.openingBalance),
     color: text(account.color, DEFAULT_COLORS[index % DEFAULT_COLORS.length]),
@@ -402,7 +408,7 @@ export function normalizeFinanceState(value: Partial<FinanceState>): FinanceStat
   state.transfers = uniqueById(recordArray(value.transfers).map((item, index) => ({
     id: text(item.id, `transfer-${index}`), fromAccountId: text(item.fromAccountId), toAccountId: text(item.toAccountId),
     fromAmount: Math.max(0, number(item.fromAmount)), toAmount: Math.max(0, number(item.toAmount)),
-    fromCurrency: text(item.fromCurrency, 'USD'), toCurrency: text(item.toCurrency, 'USD'), rate: Math.max(0, number(item.rate)), fee: Math.max(0, number(item.fee)),
+    fromCurrency: text(item.fromCurrency, 'USD').trim().toUpperCase(), toCurrency: text(item.toCurrency, 'USD').trim().toUpperCase(), rate: Math.max(0, number(item.rate)), fee: Math.max(0, number(item.fee)),
     date: text(item.date, new Date().toISOString()), note: text(item.note), status: item.status === 'pending' || item.status === 'void' ? item.status : 'cleared',
   } satisfies FinanceState['transfers'][number])).filter((item) => item.fromAccountId !== item.toAccountId
     && (accountIds.has(item.fromAccountId) || item.fromAccountId === 'store-business')
@@ -423,7 +429,7 @@ export function normalizeFinanceState(value: Partial<FinanceState>): FinanceStat
   }));
   state.recurring = uniqueById(recordArray(value.recurring).map((item, index) => ({
     id: text(item.id, `recurring-${index}`), accountId: text(item.accountId), kind: item.kind === 'income' ? 'income' : 'expense',
-    amount: Math.max(0, number(item.amount)), currency: text(item.currency, 'USD'), payee: text(item.payee), category: text(item.category, 'other'),
+    amount: Math.max(0, number(item.amount)), currency: text(item.currency, 'USD').trim().toUpperCase(), payee: text(item.payee), category: text(item.category, 'other'),
     paymentMethod: ['cash', 'card', 'bank', 'transfer', 'other'].includes(text(item.paymentMethod)) ? item.paymentMethod as PaymentMethod : 'cash',
     frequency: ['daily', 'weekly', 'monthly', 'yearly'].includes(text(item.frequency)) ? item.frequency as FinanceState['recurring'][number]['frequency'] : 'monthly',
     nextDate: text(item.nextDate, new Date().toISOString()), dayOfMonth: Math.min(31, Math.max(1, number(item.dayOfMonth, new Date(text(item.nextDate, new Date().toISOString())).getDate()))), description: text(item.description), active: item.active !== false,
@@ -433,13 +439,13 @@ export function normalizeFinanceState(value: Partial<FinanceState>): FinanceStat
     const originalAmount = Math.max(0, number(item.originalAmount));
     return {
       id: text(item.id, `debt-${index}`), name: text(item.name, `Debt ${index + 1}`), creditor: text(item.creditor), accountId: accountIds.has(text(item.accountId)) ? text(item.accountId) : undefined,
-      currency: text(item.currency, 'USD'), originalAmount, balance: Math.min(originalAmount, Math.max(0, number(item.balance, originalAmount))), interestRate: Math.max(0, number(item.interestRate)),
+      currency: text(item.currency, 'USD').trim().toUpperCase(), originalAmount, balance: Math.min(originalAmount, Math.max(0, number(item.balance, originalAmount))), interestRate: Math.max(0, number(item.interestRate)),
       dueDate: text(item.dueDate, new Date().toISOString()), active: item.active !== false,
       payments: uniqueById(recordArray(item.payments).map((payment, paymentIndex) => ({ id: text(payment.id, `debt-payment-${index}-${paymentIndex}`), amount: Math.max(0, number(payment.amount)), date: text(payment.date, new Date().toISOString()), note: text(payment.note), accountId: accountIds.has(text(payment.accountId)) ? text(payment.accountId) : undefined, transactionId: text(payment.transactionId) || undefined })).filter((payment) => payment.amount > 0)),
     };
   }).filter((item) => item.originalAmount > 0));
   state.savingsGoals = uniqueById(recordArray(value.savingsGoals).map((item, index) => ({
-    id: text(item.id, `savings-${index}`), name: text(item.name, `Goal ${index + 1}`), currency: text(item.currency, 'USD'), targetAmount: Math.max(0, number(item.targetAmount)), balance: Math.max(0, number(item.balance)), deadline: text(item.deadline, new Date().toISOString()), accountId: accountIds.has(text(item.accountId)) ? text(item.accountId) : undefined, active: item.active !== false,
+    id: text(item.id, `savings-${index}`), name: text(item.name, `Goal ${index + 1}`), currency: text(item.currency, 'USD').trim().toUpperCase(), targetAmount: Math.max(0, number(item.targetAmount)), balance: Math.max(0, number(item.balance)), deadline: text(item.deadline, new Date().toISOString()), accountId: accountIds.has(text(item.accountId)) ? text(item.accountId) : undefined, active: item.active !== false,
     contributions: uniqueById(recordArray(item.contributions).map((contribution, contributionIndex) => ({ id: text(contribution.id, `contribution-${index}-${contributionIndex}`), amount: Math.max(0, number(contribution.amount)), date: text(contribution.date, new Date().toISOString()), note: text(contribution.note), fromAccountId: accountIds.has(text(contribution.fromAccountId)) ? text(contribution.fromAccountId) : undefined, transferId: text(contribution.transferId) || undefined })).filter((contribution) => contribution.amount > 0)),
   })).filter((item) => item.targetAmount > 0));
   state.reminders = uniqueById(recordArray(value.reminders).map((item, index) => ({ id: text(item.id, `reminder-${index}`), title: text(item.title, `Reminder ${index + 1}`), date: text(item.date, new Date().toISOString()), note: text(item.note), completed: Boolean(item.completed), linkedAccountId: accountIds.has(text(item.linkedAccountId)) ? text(item.linkedAccountId) : undefined, linkedTransactionId: text(item.linkedTransactionId) || undefined })));
@@ -463,7 +469,7 @@ export function normalizeFinanceState(value: Partial<FinanceState>): FinanceStat
       if (!configuredIds.has(id)) state.categories[type].push({ id, icon: DEFAULT_CATEGORY_ICONS[id] ?? 'pricetag-outline', builtIn: false });
     });
   });
-  state.store = normalizeStoreState(value.store);
+  state.store = normalizeStoreState(value.store, text(value.settings?.preferredCurrency, 'USD').trim().toUpperCase());
   const exchangeRates = Object.entries(value.settings?.exchangeRates ?? {}).reduce<Record<string, number>>((all, [currency, rate]) => {
     if (Number.isFinite(rate) && rate > 0) all[currency.toUpperCase()] = rate;
     return all;
@@ -471,7 +477,7 @@ export function normalizeFinanceState(value: Partial<FinanceState>): FinanceStat
   state.settings = {
     ...state.settings,
     ...(value.settings ?? {}),
-    preferredCurrency: text(value.settings?.preferredCurrency, 'USD'),
+    preferredCurrency: text(value.settings?.preferredCurrency, 'USD').trim().toUpperCase(),
     exchangeRates,
     language: SUPPORTED_LANGUAGES.includes(value.settings?.language as AppLanguage) ? value.settings?.language as AppLanguage : undefined,
     theme: value.settings?.theme === 'light' ? 'light' : 'dark',
@@ -485,7 +491,14 @@ export function normalizeFinanceState(value: Partial<FinanceState>): FinanceStat
     if (Number.isFinite(transaction.baseAmount) && transaction.baseCurrency) return transaction;
     return { ...transaction, ...captureCurrencySnapshot(transaction.amount, transaction.currency, state.settings.preferredCurrency, exchangeRates) };
   });
-  if (!value.store?.currency) state.store.currency = state.settings.preferredCurrency;
+  state.store.businessAccount = {
+    ...state.store.businessAccount,
+    currency: state.store.currency,
+    balance: state.store.cashMovements.reduce((total, movement) => {
+      const rate = currencyRate(movement.currency ?? state.store.currency, state.store.currency, exchangeRates);
+      return total + movement.amount * (rate ?? 1);
+    }, 0),
+  };
   state.schemaVersion = 7;
   return state;
 }
@@ -515,7 +528,7 @@ function migrateLegacy(
     id: text(budget.id, `account-${index}`),
     name: text(budget.name, index === 0 ? 'Personal' : `Personal ${index + 1}`),
     type: ['cash', 'bank', 'card', 'savings', 'debt', 'other'].includes(text(budget.type)) ? text(budget.type) as FinanceState['accounts'][number]['type'] : 'cash',
-    currency: text(budget.currency, 'USD'),
+    currency: text(budget.currency, 'USD').trim().toUpperCase(),
     exchangeRate: number(budget.exchangeRate) > 0 ? number(budget.exchangeRate) : undefined,
     openingBalance: number(budget.openingBalance),
     color: text(budget.color, DEFAULT_COLORS[index % DEFAULT_COLORS.length]),
@@ -540,7 +553,7 @@ function migrateLegacy(
     accountId: text(item.accountId, defaultAccountId),
     kind: item.kind === 'income' ? 'income' : 'expense',
     amount: number(item.amount),
-    currency: text(item.currency, state.accounts.find((account) => account.id === text(item.accountId, defaultAccountId))?.currency ?? 'USD'),
+    currency: text(item.currency, state.accounts.find((account) => account.id === text(item.accountId, defaultAccountId))?.currency ?? 'USD').trim().toUpperCase(),
     date: text(item.date, new Date().toISOString()),
     payee: text(item.title),
     description: text(item.title),
@@ -664,20 +677,29 @@ function parseCsvRecords(text: string): string[][] {
       pushRow();
     } else cell += character;
   }
+  if (quoted) throw new Error('invalid-csv');
   if (cell !== '' || row.length) pushRow();
   return records;
 }
 
 export function importCsv(csv: string, accountId: string, fallbackCurrency: string) {
-  const records = parseCsvRecords(csv);
+  let records: string[][];
+  try {
+    records = parseCsvRecords(csv);
+  } catch {
+    return { items: [] as Transaction[], errors: ['header'] };
+  }
   if (records.length < 2) return { items: [] as Transaction[], errors: ['header'] };
   const [headers, ...rows] = records;
-  const index = (name: string) => headers.indexOf(name);
+  const normalizedHeaders = headers.map((header, headerIndex) => (headerIndex === 0 ? header.replace(/^\uFEFF/, '') : header).trim());
+  const index = (name: string) => normalizedHeaders.indexOf(name);
+  if (index('date') < 0 || index('kind') < 0 || index('amount') < 0 || index('currency') < 0) return { items: [] as Transaction[], errors: ['header'] };
   const errors: string[] = [];
   const items: Transaction[] = [];
   for (const [rowIndex, cells] of rows.entries()) {
-    const amount = number(cells[index('amount')]);
-    if (!amount) {
+    const amountValue = cells[index('amount')];
+    const amount = number(amountValue);
+    if (!amountValue?.trim() || !Number.isFinite(Number(amountValue)) || amount <= 0) {
       errors.push(`row:${rowIndex + 2}:amount`);
       continue;
     }
@@ -687,7 +709,7 @@ export function importCsv(csv: string, accountId: string, fallbackCurrency: stri
       accountId,
       kind,
       amount,
-      currency: cells[index('currency')] || fallbackCurrency,
+      currency: (cells[index('currency')] || fallbackCurrency).trim().toUpperCase(),
       date: cells[index('date')] || new Date().toISOString(),
       payee: cells[index('payee')],
       category: cells[index('category')] || 'other',
@@ -695,8 +717,8 @@ export function importCsv(csv: string, accountId: string, fallbackCurrency: stri
       status: cells[index('status')] as TransactionStatus,
       reference: cells[index('reference')],
       description: cells[index('description')],
-      baseAmount: index('baseAmount') >= 0 ? number(cells[index('baseAmount')]) : undefined,
-      baseCurrency: index('baseCurrency') >= 0 ? cells[index('baseCurrency')] : undefined,
+      baseAmount: index('baseAmount') >= 0 && cells[index('baseAmount')]?.trim() && Number.isFinite(Number(cells[index('baseAmount')])) && Number(cells[index('baseAmount')]) >= 0 ? Number(cells[index('baseAmount')]) : undefined,
+      baseCurrency: index('baseCurrency') >= 0 ? cells[index('baseCurrency')]?.trim().toUpperCase() : undefined,
     }, accountId));
   }
   return { items, errors };

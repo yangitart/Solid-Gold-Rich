@@ -23,6 +23,7 @@ export type StoreProduct = {
   unitAbbreviation?: string;
   categoryId: string;
   providerId?: string;
+  currency?: Currency;
   sku?: string;
   salePrice: number;
   purchasePrice: number;
@@ -44,15 +45,17 @@ export type StoreStockMovement = {
   quantity: number;
   date: string;
   note: string;
+  providerId?: string;
+  clientId?: string;
   saleId?: string;
   cashMovementId?: string;
   personalTransactionId?: string;
 };
 
 export type StoreSaleItem = { productId: string; name: string; type: StoreProductType; quantity: number; unitPrice: number; total: number };
-export type StoreSale = { id: string; date: string; items: StoreSaleItem[]; total: number; paymentMethod?: PaymentMethod; status: StoreSaleStatus; note: string; clientId?: string; employeeId?: string };
-export type StoreCashMovement = { id: string; type: StoreCashMovementType; amount: number; date: string; note: string; transferId?: string; saleId?: string; productId?: string; personalTransactionId?: string };
+export type StoreSale = { id: string; date: string; items: StoreSaleItem[]; total: number; currency?: Currency; paymentMethod?: PaymentMethod; status: StoreSaleStatus; note: string; clientId?: string; employeeId?: string };
+export type StoreCashMovement = { id: string; type: StoreCashMovementType; amount: number; currency?: Currency; date: string; note: string; transferId?: string; saleId?: string; productId?: string; personalTransactionId?: string };
 export type StoreAccount = { id: 'store-business'; name: string; currency: Currency; balance: number };
-export type StoreEmployee = { id: string; name: string; role?: string; phone?: string; salary: number; payFrequency: StorePayFrequency; payMode: StorePayMode; nextPayDate?: string; lastPaidDate?: string; active: boolean; createdAt: string };
+export type StoreEmployee = { id: string; name: string; role?: string; phone?: string; salary: number; salaryCurrency?: Currency; payFrequency: StorePayFrequency; payMode: StorePayMode; nextPayDate?: string; lastPaidDate?: string; active: boolean; createdAt: string };
 export type StoreClient = { id: string; name: string; phone?: string; email?: string; note?: string; defaultOperations?: StoreDefaultOperation[]; active: boolean; createdAt: string };
 export type StoreState = { name: string; currency: Currency; categories: StoreCategory[]; businessAccount: StoreAccount; cashMovements: StoreCashMovement[]; employees: StoreEmployee[]; clients: StoreClient[]; providers: StoreProvider[]; products: StoreProduct[]; stockMovements: StoreStockMovement[]; sales: StoreSale[] };
