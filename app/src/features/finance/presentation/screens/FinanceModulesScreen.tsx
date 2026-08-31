@@ -7,6 +7,7 @@ import { useFinance } from '@/features/app-state/presentation/components/AppStat
 import type { AppLanguage } from '@/domain/AppState';
 import { DEFAULT_COLORS } from '@/features/finance/domain/entities/defaultColors';
 import { hashPin } from '@/shared/security/pin';
+import { waitForImportLoading } from '@/shared/infrastructure/files/importLoading';
 import { supportedLanguages } from '@/shared/i18n/i18next';
 import type { Account, Budget, Debt, FinanceCategory, RecurringFrequency, RecurringTransaction, SavingsGoal, Transaction } from '@/features/finance/domain/entities/financeTypes';
 import { C, FORM_TYPOGRAPHY, SANS, SERIF, createThemeStyles } from '@/shared/theme/luxury';
@@ -613,10 +614,11 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
     }
   };
   const pickImportFile = async () => {
+    setImportBusy(true);
     try {
       const result = await fileService.pick(['application/json', 'text/csv', 'application/zip', 'application/x-zip-compressed', 'text/plain']);
       if (!result) return;
-      setImportBusy(true);
+      await waitForImportLoading(result.size);
       const fileUri = result.uri;
       const fileName = result.name.toLocaleLowerCase();
       if (fileName.endsWith('.zip')) {
@@ -650,6 +652,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
     setPendingFinanceImport(null);
     setImportBusy(true);
     try {
+      await waitForImportLoading();
       if (pending.kind === 'app') {
         const restored = await backupRepository.restoreApp(pending.backup);
         if (!finance.importJson(JSON.stringify(restored))) throw new Error('invalid-backup');

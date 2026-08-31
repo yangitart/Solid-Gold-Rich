@@ -19,7 +19,7 @@ export const expoFileService: FileService = {
   pick: async (types) => {
     const result = await DocumentPicker.getDocumentAsync({ type: types, copyToCacheDirectory: true, multiple: false });
     if (result.canceled || !result.assets[0]) return null;
-    return { uri: result.assets[0].uri, name: result.assets[0].name };
+    return { uri: result.assets[0].uri, name: result.assets[0].name, size: result.assets[0].size };
   },
   share: async (uri, mimeType, dialogTitle) => { if (!await Sharing.isAvailableAsync()) throw new Error('sharing-unavailable'); await Sharing.shareAsync(uri, { mimeType, dialogTitle }); },
 };

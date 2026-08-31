@@ -1,4 +1,4 @@
-export type FileAsset = { uri: string; name: string };
+export type FileAsset = { uri: string; name: string; size?: number };
 
 export type FileService = {
   writeText: (fileName: string, content: string) => Promise<string>;

@@ -11,7 +11,7 @@
 
 - Esta carpeta contiene una app Expo/React Native orientada principalmente a Android.
 - La entrada nativa de la app es `index.js`, registrada con `registerRootComponent`; no usa Expo Router ni rutas web.
-- `src/components/AppRoot.tsx` es la raíz visual de la aplicación e inyecta mediante Inversify las dependencias registradas en `src/ioc/dependencies.ts`; `src/components/AppContent.tsx` coordina la pantalla de carga (`BootScreen`) y el panel principal (`RichScreen`).
+- `src/components/AppRoot.tsx` es la raíz visual de la aplicación e inyecta mediante Inversify las dependencias registradas en `src/ioc/dependencies.ts`; `src/components/AppContent.tsx` coordina el panel principal (`RichScreen`).
 - El código se organiza por capas: `src/components/` para el shell React global, `src/ioc/` para ensamblar dependencias, `src/domain/` para el agregado global, `src/features/` para funcionalidades, `src/shared/` para contratos y recursos transversales y `src/legacy/` para scaffolding futuro todavía inactivo. Dentro de cada feature, `domain` no depende de capas externas, `application` depende de `domain`, `infrastructure` implementa ports de `application` y `presentation` consume casos de uso y contratos. Cada port y adaptador pertenece a la feature que lo consume; solo los servicios realmente transversales viven en `src/shared/`. El alias `@/` apunta a `src/`.
 - La composición visual de `RichScreen` es estable y no debe rediseñarse sin petición explícita; las funciones nuevas se abren desde los accesos del encabezado en `src/features/finance/presentation/screens/FinanceModulesScreen.tsx`.
 - `src/features/app-state/presentation/components/AppStateContext.tsx` expone la API compatible `useFinance` sobre una store Zustand y persiste el agregado global mediante el puerto `AppStateRepository`; no duplicar el estado en otros componentes ni acoplar la presentación directamente a AsyncStorage.
@@ -69,6 +69,13 @@ npx.cmd expo export --platform android
 - Validar también que todos los JSON de traducción se puedan parsear.
 - No usar `npm audit fix --force`; puede actualizar Expo con cambios incompatibles.
 - No crear commits ni hacer push salvo que el usuario lo solicite explícitamente.
+
+## Spec-Driven Development
+
+- `.specify/memory/constitution.md` contiene las reglas permanentes y vinculantes; no duplicarlas aquí.
+- Cada cambio material vive en `specs/<NNN-feature>/` con `spec.md`, `plan.md` y `tasks.md`; los artefactos de investigación, modelo, contratos, quickstart y checklists se agregan cuando correspondan.
+- Seguir el flujo `$speckit-constitution` → `$speckit-specify` → `$speckit-clarify` (si hace falta) → `$speckit-plan` → `$speckit-tasks` → `$speckit-analyze` → `$speckit-implement` → `$speckit-converge`.
+- Una petición nueva que cambie alcance, criterios o arquitectura actualiza primero `spec.md` o `plan.md`; una tarea concreta dentro del alcance se añade a `tasks.md` con ID, historia y ruta trazables.
 
 ## Store workspace
 
