@@ -2,7 +2,7 @@
   "expo": {
     "name": "Solid Gold Rich",
     "slug": "solid-gold-rich",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/iconapp.png",
     "scheme": "imrich",
