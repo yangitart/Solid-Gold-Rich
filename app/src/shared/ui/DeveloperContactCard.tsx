@@ -9,6 +9,7 @@ const contacts = [
   { id: 'email-primary', kind: 'email', value: 'escobarpupoyancarlos1@gmail.com' },
   { id: 'email-secondary', kind: 'email', value: 'mirelescobarpupo@gmail.com' },
   { id: 'instagram', kind: 'instagram', value: 'yangitart' },
+  { id: 'github', kind: 'github', value: 'yangitart' },
 ] as const;
 type Contact = typeof contacts[number];
 
@@ -25,7 +26,7 @@ export default function DeveloperContactCard({ embedded = false }: { embedded?: 
     try {
       const url = contact.kind === 'email'
         ? `mailto:${contact.value}?subject=${encodeURIComponent(t('finance.developerContact.subject'))}`
-        : `https://www.instagram.com/${contact.value}/`;
+        : contact.kind === 'instagram' ? `https://www.instagram.com/${contact.value}/` : `https://github.com/${contact.value}`;
       // The system opens the mail composer or the associated app/browser.
       // Only the chosen address and subject are passed to the external app.
       await Linking.openURL(url);
@@ -45,15 +46,15 @@ export default function DeveloperContactCard({ embedded = false }: { embedded?: 
     <Text style={styles.copy}>{t('finance.developerContact.copy')}</Text>
     {contacts.map((contact, index) => {
       const email = contact.kind === 'email';
-      const label = email ? t('finance.developerContact.email') : t('finance.developerContact.instagram');
+      const label = email ? t('finance.developerContact.email') : contact.kind === 'instagram' ? t('finance.developerContact.instagram') : t('finance.developerContact.github');
       const value = email ? contact.value : `@${contact.value}`;
-      return <ActionPressable key={contact.id} style={[styles.row, index === contacts.length - 1 && styles.lastRow]} onPress={() => void open(contact)} disabled={pending !== null} accessibilityRole="link" accessibilityLabel={`${label}: ${value}`} accessibilityHint={t(email ? 'finance.developerContact.emailHint' : 'finance.developerContact.instagramHint')} accessibilityState={{ busy: pending === contact.id, disabled: pending !== null }}>
-        <View style={styles.icon}><Ionicons name={email ? 'mail-outline' : 'logo-instagram'} size={20} color={C.gold} /></View>
+      return <ActionPressable key={contact.id} style={[styles.row, index === contacts.length - 1 && styles.lastRow]} onPress={() => void open(contact)} disabled={pending !== null} accessibilityRole="link" accessibilityLabel={`${label}: ${value}`} accessibilityHint={t(email ? 'finance.developerContact.emailHint' : contact.kind === 'instagram' ? 'finance.developerContact.instagramHint' : 'finance.developerContact.githubHint')} accessibilityState={{ busy: pending === contact.id, disabled: pending !== null }}>
+        <View style={styles.icon}><Ionicons name={email ? 'mail-outline' : contact.kind === 'instagram' ? 'logo-instagram' : 'logo-github'} size={20} color={C.gold} /></View>
         <View style={styles.main}><Text style={styles.label}>{label}</Text><Text style={styles.value} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.85}>{value}</Text></View>
         {pending === contact.id ? <ActivityIndicator size="small" color={C.gold} /> : <Ionicons name="open-outline" size={17} color={C.textSubtle} />}
       </ActionPressable>;
     })}
-    {failed && <View style={styles.errorBox} accessibilityLiveRegion="polite"><Text style={styles.error}>{t(failed.kind === 'email' ? 'finance.developerContact.emailError' : 'finance.developerContact.instagramError')}</Text><Text selectable style={styles.fallback}>{failed.kind === 'email' ? failed.value : `https://www.instagram.com/${failed.value}/`}</Text></View>}
+    {failed && <View style={styles.errorBox} accessibilityLiveRegion="polite"><Text style={styles.error}>{t(failed.kind === 'email' ? 'finance.developerContact.emailError' : failed.kind === 'instagram' ? 'finance.developerContact.instagramError' : 'finance.developerContact.githubError')}</Text><Text selectable style={styles.fallback}>{failed.kind === 'email' ? failed.value : failed.kind === 'instagram' ? `https://www.instagram.com/${failed.value}/` : `https://github.com/${failed.value}`}</Text></View>}
   </View>;
 }
 
