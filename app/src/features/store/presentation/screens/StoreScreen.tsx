@@ -10,7 +10,7 @@ import type { PaymentMethod, StoreCategory, StoreClient, StoreDefaultOperation, 
 import { captureCurrencySnapshot, currencyRate } from '@/shared/domain/finance/currency';
 import { accountBalance, periodBounds, previousPeriodBounds } from '@/features/finance/domain/services/financeDomain';
 import { addTransfer as registerFundingTransfer, removeTransaction, removeTransfer } from '@/features/finance/application/commands/financeCommands';
-import { availableStock, changeStoreCurrency, completeSale as completeStoreSale, filterStoreProducts, productStock, storeAmount, storeReportData, storeStatistics, validateSale, voidSale as voidStoreSale, withStoreBalance, type StoreSalePeriod, type StoreStockFilter } from '@/features/store/domain/services/storeDomain';
+import { availableStock, changeStoreCurrency, completeSale as completeStoreSale, filterStoreProducts, productStock, storeAmount, storeReportData, storeReportHasMissingRates, storeStatistics, validateSale, voidSale as voidStoreSale, withStoreBalance, type StoreSalePeriod, type StoreStockFilter } from '@/features/store/domain/services/storeDomain';
 import type { AppStateRepository } from '@/features/app-state/application/ports/AppStateRepository';
 import type { BackupRepository } from '@/features/backup/application/ports/BackupRepository';
 import type { StoreBackup } from '@/features/backup/application/ports/BackupTypes';
@@ -18,7 +18,10 @@ import type { ImageStorage } from '@/features/store/application/ports/ImageStora
 import type { ReportExportLabels, ReportRepository, StoreReportRange } from '@/features/store/application/ports/ReportRepository';
 import type { FileService } from '@/shared/application/ports/FileService';
 import { ConfirmDialog, FormActions, FormField, ResponsiveSheet, SearchableSelect, SegmentedControl, type SelectOption } from '@/shared/ui/FormKit';
+import StoreMoneyMovements from '../components/StoreMoneyMovements';
 import StoreProductForm, { PRODUCT_ICON_OPTIONS, type ProductFormDraft, type ProductFormTextField } from '../components/StoreProductForm';
+import ActionPressable from '@/shared/ui/ActionPressable';
+import DeveloperContactCard from '@/shared/ui/DeveloperContactCard';
 import { useCurrentDate } from '@/shared/ui/useCurrentDate';
 import DateSelect from '@/shared/ui/DateSelect';
 import { C, SANS, SERIF, createThemeStyles } from '@/shared/theme/luxury';
@@ -110,7 +113,7 @@ function ProductPicture({ product }: { product: StoreProduct }) {
 }
 
 export default function StoreScreen({ backupRepository, fileService, imageStorage, appStateRepository, reportRepository }: { backupRepository: BackupRepository; fileService: FileService; imageStorage: ImageStorage; appStateRepository: AppStateRepository; reportRepository: ReportRepository }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const finance = useFinance();
   const { state } = finance;
   const store = state.store;
@@ -120,6 +123,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const compactStoreStats = windowWidth < 360;
   const compactDirectoryForm = windowWidth < 460;
   const [view, setView] = React.useState<StoreView>('inventory');
+  const [contactOpen, setContactOpen] = React.useState(false);
   const [drawerOpen, setDrawerOpen] = React.useState(false);
   const [exitPromptOpen, setExitPromptOpen] = React.useState(false);
   const [productQuery, setProductQuery] = React.useState('');
@@ -195,8 +199,6 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const [storeCurrencyPerUsd, setStoreCurrencyPerUsd] = React.useState('');
   const [storeCurrencyRateError, setStoreCurrencyRateError] = React.useState('');
   const [convertStoreHistory, setConvertStoreHistory] = React.useState(false);
-  const [movementQuery, setMovementQuery] = React.useState('');
-  const [movementType, setMovementType] = React.useState<'all' | 'income' | 'expense'>('all');
   const [reportKind, setReportKind] = React.useState<StoreReportKind | null>(null);
   const [reportRangeMode, setReportRangeMode] = React.useState<ReportRangeMode>('today');
   const [storeStatsRange, setStoreStatsRange] = React.useState<StoreStatsRange>('today');
@@ -364,16 +366,19 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
         setReportKind(null);
         return true;
       }
+      if (view === 'settings' && contactOpen) {
+        setContactOpen(false);
+        return true;
+      }
       if (view !== 'inventory') {
         setView('inventory');
-        setMovementQuery('');
         return true;
       }
       setExitPromptOpen(true);
       return true;
     });
     return () => subscription.remove();
-  }, [addOpen, categoryManagerOpen, directoryOpen, drawerOpen, exitPromptOpen, filterOpen, productOpen, reportKind, saleOpen, selectedProviderId, selectedSaleId, stockProduct, t, view]);
+  }, [addOpen, categoryManagerOpen, contactOpen, directoryOpen, drawerOpen, exitPromptOpen, filterOpen, productOpen, reportKind, saleOpen, selectedProviderId, selectedSaleId, stockProduct, t, view]);
 
   const categoryOptions = React.useMemo<SelectOption[]>(() => store.categories.map((item) => ({ value: item.id, label: categoryNameFor(item.id), icon: (item.icon as IconName | undefined) ?? (item.builtIn ? 'grid-outline' : 'pricetag-outline') })), [categoryNameFor, store.categories]);
   const providerOptions = React.useMemo<SelectOption[]>(() => [{ value: '', label: t('finance.store.noneSelected'), icon: 'remove-circle-outline' }, ...store.providers.filter((item) => item.active).map((item) => ({ value: item.id, label: item.name, icon: 'business-outline' as const }))], [store.providers, t]);
@@ -392,10 +397,6 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const employeeOptions = React.useMemo<SelectOption[]>(() => [{ value: '', label: t('finance.store.noneSelected'), icon: 'remove-circle-outline' }, ...store.employees.filter((item) => item.active).map((item) => ({ value: item.id, label: item.name, icon: 'people-outline' as const }))], [store.employees, t]);
   const selectedFundingAccount = React.useMemo(() => accountOptions.find((item) => item.value === fundingAccountId), [accountOptions, fundingAccountId]);
   const saleItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
-  const visibleMovements = React.useMemo(() => {
-    const query = normalizedSearch(movementQuery);
-    return store.cashMovements.slice().sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime()).filter((movement) => normalizedSearch(`${movement.note} ${movement.type}`).includes(query)).filter((movement) => { const amount = storeAmount(state, movement.amount, movement.currency); return movementType === 'all' || (movementType === 'income' ? amount >= 0 : amount < 0); });
-  }, [movementQuery, movementType, state, store.cashMovements]);
   const currencyOptions = React.useMemo(() => Array.from(new Set([currency, state.settings.preferredCurrency, ...state.accounts.map((item) => item.currency), ...COMMON_CURRENCIES])).sort().map((item) => ({ value: item, label: item })), [currency, state.accounts, state.settings.preferredCurrency]);
   const visibleDirectoryItems = React.useMemo<(StoreEmployee | StoreClient | StoreProvider)[]>(() => {
     const all: (StoreEmployee | StoreClient | StoreProvider)[] = view === 'clients' ? store.clients : view === 'employees' ? store.employees : view === 'providers' ? store.providers : [];
@@ -443,6 +444,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     return [...sales, ...stock, ...cash].filter(matchesQuery).sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
   }, [saleHistoryQuery, salePeriod, state, store.cashMovements, store.clients, store.products, store.providers, store.sales, store.stockMovements, t, today]);
   const switchView = (next: StoreView) => {
+    setContactOpen(false);
     setView(next);
     setDrawerOpen(false);
     setSelectedProviderId(null);
@@ -452,8 +454,6 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     setSalePeriod('today');
     setDirectoryQuery('');
     setOperationError('');
-    setMovementQuery('');
-    setMovementType('all');
     setCategoryFilter('');
     setStockFilter('');
   };
@@ -893,7 +893,8 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     setConvertStoreHistory(false);
   };
 
-  const reportLanguage = state.settings.language ?? 'en';
+  const reportLanguage = i18n.resolvedLanguage ?? i18n.language;
+  const reportMissingRates = React.useMemo(() => storeReportHasMissingRates(state), [state]);
   const reportRangeError = reportRangeMode === 'custom' && localDay(validReportDate(reportEndDate)).getTime() < localDay(validReportDate(reportStartDate)).getTime()
     ? t('finance.workspace.reportRangeInvalid')
     : '';
@@ -913,20 +914,21 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     return { start: isoAtNoon(start), end: isoAtNoon(end), label: `${start.toLocaleDateString(reportLanguage)} – ${end.toLocaleDateString(reportLanguage)}` };
   }, [reportEndDate, reportLanguage, reportRangeError, reportRangeMode, reportStartDate, state.settings.firstDayOfWeek, t, today]);
 
-  const reportState = React.useMemo(() => reportRepository.filterState(state, reportRange), [reportRange, reportRepository, state]);
+  const reportState = React.useMemo(() => reportRangeError ? { ...state, store: { ...state.store, sales: [], cashMovements: [] } } : reportRepository.filterState(state, reportRange), [reportRange, reportRangeError, reportRepository, state]);
   const reportData = React.useMemo(() => storeReportData(reportState), [reportState]);
   const reportExportLabels = React.useMemo<ReportExportLabels>(() => ({
     title: t('finance.store.reports'), generated: t('finance.date'), period: t('finance.workspace.reportPeriod'), summary: t('finance.store.reports'), sales: t('finance.store.sales'),
     topProducts: t('finance.store.reportTopProductsServices'), topClients: t('finance.store.reportTopClients'),
-    moneyMovements: t('finance.store.businessMovements'), inventory: t('finance.store.inventory'), employees: t('finance.store.employees'), clients: t('finance.store.clients'),
+    moneyMovements: t('finance.store.businessMovements'), inventory: t('finance.storeReportsUx.currentInventory'), employees: t('finance.store.employees'), clients: t('finance.store.clients'),
     date: t('finance.date'), name: t('finance.name'), type: t('finance.store.type'), quantity: t('finance.store.units'), amount: t('finance.store.total'),
-    balance: t('finance.storeBackup.businessBalance'), role: t('finance.store.employeeRole'), contact: t('finance.phone'), status: t('finance.storeFilters.status'), providers: t('finance.store.providers'),
+    balance: t('finance.storeReportsUx.currentBalance'), role: t('finance.store.employeeRole'), contact: t('finance.phone'), status: t('finance.storeFilters.status'), providers: t('finance.store.providers'),
     active: t('finance.storeFilters.active'), inactive: t('finance.storeFilters.inactive'), transactions: t('finance.store.reportTransactions'), salePrice: t('finance.store.salePrice'),
-    available: t('finance.store.currentStock'), stock: t('finance.store.stock'),
+    available: t('finance.storeReportsUx.availableStock'), stock: t('finance.store.currentStock'),
+    currency: t('finance.currency'), movementTypes: Object.fromEntries(['opening', 'funding', 'withdrawal', 'sale', 'saleReversal', 'purchase', 'purchaseReversal', 'salary'].map((type) => [type, t(type === 'salary' ? 'finance.payroll.salary' : `finance.store.cashMovement.${type}`)])),
   }), [t]);
 
   const exportReport = async (format: 'pdf' | 'xlsx') => {
-    if (reportRangeError) { setStoreActionError(reportRangeError); return; }
+    if (reportRangeError || reportMissingRates) { setStoreActionError(reportRangeError || t('finance.missingRatesWarning')); return; }
     if (backupInFlight.current || pendingStoreBackup) return;
     backupInFlight.current = true;
     setBackupBusy(true);
@@ -1095,14 +1097,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     return <View style={styles.flex}><View style={styles.toolbar}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={[styles.search, { flex: 1 }]}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={directoryQuery} onChangeText={setDirectoryQuery} placeholder={t('finance.store.directorySearch')} placeholderTextColor={C.textSubtle} style={styles.searchInput} accessibilityLabel={t('finance.store.directorySearch')} autoCorrect={false} /></View><Pressable style={styles.addSmall} onPress={() => openDirectory(kind)} accessibilityLabel={`${t('finance.store.addDirectory')} ${t(directoryLabel)}`}><Ionicons name="add" size={20} color={C.gold} /></Pressable></View></View><FlatList data={items} keyExtractor={(item) => item.id} contentContainerStyle={[styles.list, !items.length && styles.listEmpty]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" renderItem={({ item }) => <View style={[styles.directoryRow, !item.active && styles.inactive]}><Pressable style={styles.directoryMain} onPress={() => kind === 'providers' ? setSelectedProviderId(item.id) : openDirectory(kind, item)}><View style={styles.avatar}><Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{item.name}</Text><Text style={styles.rowMeta}>{kind === 'employees' ? [('role' in item && item.role) || t('finance.store.employeeRoleEmpty'), 'salary' in item && item.salary > 0 ? `${money(item.salary, item.salaryCurrency ?? currency)} · ${t(`finance.payroll.frequency.${item.payFrequency}`)}` : t('finance.payroll.notConfigured')].join(' · ') : [item.phone, 'email' in item ? item.email : ''].filter(Boolean).join(' · ') || t('finance.store.clientContactEmpty')}</Text></View></Pressable>{item.active && (kind === 'providers' || kind === 'clients') && 'defaultOperations' in item && item.defaultOperations?.length ? <Pressable style={styles.operationButton} onPress={() => executeDefaultOperations(kind, item.id)}><Ionicons name="play-outline" size={15} color={C.void} /><Text style={styles.payButtonText}>{t('finance.store.executeOperations')}</Text></Pressable> : null}{kind === 'employees' && item.active && 'salary' in item && item.salary > 0 ? <Pressable style={styles.payButton} onPress={() => payEmployee(item.id)}><Ionicons name="cash-outline" size={15} color={C.void} /><Text style={styles.payButtonText}>{t('finance.payroll.pay')}</Text></Pressable> : null}<Ionicons name="chevron-forward" size={17} color={C.textSubtle} /></View>} ListEmptyComponent={<Empty title={t(emptyTitle)} copy={all.length ? t('finance.storeFilters.noResults') : t(emptyCopy)} icon={directoryIcon as IconName} />} /></View>;
   };
 
-  const renderMovements = () => {
-    return <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-      <View style={styles.viewIntro}><View style={styles.viewIntroIcon}><Ionicons name="wallet-outline" size={22} color={C.gold} /></View><View style={styles.rowMain}><Text style={styles.viewIntroTitle}>{t('finance.store.businessMovements')}</Text></View></View>
-      <View style={styles.search}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={movementQuery} onChangeText={setMovementQuery} placeholder={t('finance.modules.searchActivity')} placeholderTextColor={C.textSubtle} style={styles.searchInput} /></View>
-      <SegmentedControl label={t('finance.workspace.resourceFlow')} options={[{ value: 'all', label: t('finance.filters.all') }, { value: 'income', label: t('finance.income') }, { value: 'expense', label: t('finance.expenses') }]} value={movementType} onChange={(value) => setMovementType(value as 'all' | 'income' | 'expense')} />
-      <View style={styles.movementList}>{visibleMovements.map((movement) => { const amount = storeAmount(state, movement.amount, movement.currency); return <View key={movement.id} style={styles.movementRow}><View style={[styles.movementIcon, amount >= 0 ? styles.movementIconIncome : styles.movementIconExpense]}><Ionicons name={amount >= 0 ? 'arrow-down-outline' : 'arrow-up-outline'} size={17} color={amount >= 0 ? C.gold : C.red} /></View><View style={styles.rowMain}><Text style={styles.rowTitle} numberOfLines={2}>{movement.note || t(`finance.store.cashMovement.${movement.type}`)}</Text><Text style={styles.rowMeta}>{t(`finance.store.cashMovement.${movement.type}`)} · {new Date(movement.date).toLocaleString()}</Text></View><Text style={amount >= 0 ? styles.positive : styles.negative} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>{amount >= 0 ? '+' : ''}{money(amount, currency)}</Text></View>; })}{!visibleMovements.length ? <Empty title={t('finance.store.noBusinessMovements')} copy={movementQuery || movementType !== 'all' ? t('finance.storeFilters.noResults') : t('finance.store.noBusinessMovementsCopy')} icon="wallet-outline" /> : null}</View>
-    </ScrollView>;
-  };
+  const renderMovements = () => <StoreMoneyMovements store={store} firstDayOfWeek={state.settings.firstDayOfWeek} />;
 
   const renderReports = () => {
     const { topProducts, topClients } = reportData;
@@ -1119,7 +1114,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       { value: 'custom', label: t('finance.workspace.reportRangeCustom') },
       { value: 'all', label: t('finance.workspace.reportRangeAll') },
     ];
-    return <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">{reportKind ? <Pressable style={styles.backRow} onPress={() => setReportKind(null)}><Ionicons name="arrow-back" size={18} color={C.gold} /><Text style={styles.link}>{t('finance.store.reportBack')}</Text></Pressable> : null}<View style={styles.reportPeriodCard}><Text style={styles.reportPeriodTitle}>{t('finance.workspace.reportPeriod')}</Text><View style={styles.reportRangeOptions}>{rangeOptions.map((option) => <Pressable key={option.value} style={[styles.reportRangeOption, reportRangeMode === option.value && styles.reportRangeOptionActive]} onPress={() => setReportRangeMode(option.value as ReportRangeMode)} accessibilityRole="radio" accessibilityState={{ selected: reportRangeMode === option.value }}><Text style={[styles.reportRangeOptionText, reportRangeMode === option.value && styles.reportRangeOptionTextActive]} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.75}>{option.label}</Text></Pressable>)}</View>{reportRangeMode === 'custom' ? <View style={styles.reportDateRow}><View style={styles.reportDateColumn}><DateSelect label={t('finance.workspace.reportStartDate')} value={reportStartDate} onChange={setReportStartDate} firstDayOfWeek={state.settings.firstDayOfWeek} /></View><View style={styles.reportDateColumn}><DateSelect label={t('finance.workspace.reportEndDate')} value={reportEndDate} onChange={setReportEndDate} firstDayOfWeek={state.settings.firstDayOfWeek} /></View></View> : null}{reportRangeError ? <Text style={styles.error}>{reportRangeError}</Text> : reportRange ? <Text style={styles.reportRangeLabel}>{reportRange.label}</Text> : null}</View>{reportKind === 'export' ? <View style={styles.reportExportCard}><View style={styles.reportExportHeader}><View style={styles.reportIcon}><Ionicons name="download-outline" size={20} color={C.gold} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{t('finance.store.reportExportTitle')}</Text><Text style={styles.rowMeta}>{t('finance.store.reportExportCopy')}</Text></View></View><View style={styles.reportExportActions}><Pressable style={styles.exportButton} onPress={() => void exportReport('pdf')} disabled={backupBusy || Boolean(reportRangeError)}><Ionicons name="document-text-outline" size={17} color={C.void} /><Text style={styles.exportButtonText}>{t('finance.store.reportExportPdf')}</Text></Pressable><Pressable style={styles.exportButtonSecondary} onPress={() => void exportReport('xlsx')} disabled={backupBusy || Boolean(reportRangeError)}><Ionicons name="grid-outline" size={17} color={C.gold} /><Text style={styles.exportButtonSecondaryText}>{t('finance.store.reportExportExcel')}</Text></Pressable></View></View> : null}{!reportKind ? options.map((option) => <Pressable key={option.kind} style={styles.reportOption} onPress={() => setReportKind(option.kind)}><View style={styles.reportIcon}><Ionicons name={option.icon} size={20} color={C.gold} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{option.title}</Text><Text style={styles.rowMeta}>{option.copy}</Text></View><Ionicons name="chevron-forward" size={17} color="rgba(255,244,208,0.28)" /></Pressable>) : null}{reportKind === 'topProductsServices' ? topProducts.map(([id, value]) => <ReportRow key={id} title={value.name} copy={`${value.quantity} ${t('finance.store.reportUnits')}`} amount={money(value.total, currency)} />) : null}{reportKind === 'topClients' ? topClients.map(([id, value]) => <ReportRow key={id} title={store.clients.find((item) => item.id === id)?.name ?? t('finance.store.inactiveClient')} copy={`${value.count} ${t('finance.store.reportTransactions')}`} amount={money(value.total, currency)} />) : null}{reportKind && ((reportKind === 'topProductsServices' && !topProducts.length) || (reportKind === 'topClients' && !topClients.length)) ? <Empty title={t('finance.store.reportNoData')} copy={t('finance.store.reportNoDataCopy')} icon="bar-chart-outline" /> : null}</ScrollView>;
+    return <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">{reportKind ? <Pressable style={styles.backRow} onPress={() => setReportKind(null)}><Ionicons name="arrow-back" size={18} color={C.gold} /><Text style={styles.link}>{t('finance.store.reportBack')}</Text></Pressable> : null}<View style={styles.reportPeriodCard}><Text style={styles.reportPeriodTitle}>{t('finance.workspace.reportPeriod')}</Text><View style={styles.reportRangeOptions}>{rangeOptions.map((option) => <Pressable key={option.value} style={[styles.reportRangeOption, reportRangeMode === option.value && styles.reportRangeOptionActive]} onPress={() => setReportRangeMode(option.value as ReportRangeMode)} accessibilityRole="radio" accessibilityState={{ selected: reportRangeMode === option.value }}><Text style={[styles.reportRangeOptionText, reportRangeMode === option.value && styles.reportRangeOptionTextActive]} numberOfLines={2} adjustsFontSizeToFit minimumFontScale={0.75}>{option.label}</Text></Pressable>)}</View>{reportRangeMode === 'custom' ? <View style={styles.reportDateRow}><View style={styles.reportDateColumn}><DateSelect label={t('finance.workspace.reportStartDate')} value={reportStartDate} onChange={setReportStartDate} firstDayOfWeek={state.settings.firstDayOfWeek} /></View><View style={styles.reportDateColumn}><DateSelect label={t('finance.workspace.reportEndDate')} value={reportEndDate} onChange={setReportEndDate} firstDayOfWeek={state.settings.firstDayOfWeek} /></View></View> : null}{reportRangeError ? <Text style={styles.error}>{reportRangeError}</Text> : reportRange ? <Text style={styles.reportRangeLabel}>{reportRange.label}</Text> : null}</View>{reportMissingRates ? <Text style={styles.error}>{t('finance.missingRatesWarning')}</Text> : null}{reportKind === 'export' ? <View style={styles.reportExportCard}><View style={styles.reportExportHeader}><View style={styles.reportIcon}><Ionicons name="download-outline" size={20} color={C.gold} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{t('finance.store.reportExportTitle')}</Text><Text style={styles.rowMeta}>{t('finance.store.reportExportCopy')}</Text></View></View><View style={styles.reportExportActions}><Pressable style={styles.exportButton} onPress={() => void exportReport('pdf')} disabled={backupBusy || Boolean(reportRangeError) || reportMissingRates}><Ionicons name="document-text-outline" size={17} color={C.void} /><Text style={styles.exportButtonText}>{t('finance.store.reportExportPdf')}</Text></Pressable><Pressable style={styles.exportButtonSecondary} onPress={() => void exportReport('xlsx')} disabled={backupBusy || Boolean(reportRangeError) || reportMissingRates}><Ionicons name="grid-outline" size={17} color={C.gold} /><Text style={styles.exportButtonSecondaryText}>{t('finance.store.reportExportExcel')}</Text></Pressable></View></View> : null}{!reportKind ? options.map((option) => <ActionPressable key={option.kind} style={styles.reportOption} onPress={() => setReportKind(option.kind)}><View style={styles.reportIcon}><Ionicons name={option.icon} size={20} color={C.gold} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{option.title}</Text><Text style={styles.rowMeta}>{option.copy}</Text></View><Ionicons name="chevron-forward" size={17} color="rgba(255,244,208,0.28)" /></ActionPressable>) : null}{!reportRangeError && !reportMissingRates && reportKind === 'topProductsServices' ? topProducts.map(([id, value]) => <ReportRow key={id} title={value.name} copy={`${value.quantity} ${t('finance.store.reportUnits')}`} amount={money(value.total, currency)} />) : null}{!reportRangeError && !reportMissingRates && reportKind === 'topClients' ? topClients.map(([id, value]) => <ReportRow key={id} title={store.clients.find((item) => item.id === id)?.name ?? t('finance.store.inactiveClient')} copy={`${value.count} ${t('finance.store.reportTransactions')}`} amount={money(value.total, currency)} />) : null}{!reportRangeError && !reportMissingRates && reportKind && ((reportKind === 'topProductsServices' && !topProducts.length) || (reportKind === 'topClients' && !topClients.length)) ? <Empty title={t('finance.store.reportNoData')} copy={t('finance.store.reportNoDataCopy')} icon="bar-chart-outline" /> : null}</ScrollView>;
   };
 
   const renderStatistics = () => <ScrollView contentContainerStyle={[styles.content, styles.storeStatsContent]} showsVerticalScrollIndicator={false}>
@@ -1152,7 +1147,10 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     <View style={styles.storeStatsChartCard}>{storeStatsData.topProducts.map((product, index) => <View key={product.productId} style={[styles.storeStatsProductRow, index === 0 && styles.storeStatsProductRowTop]}><View style={[styles.storeStatsRank, index === 0 && styles.storeStatsRankTop]}><Text style={[styles.storeStatsRankText, index === 0 && styles.storeStatsRankTextTop]}>{index + 1}</Text></View><View style={styles.rowMain}><Text style={[styles.rowTitle, index === 0 && styles.storeStatsProductNameTop]} numberOfLines={2}>{product.name}</Text><Text style={styles.rowMeta}>{product.quantity} {t('finance.store.reportUnits')}</Text><View style={styles.storeStatsProductTrack}><LinearGradient colors={[C.gold, C.goldMid]} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={[styles.storeStatsProductFill, { width: `${product.total / storeStatsTopMax * 100}%` }]} /></View></View><Text style={styles.amount} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.6}>{money(product.total, currency)}</Text></View>)}{!storeStatsData.topProducts.length ? <View style={styles.storeStatsEmpty}><Ionicons name="podium-outline" size={22} color={C.textSubtle} /><Text style={styles.rowMeta}>{t('finance.storeStats.noData')}</Text></View> : null}</View>
   </ScrollView>;
 
-  const renderSettings = () => <ScrollView contentContainerStyle={[styles.content, styles.settingsContent]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+  const renderSettings = () => contactOpen ? <ScrollView contentContainerStyle={[styles.content, styles.settingsContent]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+    <ActionPressable style={styles.backRow} onPress={() => setContactOpen(false)} accessibilityRole="button" accessibilityLabel={t('finance.back')}><Ionicons name="arrow-back" size={18} color={C.gold} /><Text style={styles.link}>{t('finance.store.settings')}</Text></ActionPressable>
+    <DeveloperContactCard />
+  </ScrollView> : <ScrollView contentContainerStyle={[styles.content, styles.settingsContent]} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
     <Text style={styles.sectionTitle}>{t('finance.storeCurrency.sectionTitle')}</Text>
     <View style={styles.settingsCard}>
       <SearchableSelect label={t('finance.store.currency')} value={storeCurrency} options={currencyOptions} onChange={requestStoreCurrencyChange} placeholder={currency} searchPlaceholder={t('finance.searchCurrency')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} disabled={backupBusy} />
@@ -1173,6 +1171,11 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
         <Ionicons name="chevron-forward-outline" size={18} color={C.textSubtle} />
       </Pressable>
     </View>
+    <View style={styles.settingsCard}><ActionPressable style={[styles.settingsAction, styles.settingsActionLast]} onPress={() => setContactOpen(true)} accessibilityRole="button" accessibilityLabel={t('finance.developerContact.title')}>
+      <View style={styles.settingsActionIcon}><Ionicons name="chatbubbles-outline" size={20} color={C.gold} /></View>
+      <View style={styles.rowMain}><Text style={styles.settingsActionText}>{t('finance.developerContact.title')}</Text><Text style={styles.settingsActionCopy}>{t('finance.developerContact.team')}</Text></View>
+      <Ionicons name="chevron-forward-outline" size={18} color={C.textSubtle} />
+    </ActionPressable></View>
   </ScrollView>;
 
   const isProviderDetails = view === 'providers' && Boolean(selectedProviderId);
@@ -1189,7 +1192,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     <View style={styles.header}>{view === 'statistics' || isProviderDetails ? <Pressable style={styles.headerButton} onPress={() => isProviderDetails ? setSelectedProviderId(null) : switchView('inventory')} accessibilityRole="button" accessibilityLabel={t('finance.back')}><Ionicons name="arrow-back" size={20} color={C.gold} /></Pressable> : <Pressable style={styles.headerButton} onPress={() => setDrawerOpen(true)} accessibilityRole="button" accessibilityLabel={t('finance.menu')}><MenuGlyph /></Pressable>}<Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>{view === 'statistics' ? <Pressable style={styles.headerButton} onPress={() => setDrawerOpen(true)} accessibilityRole="button" accessibilityLabel={t('finance.menu')}><MenuGlyph /></Pressable> : isProviderDetails ? <View style={styles.headerButton} /> : <Pressable style={styles.headerButton} onPress={() => switchView('statistics')} accessibilityRole="button" accessibilityLabel={t('finance.storeStats.title')}><Ionicons name="stats-chart-outline" size={20} color={C.gold} /></Pressable>}</View>
     <Animated.View key={view} entering={FadeIn.duration(reduceMotion ? 0 : 190).easing(Easing.out(Easing.cubic))} exiting={FadeOut.duration(reduceMotion ? 0 : 120)} style={styles.flex}>{content}</Animated.View>
     <Pressable style={[styles.workspaceFab, view === 'inventory' || view === 'services' || view === 'operations' ? styles.workspaceFabStacked : styles.workspaceFabSolo]} onPress={switchWorkspace} accessibilityRole="button" accessibilityLabel={t('finance.workspace.personal')}><Ionicons name="wallet-outline" size={20} color={C.gold} /></Pressable>
-    {(view === 'inventory' || view === 'services' || view === 'operations') ? <Pressable style={styles.fab} onPress={view === 'operations' ? openSale : () => openProduct()} accessibilityRole="button" accessibilityLabel={view === 'operations' ? t('finance.store.newSale') : t('finance.store.addProduct')}><Ionicons name="add" size={25} color={C.gold} /></Pressable> : null}
+    {(view === 'inventory' || view === 'services' || view === 'operations') ? <ActionPressable style={styles.fab} onPress={view === 'operations' ? openSale : () => openProduct()} accessibilityRole="button" accessibilityLabel={view === 'operations' ? t('finance.store.newSale') : t('finance.store.addProduct')}><Ionicons name="add" size={25} color={C.gold} /></ActionPressable> : null}
     <ConfirmDialog visible={exitPromptOpen} title={t('finance.exit.title')} message={t('finance.exit.copy')} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.exit.confirm')} icon="power-outline" destructive={false} onCancel={() => setExitPromptOpen(false)} onConfirm={() => { setExitPromptOpen(false); BackHandler.exitApp(); }} />
     <ConfirmDialog visible={Boolean(pendingStoreBackup)} title={t('finance.storeBackup.importStore')} message={t('finance.storeBackup.importConfirmCopy')} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.storeBackup.importStore')} icon="cloud-download-outline" destructive onCancel={() => setPendingStoreBackup(null)} onConfirm={() => void confirmStoreImport()} />
     <ConfirmDialog visible={Boolean(pendingProductDeletion)} title={t('finance.deleteProduct')} message={t('finance.deleteProductConfirm')} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.deleteAction')} icon="trash-outline" destructive onCancel={() => setPendingProductDeletion(null)} onConfirm={confirmProductDeletion} />

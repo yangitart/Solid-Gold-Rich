@@ -1,4 +1,5 @@
 import React from 'react';
+import ActionPressable from './ActionPressable';
 import { KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -72,7 +73,7 @@ export function FormField({ label, value, onChangeText, placeholder, error, requ
 export function SegmentedControl({ options, value, onChange, label }: { options: SelectOption[]; value: string; onChange: (value: string) => void; label?: string }) {
   return <View style={styles.field}>{label ? <Text style={styles.label} numberOfLines={2}>{label}</Text> : null}<View style={styles.segments}>{options.map((option) => {
     const selected = value === option.value;
-    return <Pressable key={option.value} style={[styles.segment, selected && styles.segmentSelected]} onPress={() => onChange(option.value)} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={option.label}>{option.icon ? <Ionicons name={option.icon} size={17} color={selected ? C.void : C.gold} /> : null}<Text style={[styles.segmentText, selected && styles.segmentTextSelected]} numberOfLines={1}>{option.label}</Text></Pressable>;
+    return <ActionPressable key={option.value} style={[styles.segment, selected && styles.segmentSelected]} onPress={() => onChange(option.value)} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={option.label}>{option.icon ? <Ionicons name={option.icon} size={17} color={selected ? C.void : C.gold} /> : null}<Text style={[styles.segmentText, selected && styles.segmentTextSelected]} numberOfLines={1}>{option.label}</Text></ActionPressable>;
   })}</View></View>;
 }
 
@@ -99,7 +100,7 @@ export function SearchableSelect({ label, value, options, onChange, placeholder,
 }
 
 export function FormActions({ cancelLabel, saveLabel, onCancel, onSave, disabled, compact, destructiveLabel, onDestructive }: { cancelLabel?: string; saveLabel: string; onCancel?: () => void; onSave: () => void; disabled?: boolean; compact?: boolean; destructiveLabel?: string; onDestructive?: () => void }) {
-  return <View style={styles.actions}>{destructiveLabel && onDestructive ? <Pressable style={styles.destructive} onPress={onDestructive} accessibilityRole="button"><Text style={styles.destructiveText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{destructiveLabel}</Text></Pressable> : null}<View style={styles.actionRow}>{cancelLabel && onCancel ? <Pressable style={styles.cancel} onPress={onCancel} accessibilityRole="button"><Text style={styles.cancelText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{cancelLabel}</Text></Pressable> : null}<Pressable style={[styles.save, compact && styles.saveCompact, !cancelLabel && styles.saveFull, disabled && styles.saveDisabled]} onPress={onSave} disabled={disabled} accessibilityRole="button" accessibilityState={{ disabled }}><Text style={styles.saveText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{saveLabel}</Text></Pressable></View></View>;
+  return <View style={styles.actions}>{destructiveLabel && onDestructive ? <Pressable style={styles.destructive} onPress={onDestructive} accessibilityRole="button"><Text style={styles.destructiveText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{destructiveLabel}</Text></Pressable> : null}<View style={styles.actionRow}>{cancelLabel && onCancel ? <Pressable style={styles.cancel} onPress={onCancel} accessibilityRole="button"><Text style={styles.cancelText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{cancelLabel}</Text></Pressable> : null}<ActionPressable style={[styles.save, compact && styles.saveCompact, !cancelLabel && styles.saveFull, disabled && styles.saveDisabled]} onPress={onSave} disabled={disabled} accessibilityRole="button" accessibilityState={{ disabled }}><Text style={styles.saveText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{saveLabel}</Text></ActionPressable></View></View>;
 }
 
 const styles = createThemeStyles((C) => StyleSheet.create({

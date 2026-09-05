@@ -69,6 +69,29 @@ const {
   transactionImportKey,
 } = require('../src/features/finance/domain/services/financeDomain.ts');
 const { recordDebtPayment, recordSavingsContribution, removeTransfer, resolveImportedFinanceState, mergeImportedTransactions } = require('../src/features/finance/application/services/financeStateOperations.ts');
+const { filterCashMovements, cashMovementTotals } = require('../src/features/store/domain/services/storeCashMovements.ts');
+
+// Cash history must preserve currency, translated search and local period boundaries.
+{
+  const start = new Date(2026, 8, 1);
+  const end = new Date(2026, 9, 1);
+  const movement = (id, amount, currency, date = start.toISOString(), type = 'sale') => ({ id, amount, currency, date, type, note: '' });
+  const movements = [movement('eur-sale', 10.5, 'EUR'), movement('salary', -4, 'USD', start.toISOString(), 'salary'), movement('reversal', -10.5, 'EUR', start.toISOString(), 'saleReversal'), movement('zero', 0, 'USD'), movement('next-month', 100, 'USD', end.toISOString()), movement('legacy', 3, undefined)];
+  const options = { query: '', flow: 'all', currency: 'USD', range: { start, end }, labels: { sale: 'Venta', salary: 'Salário', saleReversal: 'Anulación de venta' }, context: { 'eur-sale': 'Café Ana' } };
+  const visible = filterCashMovements(movements, options);
+  assert.equal(visible.length, 5);
+  assert.deepEqual(cashMovementTotals(visible, 'USD'), [{ currency: 'EUR', income: 10.5, expense: 10.5, net: 0 }, { currency: 'USD', income: 3, expense: 4, net: -1 }]);
+  assert.deepEqual(filterCashMovements(movements, { ...options, query: 'salario' }).map(item => item.id), ['salary']);
+  assert.deepEqual(filterCashMovements(movements, { ...options, query: 'cafe' }).map(item => item.id), ['eur-sale']);
+  assert.deepEqual(filterCashMovements(movements, { ...options, query: 'ana' }).map(item => item.id), ['eur-sale']);
+  assert.equal(filterCashMovements(movements, { ...options, query: '10,50' }).length, 2);
+  assert.equal(filterCashMovements(movements, { ...options, query: '10,5' }).length, 2);
+  assert.equal(filterCashMovements(movements, { ...options, flow: 'income' }).some(item => item.amount <= 0), false);
+  assert.deepEqual(filterCashMovements(movements, { ...options, flow: 'expense' }).map(item => item.id), ['salary', 'reversal']);
+  assert.deepEqual(cashMovementTotals([], 'USD'), []);
+  assert.equal(movements[0].id, 'eur-sale');
+  assert.equal(filterCashMovements(movements, { ...options, range: undefined })[0].id, 'next-month');
+}
 const { removeNoteFolder } = require('../src/features/notes/application/useCases/removeNoteFolder.ts');
 const { applyPrefixToCurrentLine, continueListAfterNewline, countNotesByFolderTree, insertDividerAfterCurrentLine } = require('../src/features/notes/domain/services/noteText.ts');
 const { removeCategory } = require('../src/features/finance/application/useCases/removeCategory.ts');
@@ -121,6 +144,7 @@ function account(id, currency = 'USD', openingBalance = 0) {
 }
 
 async function run() {
+  require('./test-store-reports.cjs')(emptyFinanceState);
   assert.equal(areAllFutureCapabilitiesHidden(), true);
   assert.equal(Object.values(FUTURE_CAPABILITIES).some(Boolean), false);
   assert.equal(DEVELOPER_SUPPORT_CONFIG.destination, null);

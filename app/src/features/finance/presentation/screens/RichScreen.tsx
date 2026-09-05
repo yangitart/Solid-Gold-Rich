@@ -21,6 +21,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
 import { useCurrentDate } from '@/shared/ui/useCurrentDate';
 import Gem from '@/shared/ui/Gem';
+import ActionPressable from '@/shared/ui/ActionPressable';
 import { C, LIGHT_C, SANS, SERIF, createThemeStyles, getThemeColors } from '@/shared/theme/luxury';
 import type { FinanceModuleName } from './FinanceModulesScreen';
 import { useFinance } from '@/features/app-state/presentation/components/AppStateContext';
@@ -1046,9 +1047,9 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
           />
         </View>
 
-        <Pressable style={styles.floatingAdd} onPress={() => openEntry('expense')} accessibilityRole="button" accessibilityLabel={t('finance.newEntry')}>
+        <ActionPressable style={styles.floatingAdd} onPress={() => openEntry('expense')} accessibilityRole="button" accessibilityLabel={t('finance.newEntry')}>
           <Ionicons name="add" size={24} color={C.gold} />
-        </Pressable>
+        </ActionPressable>
         <Pressable
           style={styles.floatingWorkspace}
           onPress={() => updateFinanceState((current) => ({ ...current, settings: { ...current.settings, activeWorkspace: 'store' } }))}
@@ -1109,9 +1110,9 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
           ListEmptyComponent={<>{renderTransactions([], true)}</>}
         />
       </View>
-      <Pressable style={styles.floatingAdd} onPress={() => openEntry('expense')} accessibilityRole="button" accessibilityLabel={t('finance.newEntry')}>
+      <ActionPressable style={styles.floatingAdd} onPress={() => openEntry('expense')} accessibilityRole="button" accessibilityLabel={t('finance.newEntry')}>
         <Ionicons name="add" size={24} color={C.gold} />
-      </Pressable>
+      </ActionPressable>
       <Pressable style={styles.floatingWorkspace} onPress={() => updateFinanceState((current) => ({ ...current, settings: { ...current.settings, activeWorkspace: 'store' } }))} accessibilityRole="button" accessibilityLabel={t('finance.workspace.store')}>
         <Ionicons name="storefront-outline" size={19} color={C.gold} />
       </Pressable>

@@ -13,6 +13,7 @@ import type { Account, Budget, Debt, FinanceCategory, RecurringFrequency, Recurr
 import { C, FORM_TYPOGRAPHY, SANS, SERIF, createThemeStyles } from '@/shared/theme/luxury';
 import { useCurrentDate } from '@/shared/ui/useCurrentDate';
 import DateSelect from '@/shared/ui/DateSelect';
+import DeveloperContactCard from '@/shared/ui/DeveloperContactCard';
 import { ConfirmDialog, SearchableSelect } from '@/shared/ui/FormKit';
 import { captureCurrencySnapshot, historicalAmountInCurrency, currencyRate as resolveCurrencyRate } from '@/shared/domain/finance/currency';
 import { accountHasHistory, budgetSpent, isCashFlowTransaction, isTransferTransaction, filterActivityTransactions, inDateRange, periodBounds, transactionMatchesActivityFilter, type FinanceActivityFilter } from '@/features/finance/domain/services/financeDomain';
@@ -30,7 +31,7 @@ const dateText = (value: string) => new Date(value).toLocaleDateString(undefined
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
 type ToolKey = 'calculator' | 'cashCounter' | 'discountTax' | 'interest';
 type CashCountRow = { id: string; denomination: string; quantity: string };
-type SettingsSection = 'language' | 'currency' | 'theme' | 'week' | 'pin' | 'data';
+type SettingsSection = 'language' | 'currency' | 'theme' | 'week' | 'pin' | 'data' | 'contact';
 type ActivityFilter = FinanceActivityFilter;
 type ActivityPeriod = 'all' | 'today' | 'week' | 'month' | 'year';
 type ActivityGroup = { key: string; label: string; transactions: Transaction[] };
@@ -1036,6 +1037,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
           {settingRow('week', 'calendar-outline', t('finance.weekStartsOn'), state.settings.firstDayOfWeek === 1 ? t('finance.monday') : t('finance.sunday'))}
           {settingRow('pin', 'lock-closed-outline', t('finance.pin.title'), state.settings.pinHash ? t('finance.pin.enabled') : t('finance.pin.disabled'))}
           {settingRow('data', 'archive-outline', t('finance.releaseExtra.dataBackups'), t('finance.backupArchive.copy'))}
+          {settingRow('contact', 'chatbubbles-outline', t('finance.developerContact.title'), t('finance.developerContact.team'))}
         </View>
       );
     }
@@ -1046,6 +1048,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
           <BackButton onPress={() => setSettingsSection(null)} />
           <Text style={styles.settingsBackText}>{t('finance.navigation.items.settings.title')}</Text>
         </View>
+        {settingsSection === 'contact' && <DeveloperContactCard embedded />}
         {settingsSection === 'language' && <>
           <Text style={styles.fieldLabel}>{t('finance.language')}</Text>
           <View style={styles.settingsOptionList}>

@@ -152,6 +152,14 @@ export function storeReportData(state: StoreStateContainer) {
   return { sales, daily, topProducts, topClients, total: sales.reduce((sum, sale) => sum + storeAmount(state, sale.total, sale.currency), 0) };
 }
 
+export function storeReportHasMissingRates(state: StoreStateContainer) {
+  const rates = state.settings?.exchangeRates ?? { USD: 1 };
+  const missing = (currency?: string) => currencyRate(currency ?? state.store.currency, state.store.currency, rates) === undefined;
+  return state.store.sales.some((sale) => sale.status === 'completed' && missing(sale.currency))
+    || state.store.cashMovements.some((movement) => missing(movement.currency))
+    || state.store.products.some((product) => missing(product.currency));
+}
+
 export function storeStatistics(state: StoreStateContainer, range: StoreStatisticsRange) {
   const inRange = (value: string) => {
     const timestamp = new Date(value).getTime();
