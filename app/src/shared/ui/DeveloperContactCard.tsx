@@ -6,7 +6,7 @@ import ActionPressable from './ActionPressable';
 import { C, SANS, SERIF, createThemeStyles } from '@/shared/theme/luxury';
 
 const contacts = [
-  { id: 'email-primary', kind: 'email', value: 'escobarpupoyancarlos1@gmail.com' },
+  { id: 'email-primary', kind: 'email', value: 'yangitart@gmail.com' },
   { id: 'email-secondary', kind: 'email', value: 'mirelescobarpupo@gmail.com' },
   { id: 'instagram', kind: 'instagram', value: 'yangitart' },
   { id: 'github', kind: 'github', value: 'yangitart' },
