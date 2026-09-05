@@ -19,6 +19,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useTranslation } from 'react-i18next';
+import { useCurrentDate } from '@/shared/ui/useCurrentDate';
 import Gem from '@/shared/ui/Gem';
 import { C, LIGHT_C, SANS, SERIF, createThemeStyles, getThemeColors } from '@/shared/theme/luxury';
 import type { FinanceModuleName } from './FinanceModulesScreen';
@@ -26,7 +27,7 @@ import { useFinance } from '@/features/app-state/presentation/components/AppStat
 import type { Account as FinanceAccount, Budget as FinanceBudget } from '@/features/finance/domain/entities/financeTypes';
 import { currencyRate, historicalAmountInCurrency } from '@/shared/domain/finance/currency';
 import DateSelect from '@/shared/ui/DateSelect';
-import { SearchableSelect, type SelectOption } from '@/shared/ui/FormKit';
+import { FormField, SearchableSelect, type SelectOption } from '@/shared/ui/FormKit';
 import { accountHasHistory, inDateRange, isTransferTransaction, periodBounds, previousPeriodBounds } from '@/features/finance/domain/services/financeDomain';
 
 type TransactionKind = 'expense' | 'income' | 'transfer';
@@ -351,7 +352,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
     setStatsCalendarMonth(new Date(reference.getFullYear(), reference.getMonth(), 1));
     setSelectedStatsDate(reference.toDateString());
   }, [statsRange]);
-  const [referenceNow] = React.useState(() => new Date());
+  const referenceNow = useCurrentDate();
   const activeLimitDefinition = React.useMemo(() => activeBudget ? financeState.budgets.find((item) => item.accountId === activeBudget.id && item.category === 'all') : undefined, [activeBudget, financeState.budgets]);
   const activeLimitRange = React.useMemo(() => activeLimitDefinition?.period === 'custom'
     ? { start: new Date(activeLimitDefinition.startDate), end: new Date(activeLimitDefinition.endDate) }
@@ -608,6 +609,11 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
   const transferReceivedPreview = parseAmount(entryAmount) * transferEffectiveRate;
   const entryAmountError = entryAmount.trim() && parseAmount(entryAmount) <= 0 ? t('finance.operationForm.invalidAmount') : '';
   const entryCanSave = parseAmount(entryAmount) > 0 && (entryKind === 'transfer' ? Boolean(transferSource && transferTarget && transferSource.id !== transferTarget.id && transferHasRate) : Boolean(entryBudget));
+  const previewAccount = entryKind === 'transfer' ? transferSource : entryBudget;
+  const originalEntry = editingTransaction ? financeState.transactions.find((item) => item.id === editingTransaction.transaction.id) : undefined;
+  const entryBalancePreview = previewAccount ? balanceFor(previewAccount)
+    - (originalEntry && originalEntry.accountId === previewAccount.id ? balanceImpact(originalEntry.kind, originalEntry.amount) : 0)
+    + (entryKind === 'transfer' ? -parseAmount(entryAmount) : balanceImpact(entryKind, parseAmount(entryAmount))) : undefined;
   const transferValidationError = transferError || (entryKind === 'transfer' && transferSource && transferTarget && transferSource.currency !== transferTarget.currency && !transferHasRate ? t('finance.releaseErrors.missingRate') : '');
   const selectBudget = React.useCallback((budgetId: string) => {
     updateFinanceState((current) => ({ ...current, settings: { ...current.settings, activeAccountId: budgetId } }));
@@ -1602,6 +1608,8 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
               {((editingTransaction ? ['expense', 'income'] : ['expense', 'income', 'transfer']) as TransactionKind[]).map((kind) => (
                 <Pressable
                   key={kind}
+                  accessibilityRole="radio"
+                  accessibilityState={{ selected: entryKind === kind }}
                   onPress={() => setEntryKind(kind)}
                   style={[styles.kindOption, entryKind === kind && styles.kindOptionActive]}
                 >
@@ -1626,15 +1634,13 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
                 {transferSource && transferTarget && transferReceivedPreview > 0 ? <View style={styles.transferPreview}><Text style={styles.transferPreviewAmount}>{formatMoney(parseAmount(entryAmount), language, transferSource.currency)}</Text><Ionicons name="arrow-forward-outline" size={15} color={C.textSubtle} /><Text style={styles.transferPreviewAmount}>{formatMoney(transferReceivedPreview, language, transferTarget.currency)}</Text></View> : null}
                 {Boolean(transferValidationError) && <Text style={styles.inlineError}>{transferValidationError}</Text>}
                 </View> : null}
-                <View style={styles.entryDetailsCard}><Text style={styles.inputLabel}>{t('finance.description')}</Text>
-                <TextInput value={entryTitle} onChangeText={setEntryTitle} placeholder={t('finance.descriptionPlaceholder')} placeholderTextColor={C.textSubtle} style={styles.textInput} />
+                <View style={styles.entryDetailsCard}><FormField label={t('finance.description')} value={entryTitle} onChangeText={setEntryTitle} placeholder={t('finance.descriptionPlaceholder')} />
                 </View>
               </>
             ) : (
               <>
                 <View style={styles.entryAmountCard}><Text style={styles.inputLabel}>{t('finance.amount')}</Text><View style={styles.amountInputShell}><TextInput value={entryAmount} onChangeText={(value) => setEntryAmount(sanitizeAmount(value))} keyboardType="decimal-pad" placeholder="0" placeholderTextColor={C.textSubtle} numberOfLines={1} style={[styles.amountInput, { fontSize: amountFontSize(entryAmount) }]} accessibilityLabel={t('finance.amount')} /><Text style={styles.amountCurrency}>{entryBudget?.currency ?? baseCurrency}</Text></View>{Boolean(entryAmountError) && <Text style={styles.inlineError}>{entryAmountError}</Text>}</View>
-                <View style={styles.entryDetailsCard}><Text style={styles.inputLabel}>{t('finance.description')}</Text>
-                <TextInput value={entryTitle} onChangeText={setEntryTitle} placeholder={t('finance.descriptionPlaceholder')} placeholderTextColor={C.textSubtle} style={styles.textInput} />
+                <View style={styles.entryDetailsCard}><FormField label={t('finance.description')} value={entryTitle} onChangeText={setEntryTitle} placeholder={t('finance.descriptionPlaceholder')} />
                 <Text style={styles.inputLabel}>{t('finance.category')}</Text>
                 <Pressable style={styles.categorySelect} onPress={() => { setCategoryQuery(''); setCategoryPickerOpen(true); }} accessibilityRole="button" accessibilityLabel={t('finance.category')}>
                   <View style={styles.categorySelectIcon}><Ionicons name={(operationCategories.find((category) => category.id === entryCategory)?.icon ?? 'pricetag-outline') as React.ComponentProps<typeof Ionicons>['name']} size={17} color={C.gold} /></View>
@@ -1662,7 +1668,12 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
             <View style={styles.entryDateCard}><DateSelect label={t('finance.date')} value={entryDate} onChange={setEntryDate} firstDayOfWeek={financeState.settings.firstDayOfWeek} /></View>
 
           </ScrollView>
-          <View style={styles.entryFooter}><Pressable style={[styles.saveButton, !entryCanSave && styles.disabledButton]} onPress={addTransaction} disabled={!entryCanSave} accessibilityRole="button" accessibilityState={{ disabled: !entryCanSave }}><Text style={styles.saveButtonText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{editingTransaction ? t('finance.updateEntry', { defaultValue: 'UPDATE OPERATION' }) : t('finance.saveEntry')}</Text></Pressable></View>
+          <View style={styles.entryFooter}>
+            {entryCanSave && previewAccount && entryBalancePreview !== undefined ? <View style={styles.entrySummary}>
+              <Text numberOfLines={1} style={styles.entrySummaryLabel}>{t('finance.formUx.balanceAfter', { account: previewAccount.name })}</Text>
+              <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65} style={[styles.transferPreviewAmount, entryBalancePreview < 0 && styles.expenseText]}>{formatMoney(entryBalancePreview, language, previewAccount.currency)}</Text>
+            </View> : <Text accessibilityLiveRegion="polite" style={styles.entrySummaryHint}>{parseAmount(entryAmount) <= 0 ? t('finance.operationForm.invalidAmount') : transferValidationError || t('finance.formUx.completeAccounts')}</Text>}
+            <Pressable style={[styles.saveButton, !entryCanSave && styles.disabledButton]} onPress={addTransaction} disabled={!entryCanSave} accessibilityRole="button" accessibilityState={{ disabled: !entryCanSave }}><Text style={styles.saveButtonText} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{editingTransaction ? t('finance.updateEntry', { defaultValue: 'UPDATE OPERATION' }) : t('finance.saveEntry')}</Text></Pressable></View>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -1976,6 +1987,9 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   entrySheetTablet: { borderRadius: 28, maxHeight: '86%' },
   entryScroll: { flexShrink: 1 },
   entrySheetContent: { paddingHorizontal: 19, paddingBottom: 18 },
+  entrySummary: { marginBottom: 10, gap: 4 },
+  entrySummaryLabel: { color: C.textSubtle, fontFamily: SANS, fontSize: 11 },
+  entrySummaryHint: { color: C.textSubtle, fontFamily: SANS, fontSize: 11, lineHeight: 16, marginBottom: 8 },
   entryFooter: { paddingHorizontal: 19, paddingTop: 10, paddingBottom: 13, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line, backgroundColor: '#0A0C14' },
   detailSheet: { maxHeight: '90%', borderTopLeftRadius: 28, borderTopRightRadius: 28, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: '#0A0C14' },
   detailSheetContent: { flexGrow: 1, paddingHorizontal: 19, paddingBottom: 28 },

@@ -1,10 +1,38 @@
 import type { AppState } from '@/domain/AppState';
 import type { Transaction, Transfer } from '@/features/finance/domain/entities/financeTypes';
+import { transactionImportKey } from '@/features/finance/domain/services/financeDomain';
 import { withStoreBalance } from '@/features/store/domain/services/storeDomain';
 import { captureCurrencySnapshot } from '@/shared/domain/finance/currency';
 
 export function resolveImportedFinanceState(current: AppState, imported: AppState, preserveStore: boolean) {
-  return preserveStore ? { ...imported, store: current.store } : imported;
+  return preserveStore ? { ...imported, store: {
+    ...current.store,
+    stockMovements: current.store.stockMovements.map(({ personalTransactionId: _personalTransactionId, ...movement }) => movement),
+    cashMovements: current.store.cashMovements.map(({ personalTransactionId: _personalTransactionId, transferId: _transferId, ...movement }) => movement),
+  } } : imported;
+}
+
+// Match multiplicities so two legitimate identical payments survive the first import,
+// while importing the same file again does not add either payment a second time.
+export function mergeImportedTransactions(state: AppState, items: Transaction[]) {
+  const counts = new Map<string, number>();
+  state.transactions.forEach((item) => {
+    const key = transactionImportKey(item);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  });
+  let duplicateCount = 0;
+  const incoming = items.filter((item) => {
+    const key = transactionImportKey(item);
+    const count = counts.get(key) ?? 0;
+    if (!count) return true;
+    counts.set(key, count - 1);
+    duplicateCount += 1;
+    return false;
+  }).map((item) => Number.isFinite(item.baseAmount) && item.baseCurrency ? item : {
+    ...item,
+    ...captureCurrencySnapshot(item.amount, item.currency, state.settings.preferredCurrency, state.settings.exchangeRates ?? { USD: 1 }),
+  });
+  return { state: incoming.length ? { ...state, transactions: [...incoming, ...state.transactions] } : state, duplicateCount };
 }
 
 export function removeTransfer(state: AppState, transferId: string) {

@@ -1,3 +1,4 @@
+import { hasFinanceImportIntegrity, hasStoreImportIntegrity } from '@/features/backup/application/services/backupIntegrity';
 import { Directory, File, Paths } from 'expo-file-system';
 import type { AppState as FinanceState } from '@/domain/AppState';
 import type { StoreState } from '@/features/store/domain/entities/Store';
@@ -124,25 +125,55 @@ function zip(files: ArchiveFile[]) {
 
 function unzip(bytes: Uint8Array) {
   const files = new Map<string, Uint8Array>();
+  const localOffsets = new Map<string, number>();
+  let endOffset = bytes.length - 22;
+  for (; endOffset >= Math.max(0, bytes.length - 65557); endOffset -= 1) {
+    const candidate = new DataView(bytes.buffer, bytes.byteOffset + endOffset);
+    if (candidate.getUint32(0, true) === 0x06054b50 && endOffset + 22 + candidate.getUint16(20, true) === bytes.length) break;
+  }
+  if (endOffset < Math.max(0, bytes.length - 65557)) throw new Error('invalid-archive');
+  const end = new DataView(bytes.buffer, bytes.byteOffset + endOffset);
+  const entryCount = end.getUint16(10, true);
+  const centralStart = end.getUint32(16, true);
+  if (end.getUint16(4, true) !== 0 || end.getUint16(6, true) !== 0 || end.getUint16(8, true) !== entryCount
+    || centralStart + end.getUint32(12, true) !== endOffset) throw new Error('invalid-archive');
   let offset = 0;
-  while (offset + 30 <= bytes.length) {
+  while (offset + 30 <= centralStart) {
     const view = new DataView(bytes.buffer, bytes.byteOffset + offset);
     if (view.getUint32(0, true) !== 0x04034b50) break;
-    if (view.getUint16(8, true) !== 0) throw new Error('unsupported-archive-compression');
+    if ((view.getUint16(6, true) & ~0x0800) !== 0 || view.getUint16(8, true) !== 0) throw new Error('unsupported-archive-compression');
     const compressedSize = view.getUint32(18, true);
     const nameLength = view.getUint16(26, true);
     const extraLength = view.getUint16(28, true);
     const nameStart = offset + 30;
     const dataStart = nameStart + nameLength + extraLength;
     const dataEnd = dataStart + compressedSize;
-    if (dataEnd > bytes.length) throw new Error('invalid-archive');
+    if (dataEnd > centralStart || compressedSize !== view.getUint32(22, true)) throw new Error('invalid-archive');
     const name = textFromBytes(bytes.slice(nameStart, nameStart + nameLength));
     if (files.has(name) || (name !== 'backup.json' && !/^images\/[A-Za-z0-9_-]+\.(?:jpg|png|webp|gif)$/i.test(name))) throw new Error('invalid-archive');
     if (crc32(bytes.slice(dataStart, dataEnd)) !== view.getUint32(14, true)) throw new Error('invalid-archive');
+    localOffsets.set(name, offset);
     files.set(name, bytes.slice(dataStart, dataEnd));
     offset = dataEnd;
   }
-  if (!files.size) throw new Error('invalid-archive');
+  if (!files.size || offset !== centralStart || files.size !== entryCount) throw new Error('invalid-archive');
+  const seen = new Set<string>();
+  for (let index = 0; index < entryCount; index += 1) {
+    if (offset + 46 > endOffset) throw new Error('invalid-archive');
+    const central = new DataView(bytes.buffer, bytes.byteOffset + offset);
+    const nameLength = central.getUint16(28, true);
+    const recordEnd = offset + 46 + nameLength + central.getUint16(30, true) + central.getUint16(32, true);
+    if (central.getUint32(0, true) !== 0x02014b50 || recordEnd > endOffset) throw new Error('invalid-archive');
+    const name = textFromBytes(bytes.slice(offset + 46, offset + 46 + nameLength));
+    const file = files.get(name);
+    if (!file || seen.has(name) || localOffsets.get(name) !== central.getUint32(42, true)
+      || central.getUint16(10, true) !== 0 || (central.getUint16(8, true) & ~0x0800) !== 0
+      || central.getUint16(34, true) !== 0 || central.getUint32(20, true) !== file.length
+      || central.getUint32(24, true) !== file.length || central.getUint32(16, true) !== crc32(file)) throw new Error('invalid-archive');
+    seen.add(name);
+    offset = recordEnd;
+  }
+  if (offset !== endOffset) throw new Error('invalid-archive');
   return files;
 }
 
@@ -156,13 +187,15 @@ function isEmbeddedPicture(value: unknown): value is EmbeddedPicture {
     && value.mimeType.startsWith('image/')
     && typeof value.data === 'string'
     && value.data.length > 0
+    && value.data.length % 4 === 0
     && /^[A-Za-z0-9+/]+={0,2}$/.test(value.data);
 }
 
 function isStoreBackup(value: unknown): value is StoreBackup {
   if (!isRecord(value) || value.kind !== BACKUP_KIND || value.version !== BACKUP_VERSION || typeof value.exportedAt !== 'string' || !isRecord(value.store)) return false;
   const store = value.store;
-  return Array.isArray(store.categories)
+  return hasStoreImportIntegrity(store)
+    && Array.isArray(store.categories)
     && Array.isArray(store.products)
     && Array.isArray(store.stockMovements)
     && Array.isArray(store.sales)
@@ -223,6 +256,7 @@ export function parseAppBackup(text: string): AppBackup {
   let value: unknown;
   try { value = JSON.parse(text); } catch { throw new Error('invalid-app-backup'); }
   if (!isRecord(value) || value.kind !== APP_BACKUP_KIND || value.version !== APP_BACKUP_VERSION || typeof value.exportedAt !== 'string' || !isRecord(value.state)) throw new Error('invalid-app-backup');
+  if (!hasFinanceImportIntegrity(value.state)) throw new Error('invalid-app-backup');
   if (!Array.isArray(value.state.accounts) || !Array.isArray(value.state.transactions) || !isStoreBackup({ kind: BACKUP_KIND, version: BACKUP_VERSION, exportedAt: value.exportedAt, store: value.state.store })) throw new Error('invalid-app-backup');
   return value as AppBackup;
 }

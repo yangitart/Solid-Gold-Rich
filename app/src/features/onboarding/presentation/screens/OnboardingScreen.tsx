@@ -13,13 +13,10 @@ type IconName = React.ComponentProps<typeof Ionicons>['name'];
 const CURRENCY_OPTIONS = [
   'AED', 'ARS', 'AUD', 'BRL', 'CAD', 'CHF', 'CLP', 'CNY', 'COP', 'CRC', 'CUP', 'CZK', 'DKK', 'DOP', 'EGP', 'EUR', 'GBP', 'GTQ', 'HKD', 'HNL', 'HUF', 'IDR', 'ILS', 'INR', 'ISK', 'JPY', 'KRW', 'MXN', 'NIO', 'NOK', 'NZD', 'PAB', 'PEN', 'PHP', 'PLN', 'PYG', 'RON', 'RUB', 'SEK', 'SGD', 'THB', 'TRY', 'UAH', 'USD', 'UYU', 'VES', 'VND', 'ZAR',
 ] as const;
-const PAGES: { key: 'accounts' | 'operations' | 'statistics' | 'organize' | 'store' | 'privacy' | 'currency'; icon: IconName }[] = [
+const PAGES: { key: 'accounts' | 'operations' | 'store' | 'currency'; icon: IconName }[] = [
   { key: 'accounts', icon: 'wallet-outline' },
   { key: 'operations', icon: 'receipt-outline' },
-  { key: 'statistics', icon: 'analytics-outline' },
-  { key: 'organize', icon: 'folder-open-outline' },
   { key: 'store', icon: 'storefront-outline' },
-  { key: 'privacy', icon: 'shield-checkmark-outline' },
   { key: 'currency', icon: 'cash-outline' },
 ];
 
@@ -28,9 +25,10 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
   const { state, updateState } = useFinance();
   const { width, height } = useWindowDimensions();
   const scrollRef = React.useRef<ScrollView>(null);
+  const previousWidth = React.useRef(width);
   const [page, setPage] = React.useState(0);
   const [currency, setCurrency] = React.useState(state.settings.preferredCurrency || 'USD');
-  const [customCurrencies, setCustomCurrencies] = React.useState<string[]>(() => {
+  const [customCurrencies] = React.useState<string[]>(() => {
     const preferred = (state.settings.preferredCurrency || 'USD').toUpperCase();
     return (CURRENCY_OPTIONS as readonly string[]).includes(preferred) ? [] : [preferred];
   });
@@ -38,55 +36,19 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
   const [currencyQuery, setCurrencyQuery] = React.useState('');
   const [languagePickerOpen, setLanguagePickerOpen] = React.useState(false);
   const [language, setLanguage] = React.useState<SupportedLanguage>(() => state.settings.language ?? getPhoneLanguage());
-  const [onboardingCategoryType, setOnboardingCategoryType] = React.useState<'expense' | 'income'>('expense');
-  const [onboardingCategoryName, setOnboardingCategoryName] = React.useState('');
-  const [onboardingCategoryError, setOnboardingCategoryError] = React.useState('');
   const compact = height < 700;
   const veryCompact = height < 620;
   const lastPage = page === PAGES.length - 1;
   const availableCurrencies = React.useMemo(() => Array.from(new Set([...CURRENCY_OPTIONS, ...customCurrencies, currency])).sort(), [currency, customCurrencies]);
   const normalizedCurrencyQuery = currencyQuery.trim().toUpperCase();
   const filteredCurrencies = availableCurrencies.filter((item) => !normalizedCurrencyQuery || item.includes(normalizedCurrencyQuery));
-  const canAddCustomCurrency = /^[A-Z]{3}$/.test(normalizedCurrencyQuery) && !availableCurrencies.includes(normalizedCurrencyQuery);
 
-  const addOnboardingCategory = () => {
-    const name = onboardingCategoryName.trim();
-    if (!name) {
-      setOnboardingCategoryError(t('finance.storeUnits.categoryRequired'));
-      return;
-    }
-    const id = name.toLocaleLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-    if (!id) return;
-    const normalizedName = name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase();
-    if (state.categories[onboardingCategoryType].some((item) => {
-      const label = item.name ?? t(`finance.categories.${item.id}`, { defaultValue: item.id });
-      return item.id === id || label.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase() === normalizedName;
-    })) {
-      setOnboardingCategoryError(t('finance.categoryExists'));
-      return;
-    }
-    updateState((current) => ({
-      ...current,
-      categories: {
-        ...current.categories,
-        [onboardingCategoryType]: [...current.categories[onboardingCategoryType], { id, icon: 'pricetag-outline', name, builtIn: false }],
-      },
-    }));
-    setOnboardingCategoryName('');
-    setOnboardingCategoryError('');
-  };
-
-  const addCustomCurrency = () => {
-    if (!canAddCustomCurrency) return;
-    setCustomCurrencies((current) => current.includes(normalizedCurrencyQuery) ? current : [...current, normalizedCurrencyQuery]);
-    setCurrency(normalizedCurrencyQuery);
-    setCurrencyQuery('');
-    setCurrencyPickerOpen(false);
-  };
-
+  const completing = React.useRef(false);
   const completeOnboarding = () => {
+    if (completing.current) return;
+    completing.current = true;
     updateState((current) => {
-      const storeHasHistory = current.store.products.length > 0 || current.store.sales.length > 0 || current.store.stockMovements.length > 0 || current.store.cashMovements.length > 0;
+      const storeHasHistory = current.store.products.length > 0 || current.store.sales.length > 0 || current.store.stockMovements.length > 0 || current.store.cashMovements.length > 0 || current.store.employees.some((employee) => employee.salary > 0);
       return {
         ...current,
         settings: { ...current.settings, preferredCurrency: currency, language, exchangeRates: { ...(current.settings.exchangeRates ?? {}), USD: 1 } },
@@ -105,6 +67,12 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
   const updatePage = (event: NativeSyntheticEvent<NativeScrollEvent>) => {
     setPage(Math.max(0, Math.min(PAGES.length - 1, Math.round(event.nativeEvent.contentOffset.x / width))));
   };
+
+  React.useEffect(() => {
+    if (previousWidth.current === width) return;
+    previousWidth.current = width;
+    scrollRef.current?.scrollTo({ x: width * page, animated: false });
+  }, [width, page]);
 
   const continueFlow = () => {
     if (lastPage) {
@@ -141,7 +109,7 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
         scrollEventThrottle={16}
       >
         {PAGES.map((item) => (
-          <View key={item.key} style={[styles.page, { width }, compact && styles.pageCompact]}>
+          <ScrollView key={item.key} style={{ width }} contentContainerStyle={[styles.page, compact && styles.pageCompact]} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
             <View style={[styles.visualStage, compact && styles.visualStageCompact, veryCompact && styles.visualStageVeryCompact]}>
               <LinearGradient colors={['rgba(233,200,119,0.17)', 'rgba(233,200,119,0.025)']} style={styles.visualGlow} />
               <View style={styles.orbitOuter} />
@@ -151,14 +119,8 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
             <Text style={styles.eyebrow}>{item.key === 'currency' ? t('app.onboarding.currency.eyebrow') : item.key === 'store' ? t('app.onboardingStore.eyebrow') : t(`app.onboarding.pages.${item.key}.eyebrow`)}</Text>
             <Text style={[styles.title, compact && styles.titleCompact, veryCompact && styles.titleVeryCompact]}>{item.key === 'currency' ? t('app.onboarding.currency.title') : item.key === 'store' ? t('app.onboardingStore.title') : t(`app.onboarding.pages.${item.key}.title`)}</Text>
             <Text style={[styles.body, veryCompact && styles.bodyVeryCompact]}>{item.key === 'currency' ? t('app.onboarding.currency.body') : item.key === 'store' ? t('app.onboardingStore.body') : t(`app.onboarding.pages.${item.key}.body`)}</Text>
-            {item.key === 'organize' && <View style={styles.onboardingCategoryCard}>
-              <View style={styles.onboardingCategoryHeader}><Text style={styles.onboardingCategoryLabel}>{t('finance.category')}</Text><View style={styles.onboardingCategoryTabs}>{(['expense', 'income'] as const).map((type) => <Pressable key={type} style={[styles.onboardingCategoryTab, onboardingCategoryType === type && styles.onboardingCategoryTabActive]} onPress={() => { setOnboardingCategoryType(type); setOnboardingCategoryError(''); }} accessibilityRole="tab" accessibilityState={{ selected: onboardingCategoryType === type }}><Text style={[styles.onboardingCategoryTabText, onboardingCategoryType === type && styles.onboardingCategoryTabTextActive]}>{t(type === 'expense' ? 'finance.expenses' : 'finance.income')}</Text></Pressable>)}</View></View>
-              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.onboardingCategoryList}>{state.categories[onboardingCategoryType].map((category) => <View key={category.id} style={styles.onboardingCategoryChip}><Text style={styles.onboardingCategoryChipText} numberOfLines={1}>{category.name ?? t(`finance.categories.${category.id}`, { defaultValue: category.id })}</Text></View>)}</ScrollView>
-              <View style={styles.onboardingCategoryAddRow}><TextInput value={onboardingCategoryName} onChangeText={(value) => { setOnboardingCategoryName(value); setOnboardingCategoryError(''); }} placeholder={t('finance.categoryPlaceholder')} placeholderTextColor={C.textSubtle} style={styles.onboardingCategoryInput} returnKeyType="done" maxLength={32} onSubmitEditing={addOnboardingCategory} /><Pressable style={[styles.onboardingCategoryAddButton, !onboardingCategoryName.trim() && styles.onboardingCategoryAddButtonDisabled]} onPress={addOnboardingCategory} accessibilityRole="button" accessibilityLabel={t('finance.addCategory')}><Ionicons name="add" size={19} color={C.void} /></Pressable></View>
-              {onboardingCategoryError ? <Text style={styles.onboardingCategoryError}>{onboardingCategoryError}</Text> : null}
-            </View>}
             {item.key === 'currency' && <Pressable style={styles.currencySelect} onPress={() => { setCurrencyQuery(''); setCurrencyPickerOpen(true); }} accessibilityRole="button" accessibilityLabel={t('app.onboarding.currency.select')}><View><Text style={styles.currencyCode}>{currency}</Text><Text style={styles.currencyHint}>{t('app.onboarding.currency.select')}</Text></View><Ionicons name="chevron-down-outline" size={18} color={C.gold} /></Pressable>}
-          </View>
+          </ScrollView>
         ))}
       </ScrollView>
 
@@ -176,7 +138,7 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
             <View style={styles.currencyHeader}><Text style={styles.currencyTitle}>{t('app.onboarding.currency.select')}</Text><Pressable style={styles.closeButton} onPress={() => setCurrencyPickerOpen(false)} accessibilityLabel={t('app.onboarding.currency.close')}><Ionicons name="close" size={18} color={C.goldLight} /></Pressable></View>
             <View style={styles.currencySearch}><Ionicons name="search-outline" size={17} color={C.textSubtle} /><TextInput value={currencyQuery} onChangeText={(value) => setCurrencyQuery(value.replace(/[^a-z]/gi, '').slice(0, 3).toUpperCase())} autoCapitalize="characters" autoCorrect={false} maxLength={3} placeholder={t('app.onboarding.currency.search')} placeholderTextColor={C.textSubtle} style={styles.currencySearchInput} /></View>
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-              {canAddCustomCurrency && <Pressable style={styles.currencyOption} onPress={addCustomCurrency} accessibilityRole="button" accessibilityLabel={t('app.onboarding.currency.add', { currency: normalizedCurrencyQuery })}><View><Text style={styles.currencyOptionText}>{t('app.onboarding.currency.add', { currency: normalizedCurrencyQuery })}</Text><Text style={styles.currencyCustomHint}>{t('app.onboarding.currency.custom')}</Text></View><Ionicons name="add" size={18} color={C.gold} /></Pressable>}
+              {!filteredCurrencies.length ? <Text style={styles.currencyHint}>{t('finance.modules.noResults')}</Text> : null}
               {filteredCurrencies.map((item) => <Pressable key={item} style={[styles.currencyOption, currency === item && styles.currencyOptionActive]} onPress={() => { setCurrency(item); setCurrencyQuery(''); setCurrencyPickerOpen(false); }}><Text style={styles.currencyOptionText}>{item}</Text>{currency === item && <Ionicons name="checkmark" size={18} color={C.gold} />}</Pressable>)}
             </ScrollView>
           </View>
@@ -187,7 +149,6 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setLanguagePickerOpen(false)} />
           <View style={styles.languageSheet}>
             <View style={styles.currencyHeader}><Text style={styles.currencyTitle}>{t('finance.language')}</Text><Pressable style={styles.closeButton} onPress={() => setLanguagePickerOpen(false)} accessibilityLabel={t('finance.close')}><Ionicons name="close" size={18} color={C.goldLight} /></Pressable></View>
-            <Text style={styles.languageCopy}>{t('app.onboarding.pages.privacy.body')}</Text>
             <View style={styles.languageOptions}>{supportedLanguages.map((item) => <Pressable key={item} style={[styles.languageOption, language === item && styles.currencyOptionActive]} onPress={() => selectLanguage(item)} accessibilityRole="radio" accessibilityState={{ selected: language === item }}><View style={styles.languageOptionCopy}><Text style={styles.currencyOptionText}>{t(`finance.languages.${item}`)}</Text><Text style={styles.languageCode}>{item.toUpperCase()}</Text></View>{language === item && <Ionicons name="checkmark" size={18} color={C.gold} />}</Pressable>)}</View>
           </View>
         </View>
@@ -222,22 +183,6 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   titleVeryCompact: { fontSize: 25, lineHeight: 29, marginTop: 8 },
   body: { maxWidth: 330, color: 'rgba(255,244,208,0.52)', fontFamily: SANS, fontSize: 12, lineHeight: 19, textAlign: 'center', marginTop: 14 },
   bodyVeryCompact: { fontSize: 10.5, lineHeight: 15, marginTop: 8 },
-  onboardingCategoryCard: { width: '100%', maxWidth: 330, marginTop: 16, padding: 11, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.16)', backgroundColor: 'rgba(10,12,20,0.5)' },
-  onboardingCategoryHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  onboardingCategoryLabel: { color: C.goldLight, fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 1.1 },
-  onboardingCategoryTabs: { flexDirection: 'row', gap: 5 },
-  onboardingCategoryTab: { borderRadius: 10, paddingHorizontal: 8, paddingVertical: 6, backgroundColor: 'rgba(255,255,255,0.035)' },
-  onboardingCategoryTabActive: { backgroundColor: 'rgba(233,200,119,0.16)' },
-  onboardingCategoryTabText: { color: 'rgba(255,244,208,0.45)', fontFamily: SANS, fontSize: 8, fontWeight: '700' },
-  onboardingCategoryTabTextActive: { color: C.goldLight },
-  onboardingCategoryList: { gap: 6, paddingVertical: 10 },
-  onboardingCategoryChip: { maxWidth: 130, borderRadius: 10, paddingHorizontal: 8, paddingVertical: 6, backgroundColor: 'rgba(255,255,255,0.035)' },
-  onboardingCategoryChipText: { color: 'rgba(255,244,208,0.62)', fontFamily: SANS, fontSize: 9 },
-  onboardingCategoryAddRow: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 7 },
-  onboardingCategoryInput: { flex: 1, minHeight: 36, borderRadius: 10, paddingHorizontal: 10, paddingVertical: 0, color: C.goldLight, fontFamily: SANS, fontSize: 10, backgroundColor: 'rgba(255,255,255,0.045)' },
-  onboardingCategoryAddButton: { width: 36, height: 36, borderRadius: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: C.gold },
-  onboardingCategoryAddButtonDisabled: { opacity: 0.38 },
-  onboardingCategoryError: { color: C.red, fontFamily: SANS, fontSize: 9, marginTop: 6 },
   currencySelect: { width: '100%', maxWidth: 300, minHeight: 56, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.32)', backgroundColor: 'transparent', paddingHorizontal: 3, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 22 },
   currencyCode: { color: C.goldLight, fontFamily: SERIF, fontSize: 22 },
   currencyHint: { color: 'rgba(255,244,208,0.48)', fontFamily: SANS, fontSize: 9, marginTop: 2 },

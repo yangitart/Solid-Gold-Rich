@@ -9,7 +9,7 @@ import { useFinance } from '@/features/app-state/presentation/components/AppStat
 import type { PaymentMethod, StoreCategory, StoreClient, StoreDefaultOperation, StoreEmployee, StorePayFrequency, StorePayMode, StoreProduct, StoreProductType, StoreProvider, StoreSale, StoreSaleItem, StoreStockMovementType } from '@/features/store/domain/entities/Store';
 import { captureCurrencySnapshot, currencyRate } from '@/shared/domain/finance/currency';
 import { accountBalance, periodBounds, previousPeriodBounds } from '@/features/finance/domain/services/financeDomain';
-import { removeTransaction, removeTransfer } from '@/features/finance/application/commands/financeCommands';
+import { addTransfer as registerFundingTransfer, removeTransaction, removeTransfer } from '@/features/finance/application/commands/financeCommands';
 import { availableStock, changeStoreCurrency, completeSale as completeStoreSale, filterStoreProducts, productStock, storeAmount, storeReportData, storeStatistics, validateSale, voidSale as voidStoreSale, withStoreBalance, type StoreSalePeriod, type StoreStockFilter } from '@/features/store/domain/services/storeDomain';
 import type { AppStateRepository } from '@/features/app-state/application/ports/AppStateRepository';
 import type { BackupRepository } from '@/features/backup/application/ports/BackupRepository';
@@ -19,6 +19,7 @@ import type { ReportExportLabels, ReportRepository, StoreReportRange } from '@/f
 import type { FileService } from '@/shared/application/ports/FileService';
 import { ConfirmDialog, FormActions, FormField, ResponsiveSheet, SearchableSelect, SegmentedControl, type SelectOption } from '@/shared/ui/FormKit';
 import StoreProductForm, { PRODUCT_ICON_OPTIONS, type ProductFormDraft, type ProductFormTextField } from '../components/StoreProductForm';
+import { useCurrentDate } from '@/shared/ui/useCurrentDate';
 import DateSelect from '@/shared/ui/DateSelect';
 import { C, SANS, SERIF, createThemeStyles } from '@/shared/theme/luxury';
 import { waitForImportLoading } from '@/shared/infrastructure/files/importLoading';
@@ -32,7 +33,7 @@ type SalePeriod = StoreSalePeriod;
 type ReportRangeMode = 'all' | 'today' | 'week' | 'month' | 'year' | 'custom';
 type StoreStatsRange = 'today' | 'week' | 'month' | 'year';
 type IconName = React.ComponentProps<typeof Ionicons>['name'];
-type StoreOperation = { id: string; date: string; kind: 'sale' | 'stock' | 'cash'; title: string; description: string; quantity?: number; amount?: number; currency?: string; saleId?: string; stockMovementId?: string; cashMovementId?: string; status?: 'completed' | 'void' };
+type StoreOperation = { id: string; date: string; kind: 'sale' | 'stock' | 'cash'; title: string; description: string; quantity?: number; amount?: number; currency?: string; saleId?: string; stockMovementId?: string; cashMovementId?: string; unit?: string; status?: 'completed' | 'void' };
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 const numeric = (value: string) => Number(value.trim().replace(',', '.'));
 const compactRate = (value: number) => {
@@ -157,6 +158,12 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const saleSubmittingRef = React.useRef(false);
   const [selectedSaleId, setSelectedSaleId] = React.useState<string | null>(null);
   const [selectedProviderId, setSelectedProviderId] = React.useState<string | null>(null);
+  const [storeActionError, setStoreActionError] = React.useState('');
+  const [pendingPayroll, setPendingPayroll] = React.useState<StoreEmployee | null>(null);
+  const [pendingFunding, setPendingFunding] = React.useState(false);
+  const fundingSubmissionId = React.useRef<string | null>(null);
+  React.useEffect(() => { if (addOpen) fundingSubmissionId.current = uid('store-funding'); }, [addOpen]);
+  const [operationError, setOperationError] = React.useState('');
   const [pendingOperationDeletion, setPendingOperationDeletion] = React.useState<StoreOperation | null>(null);
   const [saleHistoryQuery, setSaleHistoryQuery] = React.useState('');
   const [salePeriod, setSalePeriod] = React.useState<SalePeriod>('today');
@@ -167,6 +174,8 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const [directoryName, setDirectoryName] = React.useState('');
   const [directoryRole, setDirectoryRole] = React.useState('');
   const [directoryPhone, setDirectoryPhone] = React.useState('');
+  const directorySaveId = React.useRef<string | null>(null);
+  const [directorySalaryCurrency, setDirectorySalaryCurrency] = React.useState(currency);
   const [directorySalary, setDirectorySalary] = React.useState('');
   const [directoryPayFrequency, setDirectoryPayFrequency] = React.useState<StorePayFrequency>('monthly');
   const [directoryPayMode, setDirectoryPayMode] = React.useState<StorePayMode>('manual');
@@ -197,33 +206,55 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const [fundingAmount, setFundingAmount] = React.useState('');
   const [fundingNote, setFundingNote] = React.useState('');
   const [fundingError, setFundingError] = React.useState('');
+  const backupInFlight = React.useRef(false);
   const [backupBusy, setBackupBusy] = React.useState(false);
   const [importBusy, setImportBusy] = React.useState(false);
   const [pendingStoreBackup, setPendingStoreBackup] = React.useState<StoreBackup | null>(null);
   const [pendingProductDeletion, setPendingProductDeletion] = React.useState<StoreProduct | null>(null);
 
-  const nextPayDate = (value: string, frequency: StorePayFrequency) => { const date = new Date(value); if (frequency === 'weekly') date.setDate(date.getDate() + 7); else if (frequency === 'biweekly') date.setDate(date.getDate() + 14); else date.setMonth(date.getMonth() + 1); return date.toISOString(); };
+  const statsReference = useCurrentDate(store);
+  const today = localDay(statsReference);
 
-  const payEmployee = React.useCallback((employeeId: string, allowNegative = false) => {
+  const payEmployee = React.useCallback((employeeId: string, allowNegative = false, automatic = false, expectedLastPaidDate?: string) => {
     const employee = state.store.employees.find((item) => item.id === employeeId);
-    if (!employee || !employee.active || employee.salary <= 0) return;
-    if (!allowNegative && store.businessAccount.balance < employee.salary) {
-      Alert.alert(t('finance.payroll.insufficientTitle'), t('finance.payroll.insufficientBody'), [{ text: t('finance.cancel'), style: 'cancel' }, { text: t('finance.payroll.payAnyway'), onPress: () => payEmployee(employeeId, true) }]);
-      return;
-    }
-    const date = new Date().toISOString();
+    if (!employee || !employee.active || !Number.isFinite(employee.salary) || employee.salary <= 0) return;
+    const expected = expectedLastPaidDate ?? employee.lastPaidDate ?? '';
+    let paymentError = '';
+    let needsConfirmation = false;
     finance.updateState((current) => {
       const currentEmployee = current.store.employees.find((item) => item.id === employeeId);
-      if (!currentEmployee) return current;
-      const paidEmployee = { ...currentEmployee, lastPaidDate: date, nextPayDate: nextPayDate(date, currentEmployee.payFrequency) };
+      if (!currentEmployee?.active || (currentEmployee.lastPaidDate ?? '') !== expected) return current;
+      if (automatic && (currentEmployee.payMode !== 'automatic' || !currentEmployee.nextPayDate || new Date(currentEmployee.nextPayDate).getTime() > Date.now())) return current;
+      if (!Number.isFinite(currentEmployee.salary) || currentEmployee.salary <= 0) return current;
+      const rate = currencyRate(currentEmployee.salaryCurrency ?? current.store.currency, current.store.currency, current.settings.exchangeRates ?? { USD: 1 });
+      if (!rate) { paymentError = t('finance.releaseErrors.missingRate'); return current; }
+      const salaryInStoreCurrency = currentEmployee.salary * rate;
+      if (!Number.isFinite(salaryInStoreCurrency)) { paymentError = t('finance.workspace.invalidSalary'); return current; }
+      if (!allowNegative && current.store.businessAccount.balance < salaryInStoreCurrency) {
+        if (automatic) paymentError = t('finance.payroll.insufficientBody');
+        else needsConfirmation = true;
+        return current;
+      }
+      const now = new Date();
+      const date = now.toISOString();
+      const next = new Date(now);
+      if (currentEmployee.payFrequency === 'weekly') next.setDate(next.getDate() + 7);
+      else if (currentEmployee.payFrequency === 'biweekly') next.setDate(next.getDate() + 14);
+      else {
+        const day = next.getDate(); next.setDate(1); next.setMonth(next.getMonth() + 1);
+        next.setDate(Math.min(day, new Date(next.getFullYear(), next.getMonth() + 1, 0).getDate()));
+      }
+      const paidEmployee = { ...currentEmployee, lastPaidDate: date, nextPayDate: next.toISOString() };
       return withStoreBalance({ ...current, store: { ...current.store, employees: current.store.employees.map((item) => item.id === employeeId ? paidEmployee : item), cashMovements: [...current.store.cashMovements, { id: uid('store-salary'), type: 'salary', amount: -currentEmployee.salary, currency: currentEmployee.salaryCurrency ?? current.store.currency, date, note: `${t('finance.payroll.salaryFor')} ${currentEmployee.name}` }] } });
     });
-  }, [finance, state.store.employees, store.businessAccount.balance, t]);
+    if (paymentError) setStoreActionError(paymentError);
+    if (needsConfirmation) setPendingPayroll(employee);
+  }, [finance, state.store.employees, t]);
 
   React.useEffect(() => {
     const due = state.store.employees.filter((employee) => employee.active && employee.payMode === 'automatic' && employee.salary > 0 && employee.nextPayDate && new Date(employee.nextPayDate).getTime() <= Date.now());
-    due.forEach((employee) => payEmployee(employee.id));
-  }, [payEmployee, state.store.employees]);
+    due.forEach((employee) => payEmployee(employee.id, false, true));
+  }, [payEmployee, state.store.employees, statsReference]);
 
   const categoryNameFor = React.useCallback((id: string) => {
     const category = store.categories.find((item) => item.id === id);
@@ -236,11 +267,9 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const availableFor = React.useCallback((product: StoreProduct) => availableStock(state, product), [state]);
   const selectedSale = React.useMemo(() => store.sales.find((sale) => sale.id === selectedSaleId) ?? null, [selectedSaleId, store.sales]);
   const filtersActive = Boolean(categoryFilter || stockFilter);
-  const [today] = React.useState(() => localDay(new Date()));
-  const [statsReference] = React.useState(() => new Date());
   const storeStatsBounds = React.useMemo(() => {
     const bounds = periodBounds(storeStatsRange, statsReference, state.settings.firstDayOfWeek);
-    return { start: bounds.start, end: statsReference };
+    return { start: bounds.start, end: new Date(statsReference.getTime() + 1) };
   }, [state.settings.firstDayOfWeek, statsReference, storeStatsRange]);
   const storeStatsData = React.useMemo(() => storeStatistics(state, storeStatsBounds), [state, storeStatsBounds]);
   const storeStatsPreviousBounds = React.useMemo(() => {
@@ -365,7 +394,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   const saleItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
   const visibleMovements = React.useMemo(() => {
     const query = normalizedSearch(movementQuery);
-    return store.cashMovements.slice().sort((left, right) => right.date.localeCompare(left.date)).filter((movement) => normalizedSearch(`${movement.note} ${movement.type}`).includes(query)).filter((movement) => { const amount = storeAmount(state, movement.amount, movement.currency); return movementType === 'all' || (movementType === 'income' ? amount >= 0 : amount < 0); });
+    return store.cashMovements.slice().sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime()).filter((movement) => normalizedSearch(`${movement.note} ${movement.type}`).includes(query)).filter((movement) => { const amount = storeAmount(state, movement.amount, movement.currency); return movementType === 'all' || (movementType === 'income' ? amount >= 0 : amount < 0); });
   }, [movementQuery, movementType, state, store.cashMovements]);
   const currencyOptions = React.useMemo(() => Array.from(new Set([currency, state.settings.preferredCurrency, ...state.accounts.map((item) => item.currency), ...COMMON_CURRENCIES])).sort().map((item) => ({ value: item, label: item })), [currency, state.accounts, state.settings.preferredCurrency]);
   const visibleDirectoryItems = React.useMemo<(StoreEmployee | StoreClient | StoreProvider)[]>(() => {
@@ -394,22 +423,24 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       if (salePeriod === 'week') return date >= weekStart && date < weekEnd;
       return date.getFullYear() === today.getFullYear() && date.getMonth() === today.getMonth();
     };
-    const matchesQuery = (operation: StoreOperation) => !query || normalizedSearch(`${operation.title} ${operation.description}`).includes(query);
+    const matchesQuery = (operation: StoreOperation) => !query || normalizedSearch(`${operation.title} ${operation.description} ${operation.amount ?? ''} ${operation.quantity ?? ''}`).includes(query);
     const productsById = new Map(store.products.map((product) => [product.id, product]));
     const clientsById = new Map(store.clients.map((client) => [client.id, client]));
     const providersById = new Map(store.providers.map((provider) => [provider.id, provider]));
+    const cashById = new Map(store.cashMovements.map((movement) => [movement.id, movement]));
     const sales: StoreOperation[] = store.sales.filter((sale) => sale.status === 'completed' && matchesPeriod(sale.date)).map((sale) => ({
-      id: `sale:${sale.id}`, date: sale.date, kind: 'sale', title: sale.items.map((item) => item.name).join(', '), description: clientsById.get(sale.clientId ?? '')?.name ?? t('finance.store.noneSelected'), amount: sale.total, currency: sale.currency, saleId: sale.id, status: sale.status,
+      id: `sale:${sale.id}`, date: sale.date, kind: 'sale', title: sale.items.map((item) => item.name).join(', '), description: [clientsById.get(sale.clientId ?? '')?.name, sale.note].filter(Boolean).join(' / '), amount: sale.total, currency: sale.currency, saleId: sale.id, status: sale.status,
     }));
     const stock: StoreOperation[] = store.stockMovements.filter((movement) => !['sale', 'saleReversal'].includes(movement.type) && matchesPeriod(movement.date)).map((movement) => {
       const product = productsById.get(movement.productId);
-      const partner = movement.type === 'entry' ? providersById.get(movement.providerId ?? '')?.name : clientsById.get(movement.clientId ?? '')?.name;
-      return { id: `stock:${movement.id}`, date: movement.date, kind: 'stock', title: product?.name ?? movement.productId, description: `${t(`finance.store.stockAction.${movement.type === 'initial' ? 'entry' : movement.type === 'adjustment' ? 'adjustment' : movement.type}`)}${partner ? ` · ${partner}` : ''}`, quantity: movement.quantity, stockMovementId: movement.id };
+      const partner = movement.type === 'entry' || movement.type === 'initial' ? providersById.get(movement.providerId ?? '')?.name : clientsById.get(movement.clientId ?? '')?.name;
+      return { id: `stock:${movement.id}`, date: movement.date, kind: 'stock', title: product?.name ?? movement.productId, description: `${t(`finance.store.stockAction.${movement.type === 'initial' ? 'entry' : movement.type === 'adjustment' ? 'adjustment' : movement.type}`)}${partner ? ` · ${partner}` : ''}`, quantity: movement.quantity, unit: product?.unitAbbreviation || product?.unit, stockMovementId: movement.id, amount: cashById.get(movement.cashMovementId ?? '')?.amount, currency: cashById.get(movement.cashMovementId ?? '')?.currency };
     });
-    const cash: StoreOperation[] = store.cashMovements.filter((movement) => !['sale', 'saleReversal'].includes(movement.type) && !(movement.type === 'purchase' && movement.productId) && matchesPeriod(movement.date)).map((movement) => ({
+    const linkedCashIds = new Set(store.stockMovements.map((movement) => movement.cashMovementId).filter(Boolean));
+    const cash: StoreOperation[] = store.cashMovements.filter((movement) => !['sale', 'saleReversal'].includes(movement.type) && !linkedCashIds.has(movement.id) && matchesPeriod(movement.date)).map((movement) => ({
       id: `cash:${movement.id}`, date: movement.date, kind: 'cash', title: movement.note || t(`finance.store.cashMovement.${movement.type}`), description: t(`finance.store.cashMovement.${movement.type}`), amount: movement.amount, currency: movement.currency, cashMovementId: movement.id,
     }));
-    return [...sales, ...stock, ...cash].filter(matchesQuery).sort((left, right) => right.date.localeCompare(left.date));
+    return [...sales, ...stock, ...cash].filter(matchesQuery).sort((left, right) => new Date(right.date).getTime() - new Date(left.date).getTime());
   }, [saleHistoryQuery, salePeriod, state, store.cashMovements, store.clients, store.products, store.providers, store.sales, store.stockMovements, t, today]);
   const switchView = (next: StoreView) => {
     setView(next);
@@ -420,6 +451,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     setSaleHistoryQuery('');
     setSalePeriod('today');
     setDirectoryQuery('');
+    setOperationError('');
     setMovementQuery('');
     setMovementType('all');
     setCategoryFilter('');
@@ -506,7 +538,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
 
   const commitProduct = (allowNegative: boolean) => {
     const errors = productValidation();
-    if (Object.keys(errors).length) { setProductErrors(errors); return; }
+    if (Object.keys(errors).length) { setProductErrors(errors); if (errors.numbers || errors.picture) setProductMoreOpen(true); return; }
     const initialStock = productDraft.type === 'product' && !editingProduct ? numeric(productDraft.stock || '0') : 0;
     const purchasePrice = numeric(productDraft.purchasePrice || '0');
     const purchaseTotal = initialStock * purchasePrice;
@@ -708,7 +740,9 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   ]);
 
   const openDirectory = (kind: DirectoryKind, item?: StoreEmployee | StoreClient | StoreProvider) => {
+    directorySaveId.current = item?.id ?? uid(kind);
     setDirectoryKind(kind); setDirectoryId(item?.id ?? null); setDirectoryName(item?.name ?? ''); setDirectoryPhone(item?.phone ?? '');
+    setDirectorySalaryCurrency(item && 'salaryCurrency' in item ? item.salaryCurrency ?? currency : currency);
     setDirectorySalary(item && 'salary' in item ? String(item.salary || '') : ''); setDirectoryPayFrequency(item && 'payFrequency' in item ? item.payFrequency : 'monthly'); setDirectoryPayMode(item && 'payMode' in item ? item.payMode : 'manual'); setDirectoryNextPayDate(item && 'nextPayDate' in item ? item.nextPayDate ?? '' : '');
     setDirectoryRole(item && 'role' in item ? item.role ?? '' : ''); setDirectoryEmail(item && 'email' in item ? item.email ?? '' : '');
     setDirectoryNote(item && 'note' in item ? item.note ?? '' : ''); setDirectoryOperations(item && 'defaultOperations' in item ? (item.defaultOperations ?? []).map((operation) => ({ ...operation })) : []); setDirectoryActive(item?.active ?? true); setDirectoryError('');
@@ -723,77 +757,82 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     if (!name) { setDirectoryError(t('finance.store.errors.name')); return; }
     if ((directoryKind === 'clients' || directoryKind === 'providers') && directoryEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(directoryEmail.trim())) { setDirectoryError(t('finance.workspace.invalidEmail')); return; }
     if (directoryKind === 'employees' && directorySalary.trim() && (!Number.isFinite(numeric(directorySalary)) || numeric(directorySalary) < 0)) { setDirectoryError(t('finance.workspace.invalidSalary')); return; }
+    if (directoryKind !== 'employees' && directoryOperations.some((operation) => !Number.isFinite(operation.quantity) || operation.quantity <= 0 || !store.products.some((product) => product.id === operation.productId && product.active && (directoryKind !== 'providers' || product.type === 'product')))) {
+      setDirectoryError(t('finance.storeDirectoryUx.invalidOperations')); setDirectoryOperationsOpen(true); return;
+    }
+    if (directoryKind === 'employees' && directoryNextPayDate && !Number.isFinite(Date.parse(directoryNextPayDate))) { setDirectoryError(t('finance.storeDirectoryUx.invalidPayDate')); setDirectoryPayrollOpen(true); return; }
     const now = new Date().toISOString();
     finance.updateState((current) => {
       if (directoryKind === 'employees') {
-        const old = current.store.employees.find((item) => item.id === directoryId);
+        const old = current.store.employees.find((item) => item.id === directorySaveId.current);
         const salary = numeric(directorySalary);
-        const item: StoreEmployee = { id: directoryId ?? uid('employee'), name, role: directoryRole.trim() || undefined, phone: directoryPhone.trim() || undefined, salary: Number.isFinite(salary) && salary > 0 ? salary : 0, salaryCurrency: current.store.currency, payFrequency: directoryPayFrequency, payMode: directoryPayMode, nextPayDate: directoryNextPayDate || now, lastPaidDate: old?.lastPaidDate, active: directoryActive, createdAt: old?.createdAt ?? now };
+        const item: StoreEmployee = { id: directorySaveId.current ?? uid('employee'), name, role: directoryRole.trim() || undefined, phone: directoryPhone.trim() || undefined, salary: Number.isFinite(salary) && salary > 0 ? salary : 0, salaryCurrency: directorySalaryCurrency, payFrequency: directoryPayFrequency, payMode: directoryPayMode, nextPayDate: directoryNextPayDate || now, lastPaidDate: old?.lastPaidDate, active: directoryActive, createdAt: old?.createdAt ?? now };
         return { ...current, store: { ...current.store, employees: old ? current.store.employees.map((entry) => entry.id === item.id ? item : entry) : [item, ...current.store.employees] } };
       }
       if (directoryKind === 'providers') {
-        const old = current.store.providers.find((item) => item.id === directoryId);
-        const item: StoreProvider = { id: directoryId ?? uid('provider'), name, phone: directoryPhone.trim() || undefined, email: directoryEmail.trim() || undefined, note: directoryNote.trim() || undefined, defaultOperations: directoryOperations.filter((operation) => operation.productId && operation.quantity > 0), active: directoryActive, createdAt: old?.createdAt ?? now };
+        const old = current.store.providers.find((item) => item.id === directorySaveId.current);
+        const item: StoreProvider = { id: directorySaveId.current ?? uid('provider'), name, phone: directoryPhone.trim() || undefined, email: directoryEmail.trim() || undefined, note: directoryNote.trim() || undefined, defaultOperations: directoryOperations.filter((operation) => operation.productId && operation.quantity > 0), active: directoryActive, createdAt: old?.createdAt ?? now };
         return { ...current, store: { ...current.store, providers: old ? current.store.providers.map((entry) => entry.id === item.id ? item : entry) : [item, ...current.store.providers] } };
       }
-      const old = current.store.clients.find((item) => item.id === directoryId);
-      const item: StoreClient = { id: directoryId ?? uid('client'), name, phone: directoryPhone.trim() || undefined, email: directoryEmail.trim() || undefined, note: directoryNote.trim() || undefined, defaultOperations: directoryOperations.filter((operation) => operation.productId && operation.quantity > 0), active: directoryActive, createdAt: old?.createdAt ?? now };
+      const old = current.store.clients.find((item) => item.id === directorySaveId.current);
+      const item: StoreClient = { id: directorySaveId.current ?? uid('client'), name, phone: directoryPhone.trim() || undefined, email: directoryEmail.trim() || undefined, note: directoryNote.trim() || undefined, defaultOperations: directoryOperations.filter((operation) => operation.productId && operation.quantity > 0), active: directoryActive, createdAt: old?.createdAt ?? now };
       return { ...current, store: { ...current.store, clients: old ? current.store.clients.map((entry) => entry.id === item.id ? item : entry) : [item, ...current.store.clients] } };
     });
     setDirectoryOpen(false);
   };
 
   const executeDefaultOperations = (kind: DirectoryKind, id: string) => {
-    const directory = kind === 'providers' ? store.providers.find((item) => item.id === id) : store.clients.find((item) => item.id === id);
-    const operations = directory?.defaultOperations ?? [];
-    if (!directory || !operations.length) return;
-    const now = new Date().toISOString();
-    if (kind === 'providers') {
-      const provider = directory as StoreProvider;
-      finance.updateState((current) => ({
-        ...current,
-        store: {
-          ...current.store,
-          stockMovements: [...current.store.stockMovements, ...operations.filter((operation) => current.store.products.some((product) => product.id === operation.productId && product.type === 'product')).map((operation) => ({ id: uid('store-stock'), productId: operation.productId, type: 'entry' as const, quantity: operation.quantity, date: now, note: `${t('finance.store.defaultOperations')} · ${provider.name}` }))],
-        },
-      }));
-      return;
-    }
-    const client = directory as StoreClient;
-    const productsById = new Map(store.products.map((product) => [product.id, product]));
-    const items = operations.map((operation) => {
-      const product = productsById.get(operation.productId);
-      return product ? { productId: product.id, name: product.name, type: product.type, quantity: operation.quantity, unitPrice: product.salePrice, total: product.salePrice * operation.quantity } : null;
-    }).filter((item): item is StoreSaleItem => Boolean(item));
-    if (!items.length) return;
-    const sale: StoreSale = { id: uid('store-sale'), date: now, items, total: items.reduce((sum, item) => sum + item.total, 0), currency, status: 'completed', note: t('finance.store.defaultOperations'), clientId: client.id };
-    const result = completeStoreSale(state, sale, uid, t('finance.store.saleStock'), t('finance.store.cashMovement.sale'));
-    if (result.error) { Alert.alert(t(`finance.store.errors.${result.error}`)); return; }
-    finance.updateState((current) => completeStoreSale(current, sale, uid, t('finance.store.saleStock'), t('finance.store.cashMovement.sale')).state);
+    if (kind === 'employees') return;
+    let error = '';
+    finance.updateState((current) => {
+      const directory = kind === 'providers' ? current.store.providers.find((item) => item.id === id) : current.store.clients.find((item) => item.id === id);
+      const operations = directory?.defaultOperations ?? [];
+      if (!directory?.active || !operations.length) return current;
+      const products = new Map(current.store.products.filter((product) => product.active).map((product) => [product.id, product]));
+      if (operations.some((operation) => !Number.isFinite(operation.quantity) || operation.quantity <= 0 || !products.has(operation.productId) || (kind === 'providers' && products.get(operation.productId)?.type !== 'product'))) {
+        error = t('finance.storeDirectoryUx.invalidOperations'); return current;
+      }
+      const date = new Date().toISOString();
+      if (kind === 'providers') return {
+        ...current, store: { ...current.store, stockMovements: [...current.store.stockMovements, ...operations.map((operation) => ({ id: uid('store-stock'), productId: operation.productId, type: 'entry' as const, quantity: operation.quantity, date, providerId: directory.id, note: `${t('finance.store.defaultOperations')} / ${directory.name}` }))] },
+      };
+      const items = operations.map((operation) => {
+        const product = products.get(operation.productId)!;
+        return { productId: product.id, name: product.name, type: product.type, quantity: operation.quantity, unitPrice: product.salePrice, total: product.salePrice * operation.quantity };
+      });
+      const sale: StoreSale = { id: uid('store-sale'), date, items, total: items.reduce((sum, item) => sum + item.total, 0), currency: current.store.currency, status: 'completed', note: t('finance.store.defaultOperations'), clientId: directory.id };
+      const result = completeStoreSale(current, sale, uid, t('finance.store.saleStock'), t('finance.store.cashMovement.sale'));
+      if (result.error) error = t(`finance.store.errors.${result.error}`);
+      return result.state;
+    });
+    if (error) setStoreActionError(error);
   };
 
   const commitFunding = (allowNegative: boolean) => {
     const amount = numeric(fundingAmount);
     if (!Number.isFinite(amount) || amount <= 0) { setFundingError(t('finance.storeFunding.invalid')); return; }
-    const source = state.accounts.find((item) => item.id === fundingAccountId && !item.archived && item.type !== 'debt');
-    if (fundingAccountId !== 'none' && !source) {
-      setFundingError(t('finance.storePurchase.sourceRequired'));
-      return;
-    }
-    if (!source) {
-      finance.updateState((current) => withStoreBalance({ ...current, store: { ...current.store, cashMovements: [...current.store.cashMovements, { id: uid('store-cash'), type: 'funding', amount, currency: current.store.currency, date: new Date().toISOString(), note: fundingNote.trim() }] } }));
-      setAddOpen(false); return;
-    }
-    const sourceToStoreRate = currencyRate(source.currency, currency, state.settings.exchangeRates ?? { USD: 1 });
-    if (!sourceToStoreRate) { setFundingError(t('finance.storeFunding.missingRate')); return; }
-    const rawSourceAmount = amount / sourceToStoreRate;
-    if (!Number.isFinite(rawSourceAmount) || rawSourceAmount <= 0) { setFundingError(t('finance.storeFunding.invalid')); return; }
-    const sourceAmount = Number(rawSourceAmount.toPrecision(12));
-    if (!allowNegative && accountBalance(state, source.id) < sourceAmount) {
-      Alert.alert(t('finance.negativeBalance.title'), t('finance.negativeBalance.body'), [{ text: t('finance.cancel'), style: 'cancel' }, { text: t('finance.negativeBalance.confirm'), onPress: () => commitFunding(true) }]);
-      return;
-    }
-    finance.addTransfer({ id: uid('store-funding'), fromAccountId: source.id, toAccountId: 'store-business', fromAmount: sourceAmount, toAmount: amount, fromCurrency: source.currency, toCurrency: currency, rate: Number(sourceToStoreRate.toPrecision(12)), fee: 0, date: new Date().toISOString(), note: fundingNote.trim(), status: 'cleared' });
+    const id = fundingSubmissionId.current ?? (fundingSubmissionId.current = uid('store-funding'));
+    let error = '';
+    let needsConfirmation = false;
+    finance.updateState((current) => {
+      if (current.transfers.some((item) => item.id === id) || current.store.cashMovements.some((item) => item.id === id || item.transferId === id)) return current;
+      const source = current.accounts.find((item) => item.id === fundingAccountId && !item.archived && item.type !== 'debt');
+      if (fundingAccountId !== 'none' && !source) { error = t('finance.storePurchase.sourceRequired'); return current; }
+      if (!Number.isFinite(current.store.businessAccount.balance + amount)) { error = t('finance.storeFunding.invalid'); return current; }
+      const date = new Date().toISOString();
+      if (!source) return withStoreBalance({ ...current, store: { ...current.store, cashMovements: [...current.store.cashMovements, { id, type: 'funding', amount, currency: current.store.currency, date, note: fundingNote.trim() }] } });
+      const rate = currencyRate(source.currency, current.store.currency, current.settings.exchangeRates ?? { USD: 1 });
+      if (!rate) { error = t('finance.storeFunding.missingRate'); return current; }
+      const sourceAmount = Number((amount / rate).toPrecision(12));
+      if (!Number.isFinite(sourceAmount) || sourceAmount <= 0) { error = t('finance.storeFunding.invalid'); return current; }
+      const sourceBalance = accountBalance(current, source.id);
+      if (!Number.isFinite(sourceBalance - sourceAmount)) { error = t('finance.storeFunding.invalid'); return current; }
+      if (!allowNegative && sourceBalance < sourceAmount) { needsConfirmation = true; return current; }
+      return registerFundingTransfer(current, { id, fromAccountId: source.id, toAccountId: 'store-business', fromAmount: sourceAmount, toAmount: amount, fromCurrency: source.currency, toCurrency: current.store.currency, rate, fee: 0, date, note: fundingNote.trim(), status: 'cleared' });
+    });
+    if (error) { setFundingError(error); return; }
+    if (needsConfirmation) { setPendingFunding(true); return; }
+    setFundingError('');
     setAddOpen(false);
   };
 
@@ -836,14 +875,16 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     const currentUnitsPerUsd = currency === 'USD' ? 1 : numeric(currentCurrencyPerUsd);
     const targetUnitsPerUsd = target === 'USD' ? 1 : numeric(storeCurrencyPerUsd);
     if (!target || !Number.isFinite(currentUnitsPerUsd) || currentUnitsPerUsd <= 0 || !Number.isFinite(targetUnitsPerUsd) || targetUnitsPerUsd <= 0) { setStoreCurrencyRateError(t('finance.exchangeRateRequired')); return; }
+    let conversionFailed = false;
     const currentUsdRate = 1 / currentUnitsPerUsd;
     const targetUsdRate = 1 / targetUnitsPerUsd;
     finance.updateState((current) => {
       const exchangeRates = { ...(current.settings.exchangeRates ?? {}), USD: 1, [currency]: currentUsdRate, [target]: targetUsdRate };
       const changed = changeStoreCurrency(current, target, exchangeRates, convertStoreHistory);
-      if (changed.error) return current;
+      if (changed.error) { conversionFailed = true; return current; }
       return { ...changed.state, settings: { ...changed.state.settings, exchangeRates } };
     });
+    if (conversionFailed) { setStoreCurrencyRateError(t('finance.releaseErrors.missingRate')); return; }
     setStoreCurrency(target);
     setCurrencyChangeOpen(false);
     setPendingStoreCurrency('');
@@ -885,7 +926,9 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
   }), [t]);
 
   const exportReport = async (format: 'pdf' | 'xlsx') => {
-    if (backupBusy) return;
+    if (reportRangeError) { setStoreActionError(reportRangeError); return; }
+    if (backupInFlight.current || pendingStoreBackup) return;
+    backupInFlight.current = true;
     setBackupBusy(true);
     try {
       const fileName = `solid-gold-rich-report-${new Date().toISOString().slice(0, 10)}.${format}`;
@@ -896,12 +939,14 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     } catch {
       Alert.alert(t('finance.store.reportExportFailed'), t('finance.store.reportExportFailedCopy'));
     } finally {
+      backupInFlight.current = false;
       setBackupBusy(false);
     }
   };
 
   const exportStore = async () => {
-    if (backupBusy) return;
+    if (backupInFlight.current || pendingStoreBackup) return;
+    backupInFlight.current = true;
     setBackupBusy(true);
     try {
       const backup = await backupRepository.createStoreJson(store);
@@ -910,12 +955,14 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     } catch {
       Alert.alert(t('finance.storeBackup.backupFailed'), t('finance.storeBackup.backupFailedCopy'));
     } finally {
+      backupInFlight.current = false;
       setBackupBusy(false);
     }
   };
 
   const importStore = async () => {
-    if (backupBusy) return;
+    if (backupInFlight.current || pendingStoreBackup) return;
+    backupInFlight.current = true;
     setBackupBusy(true);
     setImportBusy(true);
     try {
@@ -926,6 +973,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     } catch {
       Alert.alert(t('finance.storeBackup.backupFailed'), t('finance.storeBackup.backupInvalid'));
     } finally {
+      backupInFlight.current = false;
       setBackupBusy(false);
       setImportBusy(false);
     }
@@ -933,7 +981,8 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
 
   const confirmStoreImport = async () => {
     const backup = pendingStoreBackup;
-    if (!backup) return;
+    if (!backup || backupInFlight.current) return;
+    backupInFlight.current = true;
     setPendingStoreBackup(null);
     setBackupBusy(true);
     setImportBusy(true);
@@ -947,6 +996,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     } catch {
       Alert.alert(t('finance.storeBackup.backupFailed'), t('finance.storeBackup.backupInvalid'));
     } finally {
+      backupInFlight.current = false;
       setBackupBusy(false);
       setImportBusy(false);
     }
@@ -988,23 +1038,50 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       if (operation.stockMovementId) {
         const movement = current.store.stockMovements.find((item) => item.id === operation.stockMovementId);
         if (!movement) return current;
+        const product = current.store.products.find((item) => item.id === movement.productId);
+        if (productStock(current, movement.productId) - movement.quantity < Math.max(0, product?.reservedQuantity ?? 0)) {
+          setOperationError(t('finance.storeOperationsUx.stockDeletionBlocked'));
+          return current;
+        }
         const withLinkedFinance = movement.personalTransactionId ? removeTransaction(current, movement.personalTransactionId) : current;
         return withStoreBalance({ ...withLinkedFinance, store: { ...withLinkedFinance.store, stockMovements: withLinkedFinance.store.stockMovements.filter((item) => item.id !== movement.id), cashMovements: movement.cashMovementId ? withLinkedFinance.store.cashMovements.filter((item) => item.id !== movement.cashMovementId) : withLinkedFinance.store.cashMovements } });
       }
       const movement = current.store.cashMovements.find((item) => item.id === operation.cashMovementId);
       if (!movement) return current;
-      return movement.transferId ? removeTransfer(current, movement.transferId) : withStoreBalance({ ...current, store: { ...current.store, cashMovements: current.store.cashMovements.filter((item) => item.id !== movement.id) } });
+      const linkedState = movement.transferId ? removeTransfer(current, movement.transferId) : movement.personalTransactionId ? removeTransaction(current, movement.personalTransactionId) : current;
+      return withStoreBalance({ ...linkedState, store: { ...linkedState.store, cashMovements: linkedState.store.cashMovements.filter((item) => item.id !== movement.id) } });
     });
     setPendingOperationDeletion(null);
   };
 
-  const renderOperations = () => <View style={styles.flex}><View style={styles.toolbar}><View style={styles.search}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={saleHistoryQuery} onChangeText={setSaleHistoryQuery} placeholder={t('finance.modules.searchActivity')} placeholderTextColor={C.textSubtle} style={styles.searchInput} /></View><SegmentedControl options={(['all', 'today', 'week', 'month'] as SalePeriod[]).map((item) => ({ value: item, label: t(`finance.store.salePeriod.${item}`) }))} value={salePeriod} onChange={(value) => setSalePeriod(value as SalePeriod)} /></View><FlatList data={visibleOperations} keyExtractor={(item) => item.id} contentContainerStyle={[styles.list, !visibleOperations.length && styles.listEmpty]} renderItem={({ item }) => { const amount = item.amount === undefined ? undefined : storeAmount(state, item.amount, item.currency); const quantity = item.quantity; return <Pressable style={styles.storeOperationRow} onPress={() => item.saleId && setSelectedSaleId(item.saleId)}><View style={[styles.saleIcon, item.kind === 'cash' && styles.operationCashIcon, item.kind === 'stock' && styles.operationStockIcon]}><Ionicons name={item.kind === 'sale' ? 'receipt-outline' : item.kind === 'stock' ? 'cube-outline' : 'wallet-outline'} size={20} color={C.gold} /></View><View style={styles.rowMain}><Text style={styles.rowTitle} numberOfLines={2}>{item.title}</Text><Text style={styles.saleMetaLine} numberOfLines={2}>{item.description} · {new Date(item.date).toLocaleString()}</Text></View><View style={styles.operationAmountSide}>{amount !== undefined ? <Text style={[styles.operationAmountValue, amount < 0 && styles.negative]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>{amount >= 0 ? '+' : ''}{money(amount, currency)}</Text> : <Text style={[styles.operationAmountValue, quantity !== undefined && quantity < 0 && styles.negative]}>{quantity !== undefined && quantity >= 0 ? '+' : ''}{quantity} {t('finance.store.units')}</Text>}<Pressable style={styles.operationDeleteButton} onPress={() => setPendingOperationDeletion(item)} accessibilityRole="button" accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View></Pressable>; }} ListEmptyComponent={<Empty title={t('finance.operations')} copy={saleHistoryQuery || salePeriod !== 'all' ? t('finance.storeFilters.noResults') : t('finance.store.noBusinessMovementsCopy')} icon="list-outline" />} /></View>;
+  const renderOperations = () => <View style={styles.flex}>
+    <View style={styles.toolbar}>
+      <View style={styles.search}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={saleHistoryQuery} onChangeText={setSaleHistoryQuery} placeholder={t('finance.modules.searchActivity')} placeholderTextColor={C.textSubtle} style={styles.searchInput} accessibilityLabel={t('finance.modules.searchActivity')} autoCorrect={false} returnKeyType="search" />{saleHistoryQuery ? <Pressable style={styles.operationDeleteButton} onPress={() => setSaleHistoryQuery('')} accessibilityRole="button" accessibilityLabel={t('finance.activityUx.clearSearch')}><Ionicons name="close-circle-outline" size={18} color={C.textSubtle} /></Pressable> : null}</View>
+      <SegmentedControl options={(['today', 'week', 'month', 'all'] as SalePeriod[]).map((item) => ({ value: item, label: t(`finance.store.salePeriod.${item}`) }))} value={salePeriod} onChange={(value) => setSalePeriod(value as SalePeriod)} />
+      {operationError ? <Text style={styles.negative} accessibilityLiveRegion="polite">{operationError}</Text> : null}
+    </View>
+    <FlatList data={visibleOperations} keyExtractor={(item) => item.id} contentContainerStyle={[styles.list, !visibleOperations.length && styles.listEmpty]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" renderItem={({ item }) => {
+      const amount = item.amount;
+      const quantity = item.quantity;
+      return <View style={styles.storeOperationRow}>
+        <Pressable style={styles.operationContent} disabled={!item.saleId} onPress={() => item.saleId && setSelectedSaleId(item.saleId)} accessibilityRole={item.saleId ? 'button' : undefined}>
+          <View style={[styles.saleIcon, item.kind === 'cash' && styles.operationCashIcon, item.kind === 'stock' && styles.operationStockIcon]}><Ionicons name={item.kind === 'sale' ? 'receipt-outline' : item.kind === 'stock' ? 'cube-outline' : 'wallet-outline'} size={20} color={C.gold} /></View>
+          <View style={styles.rowMain}><Text style={styles.rowTitle} numberOfLines={2}>{item.title}</Text><Text style={styles.saleMetaLine} numberOfLines={2}>{[item.description, new Date(item.date).toLocaleString()].filter(Boolean).join(' / ')}</Text></View>
+          <View style={styles.operationAmountSide}>
+            {amount !== undefined ? <Text style={[styles.operationAmountValue, amount < 0 && styles.negative]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>{amount > 0 ? '+' : ''}{money(amount, item.currency ?? currency)}</Text> : null}
+            {quantity !== undefined ? <Text style={[styles.operationAmountValue, quantity < 0 && styles.negative]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>{quantity > 0 ? '+' : ''}{quantity} {item.unit ?? t('finance.store.units')}</Text> : null}
+          </View>
+        </Pressable>
+        <Pressable style={styles.operationDeleteButton} onPress={() => { setOperationError(''); setPendingOperationDeletion(item); }} accessibilityRole="button" accessibilityLabel={`${t('finance.deleteAction')}: ${item.title}`}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable>
+      </View>;
+    }} ListEmptyComponent={<Empty title={t('finance.operations')} copy={saleHistoryQuery || salePeriod !== 'all' ? t('finance.storeFilters.noResults') : t('finance.store.noBusinessMovementsCopy')} icon="list-outline" />} />
+  </View>;
 
   const renderProviderDetails = () => {
     const provider = store.providers.find((item) => item.id === selectedProviderId);
     if (!provider) return null;
     const operations = provider.defaultOperations ?? [];
-    return <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"><View style={styles.providerDetailHero}><View style={styles.avatar}><Text style={styles.avatarText}>{provider.name.charAt(0).toUpperCase()}</Text></View><View style={styles.rowMain}><Text style={styles.viewIntroTitle}>{provider.name}</Text><Text style={styles.rowMeta}>{[provider.phone, provider.email].filter(Boolean).join(' · ') || t('finance.store.clientContactEmpty')}</Text></View><Pressable style={styles.iconButton} onPress={() => openDirectory('providers', provider)} accessibilityRole="button" accessibilityLabel={t('finance.editAction')}><Ionicons name="pencil-outline" size={19} color={C.gold} /></Pressable></View><Text style={styles.sectionTitle}>{t('finance.store.defaultOperations')}</Text>{operations.length ? <View style={styles.providerOperationsCard}>{operations.map((operation) => { const product = store.products.find((item) => item.id === operation.productId); return <View key={operation.id} style={styles.providerOperationRow}><View style={styles.productIcon}><Ionicons name={product?.type === 'service' ? 'construct-outline' : 'cube-outline'} size={19} color={C.gold} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{product?.name ?? operation.productId}</Text><Text style={styles.rowMeta}>{operation.quantity} {t('finance.store.units')}</Text></View></View>; })}</View> : <Empty title={t('finance.store.noOperations')} copy={t('finance.store.providersCopy')} icon="list-outline" />}<Pressable style={[styles.primaryButton, !operations.length && styles.buttonDisabled]} onPress={() => executeDefaultOperations('providers', provider.id)} disabled={!operations.length}><Ionicons name="play-outline" size={17} color={C.void} /><Text style={styles.primaryButtonText}>{t('finance.store.executeOperations')}</Text></Pressable></ScrollView>;
+    return <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled"><View style={styles.providerDetailHero}><View style={styles.avatar}><Text style={styles.avatarText}>{provider.name.charAt(0).toUpperCase()}</Text></View><View style={styles.rowMain}><Text style={styles.viewIntroTitle}>{provider.name}</Text><Text style={styles.rowMeta}>{[provider.phone, provider.email].filter(Boolean).join(' · ') || t('finance.store.clientContactEmpty')}</Text></View><Pressable style={styles.iconButton} onPress={() => openDirectory('providers', provider)} accessibilityRole="button" accessibilityLabel={t('finance.editAction')}><Ionicons name="pencil-outline" size={19} color={C.gold} /></Pressable></View><Text style={styles.sectionTitle}>{t('finance.store.defaultOperations')}</Text>{operations.length ? <View style={styles.providerOperationsCard}>{operations.map((operation) => { const product = store.products.find((item) => item.id === operation.productId); return <View key={operation.id} style={styles.providerOperationRow}><View style={styles.productIcon}><Ionicons name={product?.type === 'service' ? 'construct-outline' : 'cube-outline'} size={19} color={C.gold} /></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{product?.name ?? operation.productId}</Text><Text style={styles.rowMeta}>{operation.quantity} {t('finance.store.units')}</Text></View></View>; })}</View> : <Empty title={t('finance.store.noOperations')} copy={t('finance.store.providersCopy')} icon="list-outline" />}<Pressable style={[styles.primaryButton, (!provider.active || !operations.length) && styles.buttonDisabled]} onPress={() => executeDefaultOperations('providers', provider.id)} disabled={!provider.active || !operations.length}><Ionicons name="play-outline" size={17} color={C.void} /><Text style={styles.primaryButtonText}>{t('finance.store.executeOperations')}</Text></Pressable></ScrollView>;
   };
 
   const renderDirectory = (kind: DirectoryKind) => {
@@ -1015,7 +1092,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     const emptyTitle = kind === 'clients' ? 'finance.store.noClients' : kind === 'providers' ? 'finance.store.noProviders' : 'finance.store.noEmployees';
     const emptyCopy = kind === 'clients' ? 'finance.store.clientsCopy' : kind === 'providers' ? 'finance.store.providersCopy' : 'finance.store.employeesCopy';
     const directoryIcon = kind === 'clients' ? 'person-outline' : kind === 'providers' ? 'business-outline' : 'people-outline';
-    return <View style={styles.flex}><View style={styles.toolbar}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={[styles.search, { flex: 1 }]}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={directoryQuery} onChangeText={setDirectoryQuery} placeholder={t('finance.store.directorySearch')} placeholderTextColor={C.textSubtle} style={styles.searchInput} /></View><Pressable style={styles.addSmall} onPress={() => openDirectory(kind)} accessibilityLabel={`${t('finance.store.addDirectory')} ${t(directoryLabel)}`}><Ionicons name="add" size={20} color={C.gold} /></Pressable></View></View><FlatList data={items} keyExtractor={(item) => item.id} contentContainerStyle={[styles.list, !items.length && styles.listEmpty]} renderItem={({ item }) => <View style={[styles.directoryRow, !item.active && styles.inactive]}><Pressable style={styles.directoryMain} onPress={() => kind === 'providers' ? setSelectedProviderId(item.id) : openDirectory(kind, item)}><View style={styles.avatar}><Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{item.name}</Text><Text style={styles.rowMeta}>{kind === 'employees' ? [('role' in item && item.role) || t('finance.store.employeeRoleEmpty'), 'salary' in item && item.salary > 0 ? `${money(item.salary, currency)} · ${t(`finance.payroll.frequency.${item.payFrequency}`)}` : t('finance.payroll.notConfigured')].join(' · ') : [item.phone, 'email' in item ? item.email : ''].filter(Boolean).join(' · ') || t('finance.store.clientContactEmpty')}</Text></View></Pressable>{(kind === 'providers' || kind === 'clients') && 'defaultOperations' in item && item.defaultOperations?.length ? <Pressable style={styles.operationButton} onPress={() => executeDefaultOperations(kind, item.id)}><Ionicons name="play-outline" size={15} color={C.void} /><Text style={styles.payButtonText}>{t('finance.store.executeOperations')}</Text></Pressable> : null}{kind === 'employees' && item.active && 'salary' in item && item.salary > 0 ? <Pressable style={styles.payButton} onPress={() => payEmployee(item.id)}><Ionicons name="cash-outline" size={15} color={C.void} /><Text style={styles.payButtonText}>{t('finance.payroll.pay')}</Text></Pressable> : null}<Ionicons name="chevron-forward" size={17} color={C.textSubtle} /></View>} ListEmptyComponent={<Empty title={t(emptyTitle)} copy={all.length ? t('finance.storeFilters.noResults') : t(emptyCopy)} icon={directoryIcon as IconName} />} /></View>;
+    return <View style={styles.flex}><View style={styles.toolbar}><View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}><View style={[styles.search, { flex: 1 }]}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={directoryQuery} onChangeText={setDirectoryQuery} placeholder={t('finance.store.directorySearch')} placeholderTextColor={C.textSubtle} style={styles.searchInput} accessibilityLabel={t('finance.store.directorySearch')} autoCorrect={false} /></View><Pressable style={styles.addSmall} onPress={() => openDirectory(kind)} accessibilityLabel={`${t('finance.store.addDirectory')} ${t(directoryLabel)}`}><Ionicons name="add" size={20} color={C.gold} /></Pressable></View></View><FlatList data={items} keyExtractor={(item) => item.id} contentContainerStyle={[styles.list, !items.length && styles.listEmpty]} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" renderItem={({ item }) => <View style={[styles.directoryRow, !item.active && styles.inactive]}><Pressable style={styles.directoryMain} onPress={() => kind === 'providers' ? setSelectedProviderId(item.id) : openDirectory(kind, item)}><View style={styles.avatar}><Text style={styles.avatarText}>{item.name.charAt(0).toUpperCase()}</Text></View><View style={styles.rowMain}><Text style={styles.rowTitle}>{item.name}</Text><Text style={styles.rowMeta}>{kind === 'employees' ? [('role' in item && item.role) || t('finance.store.employeeRoleEmpty'), 'salary' in item && item.salary > 0 ? `${money(item.salary, item.salaryCurrency ?? currency)} · ${t(`finance.payroll.frequency.${item.payFrequency}`)}` : t('finance.payroll.notConfigured')].join(' · ') : [item.phone, 'email' in item ? item.email : ''].filter(Boolean).join(' · ') || t('finance.store.clientContactEmpty')}</Text></View></Pressable>{item.active && (kind === 'providers' || kind === 'clients') && 'defaultOperations' in item && item.defaultOperations?.length ? <Pressable style={styles.operationButton} onPress={() => executeDefaultOperations(kind, item.id)}><Ionicons name="play-outline" size={15} color={C.void} /><Text style={styles.payButtonText}>{t('finance.store.executeOperations')}</Text></Pressable> : null}{kind === 'employees' && item.active && 'salary' in item && item.salary > 0 ? <Pressable style={styles.payButton} onPress={() => payEmployee(item.id)}><Ionicons name="cash-outline" size={15} color={C.void} /><Text style={styles.payButtonText}>{t('finance.payroll.pay')}</Text></Pressable> : null}<Ionicons name="chevron-forward" size={17} color={C.textSubtle} /></View>} ListEmptyComponent={<Empty title={t(emptyTitle)} copy={all.length ? t('finance.storeFilters.noResults') : t(emptyCopy)} icon={directoryIcon as IconName} />} /></View>;
   };
 
   const renderMovements = () => {
@@ -1105,7 +1182,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     : [directoryPhone.trim(), directoryEmail.trim()].filter(Boolean).join(' · ') || t(directoryKind === 'clients' ? 'finance.store.clientsCopy' : 'finance.store.providersCopy');
   const directorySalaryAmount = numeric(directorySalary || '0');
   const directoryHasSalary = Number.isFinite(directorySalaryAmount) && directorySalaryAmount > 0;
-  const directorySalarySummary = directoryHasSalary ? `${money(directorySalaryAmount, currency)} · ${t(`finance.payroll.frequency.${directoryPayFrequency}`)}` : t('finance.payroll.notConfigured');
+  const directorySalarySummary = directoryHasSalary ? `${money(directorySalaryAmount, directorySalaryCurrency)} · ${t(`finance.payroll.frequency.${directoryPayFrequency}`)}` : t('finance.payroll.notConfigured');
   const title = isProviderDetails ? store.providers.find((provider) => provider.id === selectedProviderId)?.name ?? t('finance.store.provider') : view === 'operations' ? t('finance.operations') : view === 'movements' ? t('finance.store.viewMovements') : view === 'statistics' ? t('finance.storeStats.title') : view === 'archived' ? t('finance.store.archivedProducts') : view === 'settings' ? t('finance.store.settings') : t(`finance.store.${view}`);
   const content = view === 'inventory' || view === 'services' ? renderProducts() : view === 'archived' ? renderArchivedProducts() : view === 'operations' ? renderOperations() : view === 'reports' ? renderReports() : view === 'movements' ? renderMovements() : view === 'statistics' ? renderStatistics() : view === 'settings' ? renderSettings() : renderDirectory(view);
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}><View style={styles.root}>
@@ -1116,6 +1193,9 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     <ConfirmDialog visible={exitPromptOpen} title={t('finance.exit.title')} message={t('finance.exit.copy')} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.exit.confirm')} icon="power-outline" destructive={false} onCancel={() => setExitPromptOpen(false)} onConfirm={() => { setExitPromptOpen(false); BackHandler.exitApp(); }} />
     <ConfirmDialog visible={Boolean(pendingStoreBackup)} title={t('finance.storeBackup.importStore')} message={t('finance.storeBackup.importConfirmCopy')} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.storeBackup.importStore')} icon="cloud-download-outline" destructive onCancel={() => setPendingStoreBackup(null)} onConfirm={() => void confirmStoreImport()} />
     <ConfirmDialog visible={Boolean(pendingProductDeletion)} title={t('finance.deleteProduct')} message={t('finance.deleteProductConfirm')} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.deleteAction')} icon="trash-outline" destructive onCancel={() => setPendingProductDeletion(null)} onConfirm={confirmProductDeletion} />
+    <ConfirmDialog visible={Boolean(pendingPayroll)} title={t('finance.payroll.insufficientTitle')} message={t('finance.payroll.insufficientBody')} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.payroll.payAnyway')} onCancel={() => setPendingPayroll(null)} onConfirm={() => { const employee = pendingPayroll; setPendingPayroll(null); if (employee) payEmployee(employee.id, true, false, employee.lastPaidDate ?? ''); }} />
+    <ConfirmDialog visible={Boolean(storeActionError)} title={t('finance.operations')} message={storeActionError} cancelLabel={t('finance.close')} confirmLabel={t('finance.done')} destructive={false} onCancel={() => setStoreActionError('')} onConfirm={() => setStoreActionError('')} />
+    <ConfirmDialog visible={pendingFunding} title={t('finance.negativeBalance.title')} message={t('finance.negativeBalance.body')} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.negativeBalance.confirm')} onCancel={() => setPendingFunding(false)} onConfirm={() => { setPendingFunding(false); commitFunding(true); }} />
     <ConfirmDialog visible={Boolean(pendingOperationDeletion)} title={t('finance.deleteEntry')} message={t('finance.deleteEntryConfirm')} cancelLabel={t('finance.cancel')} confirmLabel={t('finance.deleteAction')} icon="trash-outline" destructive onCancel={() => setPendingOperationDeletion(null)} onConfirm={confirmOperationDeletion} />
     <Modal visible={importBusy} transparent animationType="fade" statusBarTranslucent><View style={styles.importBackdrop}><View style={styles.importCard}><ActivityIndicator size="large" color={C.gold} /><Text style={styles.importTitle}>{t('finance.releaseImport.importing')}</Text><Text style={styles.importCopy}>{t('finance.releaseImport.importingCopy')}</Text></View></View></Modal>
 
@@ -1161,7 +1241,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       <FormField label={t('finance.storeFunding.note')} value={fundingNote} onChangeText={setFundingNote} />
     </ResponsiveSheet>
 
-    <ResponsiveSheet visible={productOpen} title={editingProduct ? (productDraft.type === 'service' ? t('finance.store.service') : t('finance.store.editProduct')) : (productDraft.type === 'service' ? t('finance.store.service') : t('finance.store.newProduct'))} onClose={() => setProductOpen(false)} closeLabel={t('finance.close')} footer={<FormActions cancelLabel={t('finance.cancel')} saveLabel={t('finance.store.saveProduct')} onCancel={() => setProductOpen(false)} onSave={() => commitProduct(false)} destructiveLabel={editingProduct ? (editingProduct.active ? t('finance.store.archiveProduct') : t('finance.store.restoreProduct')) : undefined} onDestructive={editingProduct ? () => { finance.updateState((current) => ({ ...current, store: { ...current.store, products: current.store.products.map((item) => item.id === editingProduct.id ? { ...item, active: !item.active } : item) } })); setProductOpen(false); } : undefined} />}>
+    <ResponsiveSheet visible={productOpen} title={editingProduct ? (productDraft.type === 'service' ? t('finance.store.service') : t('finance.store.editProduct')) : (productDraft.type === 'service' ? t('finance.store.service') : t('finance.store.newProduct'))} onClose={() => setProductOpen(false)} closeLabel={t('finance.close')} footer={<>{Object.values(productErrors).some(Boolean) ? <Text accessibilityLiveRegion="polite" style={{ color: C.red, marginBottom: 6 }}>{t('finance.formUx.reviewErrors')}</Text> : null}<FormActions cancelLabel={t('finance.cancel')} saveLabel={t('finance.store.saveProduct')} onCancel={() => setProductOpen(false)} onSave={() => commitProduct(false)} destructiveLabel={editingProduct ? (editingProduct.active ? t('finance.store.archiveProduct') : t('finance.store.restoreProduct')) : undefined} onDestructive={editingProduct ? () => { finance.updateState((current) => ({ ...current, store: { ...current.store, products: current.store.products.map((item) => item.id === editingProduct.id ? { ...item, active: !item.active } : item) } })); setProductOpen(false); } : undefined} /></>}>
       <StoreProductForm
         draft={productDraft}
         errors={productErrors}
@@ -1234,6 +1314,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
     </ResponsiveSheet>
 
     <ResponsiveSheet visible={directoryOpen} title={`${t(directoryId ? 'finance.store.editDirectory' : 'finance.store.addDirectory')} ${directoryTypeLabel}`} onClose={() => setDirectoryOpen(false)} closeLabel={t('finance.close')} footer={<FormActions cancelLabel={t('finance.cancel')} saveLabel={t('finance.save')} onCancel={() => setDirectoryOpen(false)} onSave={saveDirectory} disabled={!directoryName.trim()} />}>
+      {directoryError ? <Text style={styles.negative} accessibilityLiveRegion="polite">{directoryError}</Text> : null}
       <View style={styles.directoryHero}>
         <View style={styles.directoryHeroAvatar}><Text style={styles.directoryHeroAvatarText}>{directoryName.trim().charAt(0).toUpperCase() || '?'}</Text><View style={styles.directoryHeroAvatarBadge}><Ionicons name={directoryKind === 'clients' ? 'person-outline' : directoryKind === 'providers' ? 'business-outline' : 'people-outline'} size={10} color={C.void} /></View></View>
         <View style={styles.rowMain}><Text style={styles.directoryHeroType}>{directoryTypeLabel}</Text><Text style={styles.directoryHeroTitle} numberOfLines={1}>{directoryName.trim() || t('finance.store.directoryNamePlaceholder')}</Text><Text style={styles.directoryHeroSummary} numberOfLines={2}>{directoryContactSummary}</Text></View>
@@ -1250,7 +1331,7 @@ export default function StoreScreen({ backupRepository, fileService, imageStorag
       </DirectoryFormSection>
 
       {directoryKind === 'employees' ? <DirectoryFormSection icon="cash-outline" title={t('finance.payroll.salary')} summary={directorySalarySummary} expanded={directoryPayrollOpen} onToggle={() => setDirectoryPayrollOpen((current) => !current)}>
-        <FormField label={t('finance.payroll.salary')} value={directorySalary} onChangeText={(value) => { setDirectorySalary(value); setDirectoryError(''); }} numeric placeholder={t('finance.amount')} error={directoryError} />
+        <FormField label={`${t('finance.payroll.salary')} (${directorySalaryCurrency})`} value={directorySalary} onChangeText={(value) => { setDirectorySalary(value); setDirectoryError(''); }} numeric placeholder={t('finance.amount')} error={directoryError} />
         {directoryHasSalary ? <><SegmentedControl label={t('finance.payroll.frequencyLabel')} options={(['weekly', 'biweekly', 'monthly'] as StorePayFrequency[]).map((value) => ({ value, label: t(`finance.payroll.frequency.${value}`) }))} value={directoryPayFrequency} onChange={(value) => setDirectoryPayFrequency(value as StorePayFrequency)} /><SegmentedControl label={t('finance.payroll.modeLabel')} options={[{ value: 'manual', label: t('finance.payroll.manual') }, { value: 'automatic', label: t('finance.payroll.automatic') }]} value={directoryPayMode} onChange={(value) => setDirectoryPayMode(value as StorePayMode)} /><DateSelect label={t('finance.payroll.nextDate')} value={directoryNextPayDate} emptyLabel={t('finance.payroll.nextDateEmpty')} onChange={setDirectoryNextPayDate} /></> : null}
         <Text style={styles.directorySectionHint}>{t('finance.payroll.accountHint')}</Text>
       </DirectoryFormSection> : <>
@@ -1306,7 +1387,7 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   list: { width: '100%', maxWidth: 760, alignSelf: 'center', paddingHorizontal: 16, paddingTop: 4, paddingBottom: 136 }, listEmpty: { flexGrow: 1 }, content: { width: '100%', maxWidth: 760, alignSelf: 'center', padding: 16, paddingBottom: 136 },
   productSwipeRow: { position: 'relative', overflow: 'hidden' }, productSwipeActions: { ...StyleSheet.absoluteFillObject, flexDirection: 'row', justifyContent: 'flex-end' }, productSwipeAction: { width: 74, alignItems: 'center', justifyContent: 'center', gap: 3 }, productSwipeActionEdit: { backgroundColor: 'rgba(233,200,119,0.12)' }, productSwipeActionDanger: { backgroundColor: 'rgba(240,139,136,0.13)' }, productSwipeActionText: { color: C.gold, fontFamily: SANS, fontSize: 8, fontWeight: '700' }, productSwipeActionTextDanger: { color: C.red }, productSwipeContent: { backgroundColor: C.background }, productRow: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 8, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 8 }, productMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 }, productIcon: { width: 42, height: 42, borderRadius: 13, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, productImage: { width: '100%', height: '100%' }, productIconChoices: { gap: 8, paddingVertical: 7 }, productIconChoice: { width: 44, height: 44, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.035)', alignItems: 'center', justifyContent: 'center' }, productIconChoiceActive: { backgroundColor: C.gold, borderColor: C.gold }, rowMain: { flex: 1, minWidth: 0 }, rowTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13 }, rowMeta: { color: 'rgba(255,244,208,0.46)', fontFamily: SANS, fontSize: 10, lineHeight: 15, marginTop: 3 }, dangerMeta: { color: '#F08B88', fontFamily: SANS, fontSize: 10, marginTop: 3 }, stockSide: { flexDirection: 'row', alignItems: 'center' }, stockValue: { minWidth: 34, textAlign: 'right', color: C.goldLight, fontFamily: SERIF, fontSize: 15 }, iconButton: { width: 44, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center' }, inactive: { opacity: 0.48 }, inactiveText: { color: 'rgba(255,244,208,0.28)' },
   saleRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 10 }, saleIcon: { width: 42, height: 42, borderRadius: 14, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center' }, saleIconVoided: { backgroundColor: 'rgba(240,139,136,0.08)' }, saleRowContent: { flex: 1, minWidth: 0 }, saleRowTop: { flexDirection: 'row', alignItems: 'center', gap: 8 }, saleStatusText: { color: C.gold, fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 0.4 }, saleStatusVoided: { color: C.red }, saleMetaLine: { color: 'rgba(255,244,208,0.46)', fontFamily: SANS, fontSize: 10, marginTop: 5 }, saleAmountSide: { alignItems: 'flex-end', gap: 2 }, amount: { color: C.goldLight, fontFamily: SERIF, fontSize: 14, maxWidth: '38%' },
-  directoryRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 8 }, directoryMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 }, payButton: { minHeight: 32, borderRadius: 10, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.gold }, operationButton: { minHeight: 32, borderRadius: 10, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.gold }, payButtonText: { color: C.void, fontFamily: SANS, fontSize: 9, fontWeight: '700' }, avatar: { width: 40, height: 40, borderRadius: 13, backgroundColor: 'rgba(233,200,119,0.1)', alignItems: 'center', justifyContent: 'center' }, avatarText: { color: C.goldLight, fontFamily: SERIF, fontSize: 17 }, providerDetailHero: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingBottom: 18 }, providerOperationsCard: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, paddingHorizontal: 13 }, providerOperationRow: { minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, primaryButton: { minHeight: 45, borderRadius: 13, backgroundColor: C.gold, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 16 }, primaryButtonText: { color: C.void, fontFamily: SANS, fontSize: 11, fontWeight: '800' }, storeOperationRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 9 }, operationCashIcon: { backgroundColor: 'rgba(233,200,119,0.12)' }, operationStockIcon: { backgroundColor: 'rgba(147,197,253,0.1)' }, operationAmountSide: { alignItems: 'flex-end', gap: 4, maxWidth: 125 }, operationAmountValue: { color: C.goldLight, fontFamily: SERIF, fontSize: 13, maxWidth: 125 }, operationDeleteButton: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center' },
+  directoryRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 8 }, directoryMain: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 }, payButton: { minHeight: 44, borderRadius: 10, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.gold }, operationButton: { minHeight: 44, borderRadius: 10, paddingHorizontal: 8, flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: C.gold }, payButtonText: { color: C.void, fontFamily: SANS, fontSize: 9, fontWeight: '700' }, avatar: { width: 40, height: 40, borderRadius: 13, backgroundColor: 'rgba(233,200,119,0.1)', alignItems: 'center', justifyContent: 'center' }, avatarText: { color: C.goldLight, fontFamily: SERIF, fontSize: 17 }, providerDetailHero: { flexDirection: 'row', alignItems: 'center', gap: 11, paddingBottom: 18 }, providerOperationsCard: { borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, paddingHorizontal: 13 }, providerOperationRow: { minHeight: 60, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, primaryButton: { minHeight: 45, borderRadius: 13, backgroundColor: C.gold, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 16 }, primaryButtonText: { color: C.void, fontFamily: SANS, fontSize: 11, fontWeight: '800' }, storeOperationRow: { minHeight: 76, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line, paddingVertical: 9 }, operationCashIcon: { backgroundColor: 'rgba(233,200,119,0.12)' }, operationStockIcon: { backgroundColor: 'rgba(147,197,253,0.1)' }, operationAmountSide: { alignItems: 'flex-end', gap: 4, maxWidth: 125 }, operationAmountValue: { color: C.goldLight, fontFamily: SERIF, fontSize: 13, maxWidth: 125 }, operationContent: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 10 }, operationDeleteButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
   flowHero: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, padding: 12, marginBottom: 5 }, flowHeroSide: { flex: 1, minWidth: 0 }, flowHeroLabel: { color: 'rgba(233,200,119,0.58)', fontFamily: SANS, fontSize: 8, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' }, flowHeroValue: { color: C.goldLight, fontFamily: SERIF, fontSize: 16, marginTop: 4 }, flowHeroMeta: { color: 'rgba(255,244,208,0.44)', fontFamily: SANS, fontSize: 9, marginTop: 3 }, stockSummary: { flexDirection: 'row', alignItems: 'center', gap: 10, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, padding: 12, marginBottom: 3 }, saleSummary: { flexDirection: 'row', alignItems: 'center', borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, padding: 11, marginBottom: 4 }, directoryHero: { minHeight: 72, flexDirection: 'row', alignItems: 'center', gap: 11, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.2)', backgroundColor: 'rgba(233,200,119,0.055)', padding: 11, marginBottom: 11 }, directoryHeroAvatar: { position: 'relative', width: 46, height: 46, borderRadius: 15, backgroundColor: 'rgba(233,200,119,0.14)', alignItems: 'center', justifyContent: 'center' }, directoryHeroAvatarBadge: { position: 'absolute', right: -4, bottom: -4, width: 19, height: 19, borderRadius: 7, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#0A0C14' }, directoryHeroAvatarText: { color: C.goldLight, fontFamily: SERIF, fontSize: 20 }, directoryHeroType: { color: 'rgba(233,200,119,0.58)', fontFamily: SANS, fontSize: 8, fontWeight: '800', letterSpacing: 1, textTransform: 'uppercase' }, directoryHeroTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 17, marginTop: 2 }, directoryHeroSummary: { color: C.textSubtle, fontFamily: SANS, fontSize: 9.5, lineHeight: 14, marginTop: 2 }, directoryStatusDot: { width: 9, height: 9, borderRadius: 5, backgroundColor: C.gold, shadowColor: C.gold, shadowOpacity: 0.55, shadowRadius: 5 }, directoryStatusDotInactive: { backgroundColor: C.textSubtle, shadowOpacity: 0 },
   directoryFormSection: { borderRadius: 17, borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(233,200,119,0.13)', backgroundColor: 'rgba(255,255,255,0.018)', marginBottom: 9, overflow: 'hidden' }, directoryFormSectionHeader: { minHeight: 58, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 11, paddingVertical: 9 }, directoryFormSectionIcon: { width: 36, height: 36, borderRadius: 11, backgroundColor: 'rgba(233,200,119,0.09)', alignItems: 'center', justifyContent: 'center' }, directoryFormSectionTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 11.5, fontWeight: '700' }, directoryFormSectionSummary: { color: C.textSubtle, fontFamily: SANS, fontSize: 9, marginTop: 3 }, directoryFormSectionBadge: { minWidth: 24, height: 24, borderRadius: 8, backgroundColor: 'rgba(233,200,119,0.13)', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 }, directoryFormSectionBadgeText: { color: C.gold, fontFamily: SANS, fontSize: 9, fontWeight: '800' }, directoryFormSectionBody: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: 'rgba(233,200,119,0.11)', paddingHorizontal: 12, paddingTop: 3, paddingBottom: 12 }, directoryFieldRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 }, directoryFieldRowStacked: { flexDirection: 'column', alignItems: 'stretch', gap: 0 }, directoryFieldColumn: { flex: 1, minWidth: 0 }, directorySectionHint: { color: C.textSubtle, fontFamily: SANS, fontSize: 9.5, lineHeight: 15, marginTop: 10 },
   drawerBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.68)' },

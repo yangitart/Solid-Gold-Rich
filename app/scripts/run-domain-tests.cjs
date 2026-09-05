@@ -68,7 +68,7 @@ const {
   previousPeriodBounds,
   transactionImportKey,
 } = require('../src/features/finance/domain/services/financeDomain.ts');
-const { recordDebtPayment, recordSavingsContribution, removeTransfer, resolveImportedFinanceState } = require('../src/features/finance/application/services/financeStateOperations.ts');
+const { recordDebtPayment, recordSavingsContribution, removeTransfer, resolveImportedFinanceState, mergeImportedTransactions } = require('../src/features/finance/application/services/financeStateOperations.ts');
 const { removeNoteFolder } = require('../src/features/notes/application/useCases/removeNoteFolder.ts');
 const { applyPrefixToCurrentLine, continueListAfterNewline, countNotesByFolderTree, insertDividerAfterCurrentLine } = require('../src/features/notes/domain/services/noteText.ts');
 const { removeCategory } = require('../src/features/finance/application/useCases/removeCategory.ts');
@@ -159,6 +159,30 @@ async function run() {
   assert.deepEqual(importCsv('date,kind,amount\n2025-01-31,expense,-1', 'cup-account', 'USD').errors, ['header']);
   assert.deepEqual(importCsv('date,kind,amount,currency\n"2025-01-31,expense,1,USD', 'cup-account', 'USD').errors, ['header']);
 
+  // CSV preserves historical conversion and account ownership across repeated imports.
+  const csvRoundTripState = emptyFinanceState();
+  csvRoundTripState.accounts = [account('usd-import', 'USD'), account('cup-import', 'CUP')];
+  csvRoundTripState.settings.exchangeRates = { USD: 1, CUP: 500 };
+  const historicalPayment = { ...csvState.transactions[0], id: 'historical', accountId: 'cup-import', baseAmount: 7, baseCurrency: 'USD', description: 'Line one\rLine two' };
+  const csvMultiAccount = exportFinanceCsv({ ...csvRoundTripState, transactions: [historicalPayment, { ...historicalPayment, id: 'second', accountId: 'usd-import', currency: 'USD', amount: 2, baseAmount: 2 }] });
+  const multiImport = importCsv(csvMultiAccount, 'usd-import', 'USD', csvRoundTripState.accounts);
+  assert.deepEqual(multiImport.errors, []);
+  assert.deepEqual(multiImport.items.map((item) => item.accountId), ['cup-import', 'usd-import']);
+  assert.equal(multiImport.items[0].description, historicalPayment.description);
+  const mergedImport = mergeImportedTransactions(csvRoundTripState, multiImport.items);
+  assert.equal(mergedImport.state.transactions[0].baseAmount, 7);
+  assert.equal(mergeImportedTransactions(mergedImport.state, multiImport.items).duplicateCount, 2);
+  assert.equal(mergeImportedTransactions(mergedImport.state, multiImport.items).state.transactions.length, 2);
+  assert.deepEqual(importCsv('date,kind,amount,currency\nnot-a-date,income,2,USD', 'usd-import', 'USD').errors, ['row:2:invalid']);
+  assert.deepEqual(importCsv('date,kind,amount,currency\n2025-01-31,transfer,2,USD', 'usd-import', 'USD').errors, ['row:2:invalid']);
+  assert.deepEqual(importCsv('date,kind,amount,currency,accountId\n2025-01-31,income,2,USD,missing', 'usd-import', 'USD', csvRoundTripState.accounts).errors, ['row:2:invalid']);
+  const adjustmentImport = importCsv('date,kind,amount,currency\n2025-01-31,adjustment,-2,USD', 'usd-import', 'USD');
+  assert.equal(adjustmentImport.items[0].kind, 'adjustment');
+  assert.equal(adjustmentImport.items[0].amount, -2);
+  const negativeSnapshot = importCsv('date,kind,amount,currency,baseAmount,baseCurrency\n2025-01-31,adjustment,-20,CUP,-1,USD', 'cup-import', 'CUP');
+  assert.equal(negativeSnapshot.items[0].baseAmount, -1);
+  assert.deepEqual(importCsv('date,kind,amount,currency,amount\n2025-01-31,income,2,USD,3', 'usd-import', 'USD').errors, ['header']);
+
   const marchRange = periodBounds('month', new Date(2026, 2, 15, 12), 1);
   const februaryRange = previousPeriodBounds('month', marchRange);
   assert.deepEqual([februaryRange.start.getFullYear(), februaryRange.start.getMonth(), februaryRange.start.getDate()], [2026, 1, 1]);
@@ -197,6 +221,13 @@ async function run() {
   incomingImportState.store.name = 'Backup store';
   assert.equal(resolveImportedFinanceState(localImportState, incomingImportState, true).store.name, 'Local store');
   assert.equal(resolveImportedFinanceState(localImportState, incomingImportState, false).store.name, 'Backup store');
+  localImportState.store.stockMovements = [{ id: 'stock-link', personalTransactionId: 'foreign-payment' }];
+  localImportState.store.cashMovements = [{ id: 'cash-link', transferId: 'foreign-transfer', personalTransactionId: 'foreign-payment' }];
+  const detachedImport = resolveImportedFinanceState(localImportState, incomingImportState, true);
+  assert.equal(detachedImport.store.stockMovements[0].personalTransactionId, undefined);
+  assert.equal(detachedImport.store.cashMovements[0].transferId, undefined);
+  assert.equal(localImportState.store.cashMovements[0].transferId, 'foreign-transfer');
+
   const spent = budgetSpent({ id: 'b', accountId: 'a', category: 'food', period: 'monthly', startDate: '', endDate: '', limit: 100, rollover: false, rolloverAmount: 0 }, [
     { ...balances.transactions[0], id: 'expense', kind: 'expense', category: 'food', amount: 10, date: '2026-01-10T12:00:00.000Z' },
     { ...balances.transactions[0], id: 'transfer', kind: 'transfer', category: 'food', amount: 99, date: '2026-01-10T12:00:00.000Z', transferId: 'x' },
@@ -495,9 +526,23 @@ async function run() {
   const serializedAppBackup = JSON.stringify(appBackup);
   assert.equal(serializedAppBackup.includes('file:///product.jpg'), false);
   assert.equal(serializedAppBackup.includes('aW1hZ2U='), true);
+  const conflictingBackup = JSON.parse(serializedAppBackup);
+  conflictingBackup.state.accounts.push(conflictingBackup.state.accounts[0]);
+  assert.throws(() => parseAppBackup(JSON.stringify(conflictingBackup)), /invalid-app-backup/);
+  const orphanBackup = JSON.parse(serializedAppBackup);
+  orphanBackup.state.transactions[0].accountId = 'missing-account';
+  assert.throws(() => parseAppBackup(JSON.stringify(orphanBackup)), /invalid-app-backup/);
+  const conflictingStore = await createStoreBackup(storeWithPictures);
+  conflictingStore.store.products.push(conflictingStore.store.products[0]);
+  assert.throws(() => parseStoreBackup(JSON.stringify(conflictingStore)), /invalid-store-backup/);
   const restoredApp = await restoreAppBackupToDevice(parseAppBackup(serializedAppBackup));
   const appArchive = await createAppArchive(completeState);
   assert.ok(appArchive.length > 4);
+  assert.throws(() => parseAppArchive(bytesToBase64(appArchive.slice(0, -22))), /invalid-archive/);
+  assert.throws(() => parseAppArchive(bytesToBase64(appArchive.slice(0, -1))), /invalid-archive/);
+  const badDirectory = new Uint8Array(appArchive);
+  new DataView(badDirectory.buffer).setUint16(badDirectory.length - 12, 99, true);
+  assert.throws(() => parseAppArchive(bytesToBase64(badDirectory)), /invalid-archive/);
   const corruptedArchive = new Uint8Array(appArchive);
   corruptedArchive[50] ^= 1;
   assert.throws(() => parseAppArchive(bytesToBase64(corruptedArchive)), /invalid-archive/);

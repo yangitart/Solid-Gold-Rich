@@ -1,5 +1,5 @@
 import React from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTranslation } from 'react-i18next';
 import { C, SANS, createThemeStyles } from '@/shared/theme/luxury';
@@ -104,16 +104,17 @@ export default function StoreProductForm({
   onClearExpiration,
 }: ProductFormProps) {
   const { t } = useTranslation();
+  const { width, fontScale } = useWindowDimensions();
+  const stacked = width < 380 || fontScale > 1.2;
   const initialPurchaseTotal = Number(draft.stock || '0') * Number(draft.purchasePrice || '0');
   const showPurchaseSource = !editing && !service && Number.isFinite(initialPurchaseTotal) && initialPurchaseTotal > 0;
   return <View style={styles.form}>
-    <Section icon="barcode-outline" title={t('finance.store.sectionIdentity')} showHeader={false}>
+    <Section icon="barcode-outline" title={t('finance.store.sectionIdentity')}>
       <FormField label={service ? t('finance.store.service') : t('finance.store.productName')} value={draft.name} onChangeText={(value) => onChangeText('name', value, ['name'])} required error={errors.name} />
       {!service ? <FormField label={t('finance.store.productKey')} value={draft.key} onChangeText={(value) => onChangeText('key', value, ['key'])} required error={errors.key} /> : null}
       <SearchableSelect label={t('finance.store.category')} value={draft.categoryId} options={categoryOptions} onChange={onCategoryChange} placeholder={t('finance.store.generalCategory')} searchPlaceholder={t('finance.search')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} emptyAction={{ label: (query) => `${t('finance.store.addCategory')} “${query}”`, onPress: onAddCategory }} required error={errors.category} />
       <Pressable style={styles.manageCategories} onPress={onManageCategories} accessibilityRole="button"><View style={styles.manageCategoriesIcon}><Ionicons name="settings-outline" size={17} color={C.gold} /></View><Text style={styles.manageCategoriesText}>{t('finance.store.manageCategories')}</Text><Ionicons name="chevron-forward" size={17} color={C.textSubtle} /></Pressable>
       <SearchableSelect label={t('finance.store.unit')} value={customUnitOpen ? '__custom__' : draft.unit} options={unitOptions} onChange={onUnitChange} placeholder={t('finance.store.unit')} searchPlaceholder={t('finance.search')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} required error={errors.unit} />
-      <SearchableSelect label={t('finance.store.provider')} value={draft.providerId ?? ''} options={providerOptions} onChange={onProviderChange} placeholder={t('finance.store.noneSelected')} searchPlaceholder={t('finance.search')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} />
       {customUnitOpen ? <View style={styles.customUnitFields}>
         <FormField label={t('finance.storeUnits.fullName')} value={draft.unit} onChangeText={(value) => onChangeText('unit', value, ['unit', 'unitName'])} placeholder={t('finance.storeUnits.fullNamePlaceholder')} required error={errors.unit || errors.unitName} />
         <FormField label={t('finance.storeUnits.abbreviation')} value={draft.unitAbbreviation} onChangeText={(value) => onChangeText('unitAbbreviation', value, ['unitAbbreviation'])} placeholder={t('finance.storeUnits.abbreviationPlaceholder')} required maxLength={4} error={errors.unitAbbreviation} />
@@ -121,14 +122,14 @@ export default function StoreProductForm({
     </Section>
 
     <Section icon="pricetag-outline" title={t('finance.store.sectionPrices')}>
-      <View style={styles.twoColumns}>
+      <View style={[styles.twoColumns, stacked && { flexDirection: 'column' }]}>
         <View style={styles.column}><FormField label={t('finance.store.salePrice')} value={draft.salePrice} onChangeText={(value) => onChangeText('salePrice', value, ['salePrice', 'numbers'])} numeric required error={errors.salePrice} /></View>
         <View style={styles.column}><FormField label={t('finance.store.purchasePrice')} value={draft.purchasePrice} onChangeText={(value) => onChangeText('purchasePrice', value, ['numbers', 'purchase'])} numeric error={errors.numbers} /></View>
       </View>
     </Section>
 
     {!service ? <Section icon="cube-outline" title={t('finance.store.sectionInventory')}>
-      <View style={styles.twoColumns}>
+      <View style={[styles.twoColumns, stacked && { flexDirection: 'column' }]}>
         <View style={styles.column}>{editing ? <FormField label={t('finance.store.quantityReserve')} value={draft.reservedQuantity} onChangeText={(value) => onChangeText('reservedQuantity', value, ['reserve', 'numbers'])} numeric error={errors.reserve || errors.numbers} /> : <FormField label={t('finance.store.quantity')} value={draft.stock} onChangeText={(value) => onChangeText('stock', value, ['numbers', 'purchase'])} numeric error={errors.numbers} />}</View>
         <View style={styles.column}><FormField label={t('finance.store.stockMinimum')} value={draft.stockMinimum} onChangeText={(value) => onChangeText('stockMinimum', value, ['numbers'])} numeric error={errors.numbers} /></View>
       </View>
@@ -136,13 +137,15 @@ export default function StoreProductForm({
     </Section> : null}
 
     <Section icon="layers-outline" title={t('finance.store.moreDetails')} collapsible open={moreOpen} onPress={onToggleMore}>
+      <SearchableSelect label={t('finance.store.provider')} value={draft.providerId ?? ''} options={providerOptions} onChange={onProviderChange} placeholder={t('finance.store.noneSelected')} searchPlaceholder={t('finance.search')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} />
       <Pressable style={styles.picturePicker} onPress={onChoosePicture}><View style={styles.pictureBox}>{draft.picture ? <Image source={{ uri: draft.picture }} style={styles.pictureImage} /> : <Ionicons name="image-outline" size={22} color={C.gold} />}</View><View style={styles.pictureCopy}><Text style={styles.rowTitle}>{t('finance.store.picture')}</Text><Text style={styles.rowMeta} numberOfLines={2}>{t('finance.store.picturePickerCopy')}</Text></View><Ionicons name="chevron-forward" size={17} color={C.textSubtle} /></Pressable>
+      {errors.picture ? <Text accessibilityLiveRegion="polite" style={{ color: C.red }}>{errors.picture}</Text> : null}
       {draft.picture ? <Pressable style={styles.inlineAction} onPress={onRemovePicture}><Text style={styles.dangerLink}>{t('finance.store.removePicture')}</Text></Pressable> : null}
       {!draft.picture ? <View style={styles.iconPicker}><View style={styles.iconHeader}><Text style={styles.subLabel}>{t('finance.chooseIcon')}</Text><View style={styles.selectedIcon}><Ionicons name={draft.icon} size={18} color={C.goldLight} /></View></View><View style={styles.iconChoices} accessibilityLabel={t('finance.chooseIcon')}>{PRODUCT_ICON_OPTIONS.map((icon) => { const selected = draft.icon === icon; return <Pressable key={icon} style={[styles.iconChoice, selected && styles.iconChoiceActive]} onPress={() => onIconChange(icon)} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={t('finance.chooseIcon')}><Ionicons name={icon} size={20} color={selected ? C.void : C.gold} />{selected ? <View style={styles.iconSelectedMark}><Ionicons name="checkmark" size={10} color={C.void} /></View> : null}</Pressable>; })}</View></View> : null}
       {draft.additionalSalePrices.map((price, index) => <View key={index} style={styles.additionalPriceRow}><View style={styles.additionalPriceField}><FormField label={`${t('finance.store.additionalSalePrice')} ${index + 1}`} value={price} onChangeText={(value) => onAdditionalPriceChange(index, value)} numeric error={errors.numbers} /></View><Pressable style={styles.removeButton} onPress={() => onRemoveAdditionalPrice(index)} accessibilityLabel={t('finance.deleteAction')}><Ionicons name="trash-outline" size={17} color={C.red} /></Pressable></View>)}
       <Pressable style={styles.inlineAction} onPress={onAddAdditionalPrice}><Ionicons name="add" size={17} color={C.gold} /><Text style={styles.link}>{t('finance.store.addSalePrice')}</Text></Pressable>
-      {!service ? <><DateSelect label={t('finance.store.expiration')} value={draft.expirationDate} emptyLabel={t('finance.store.noExpiration')} onChange={onExpirationChange} /><Pressable style={styles.inlineAction} onPress={onClearExpiration}><Text style={styles.link}>{t('finance.store.clearExpiration')}</Text></Pressable></> : null}
-      <FormField label={t('finance.store.additionalInfo')} value={draft.additionalInfo} onChangeText={(value) => onChangeText('additionalInfo', value, ['picture'])} multiline error={errors.picture} />
+      {!service ? <><DateSelect label={t('finance.store.expiration')} value={draft.expirationDate} emptyLabel={t('finance.store.noExpiration')} onChange={onExpirationChange} />{draft.expirationDate ? <Pressable style={styles.inlineAction} onPress={onClearExpiration}><Text style={styles.link}>{t('finance.store.clearExpiration')}</Text></Pressable> : null}</> : null}
+      <FormField label={t('finance.store.additionalInfo')} value={draft.additionalInfo} onChangeText={(value) => onChangeText('additionalInfo', value)} multiline />
     </Section>
   </View>;
 }
@@ -163,6 +166,6 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   iconChoiceActive: { backgroundColor: C.gold, borderColor: C.gold },
   iconSelectedMark: { position: 'absolute', top: 3, right: 3, width: 14, height: 14, borderRadius: 7, backgroundColor: C.goldLight, alignItems: 'center', justifyContent: 'center' },
   twoColumns: { flexDirection: 'row', gap: 9 }, column: { flex: 1, minWidth: 0 }, additionalPriceRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 8 }, additionalPriceField: { flex: 1, minWidth: 0 }, removeButton: { width: 40, height: 43, alignItems: 'center', justifyContent: 'center' },
-  inlineAction: { minHeight: 35, flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, paddingHorizontal: 2 }, link: { color: C.gold, fontFamily: SANS, fontSize: 10.5, fontWeight: '700' }, dangerLink: { color: C.red, fontFamily: SANS, fontSize: 10.5, fontWeight: '700' },
+  inlineAction: { minHeight: 44, flexDirection: 'row', alignItems: 'center', alignSelf: 'flex-start', gap: 6, paddingHorizontal: 2 }, link: { color: C.gold, fontFamily: SANS, fontSize: 10.5, fontWeight: '700' }, dangerLink: { color: C.red, fontFamily: SANS, fontSize: 10.5, fontWeight: '700' },
   picturePicker: { minHeight: 66, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, pictureBox: { width: 46, height: 46, borderRadius: 13, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }, pictureImage: { width: '100%', height: '100%' }, pictureCopy: { flex: 1, minWidth: 0 }, rowTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 12 }, rowMeta: { color: 'rgba(255,244,208,0.46)', fontFamily: SANS, fontSize: 10, lineHeight: 15, marginTop: 3 },
 }));

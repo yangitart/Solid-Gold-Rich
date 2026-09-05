@@ -4,6 +4,8 @@
   "version": "1.0.0",
   "scripts": {
     "start": "expo start",
+    "start:offline": "expo start --offline",
+    "emulator": "node scripts/start-emulator.cjs",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "lint": "expo lint",

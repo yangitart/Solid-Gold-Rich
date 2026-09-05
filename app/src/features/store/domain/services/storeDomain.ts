@@ -3,7 +3,7 @@ import { currencyRate, type CurrencyRates } from '@/shared/domain/finance/curren
 
 export type StoreStateContainer = { store: StoreState; settings?: { exchangeRates?: CurrencyRates } };
 
-export type StoreActionResult<T extends StoreStateContainer = StoreStateContainer> = { state: T; error?: 'duplicate' | 'missing-product' | 'insufficient-stock' | 'already-void' };
+export type StoreActionResult<T extends StoreStateContainer = StoreStateContainer> = { state: T; error?: 'duplicate' | 'missing-product' | 'insufficient-stock' | 'already-void' | 'invalid-sale' };
 export type StoreCurrencyChangeResult<T extends StoreStateContainer = StoreStateContainer> = { state: T; rate?: number; error?: 'missing-rate' };
 export type StoreStatisticsRange = { start: Date; end: Date };
 export type StoreStockFilter = '' | 'low' | 'out' | 'expired' | 'expiring';
@@ -73,6 +73,16 @@ export function changeStoreCurrency<T extends StoreStateContainer>(state: T, tar
   if (rate === undefined) return { state, error: 'missing-rate' };
   if (sourceCurrency === target) return { state, rate };
 
+  const amounts = [
+    ...state.store.products.flatMap((product) => [product.purchasePrice, product.salePrice, ...product.additionalSalePrices].map((amount) => ({ amount, currency: product.currency }))),
+    ...state.store.cashMovements.map((movement) => ({ amount: movement.amount, currency: movement.currency })),
+    ...state.store.sales.flatMap((sale) => [sale.total, ...sale.items.flatMap((item) => [item.unitPrice, item.total])].map((amount) => ({ amount, currency: sale.currency }))),
+    ...state.store.employees.map((employee) => ({ amount: employee.salary, currency: employee.salaryCurrency })),
+  ];
+  if (amounts.some((item) => {
+    const itemRate = currencyRate(item.currency ?? sourceCurrency, target, rates);
+    return itemRate === undefined || !Number.isFinite(item.amount * itemRate);
+  })) return { state, error: 'missing-rate' };
   const convert = (amount: number, fromCurrency?: string) => {
     const historicalRate = currencyRate(fromCurrency ?? sourceCurrency, target, rates);
     return historicalRate === undefined ? amount : amount * historicalRate;
@@ -248,13 +258,23 @@ export function appendCashMovement<T extends StoreStateContainer>(state: T, move
 
 export function validateSale(state: StoreStateContainer, sale: StoreSale): StoreActionResult['error'] {
   if (state.store.sales.some((item) => item.id === sale.id)) return 'duplicate';
+  if (!sale.items.length || !Number.isFinite(sale.total) || sale.total < 0) return 'invalid-sale';
   const productsById = firstById(state.store.products.filter((product) => product.active));
   const stockByProductId = productStockIndex(state);
+  const requested = new Map<string, number>();
+  let total = 0;
   for (const line of sale.items) {
     const product = productsById.get(line.productId);
     if (!product) return 'missing-product';
-    if (product.type === 'product' && line.quantity > availableStockFromIndex(stockByProductId, product)) return 'insufficient-stock';
+    if (line.type !== product.type || !Number.isFinite(line.quantity) || line.quantity <= 0
+      || !Number.isFinite(line.unitPrice) || line.unitPrice < 0 || !Number.isFinite(line.total) || line.total < 0
+      || Math.abs(line.quantity * line.unitPrice - line.total) > 0.005 + 1e-8) return 'invalid-sale';
+    const quantity = (requested.get(product.id) ?? 0) + line.quantity;
+    requested.set(product.id, quantity);
+    if (product.type === 'product' && quantity > availableStockFromIndex(stockByProductId, product)) return 'insufficient-stock';
+    total += line.total;
   }
+  if (!Number.isFinite(total) || Math.abs(total - sale.total) > 0.005 + 1e-8) return 'invalid-sale';
   return undefined;
 }
 

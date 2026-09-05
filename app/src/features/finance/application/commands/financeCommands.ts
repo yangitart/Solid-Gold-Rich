@@ -5,6 +5,7 @@ import { removeTransaction, removeTransfer } from '@/features/finance/applicatio
 import { withStoreBalance } from '@/features/store/domain/services/storeDomain';
 
 export function addAccount(state: FinanceState, account: Account): FinanceState {
+  if (state.accounts.some((item) => item.id === account.id)) return state;
   return { ...state, accounts: [...state.accounts, account], settings: { ...state.settings, activeAccountId: state.settings.activeAccountId ?? account.id } };
 }
 
@@ -23,12 +24,13 @@ export function restoreAccount(state: FinanceState, id: string): FinanceState {
 }
 
 export function addTransaction(state: FinanceState, transaction: Transaction): FinanceState {
+  if (state.transactions.some((item) => item.id === transaction.id)) return state;
   return { ...state, transactions: [{ ...transaction, ...captureCurrencySnapshot(transaction.amount, transaction.currency, state.settings.preferredCurrency, state.settings.exchangeRates ?? { USD: 1 }) }, ...state.transactions] };
 }
 
 export function updateTransaction(state: FinanceState, transaction: Transaction): FinanceState {
   const previous = state.transactions.find((item) => item.id === transaction.id);
-  const previousHistoricalRate = previous && previous.currency === transaction.currency && previous.amount > 0 && Number.isFinite(previous.baseAmount) && previous.baseCurrency
+  const previousHistoricalRate = previous && previous.currency === transaction.currency && previous.amount !== 0 && Number.isFinite(previous.baseAmount) && previous.baseCurrency
     ? (previous.baseAmount as number) / previous.amount
     : undefined;
   const snapshot = previousHistoricalRate !== undefined
@@ -38,6 +40,9 @@ export function updateTransaction(state: FinanceState, transaction: Transaction)
 }
 
 export function addTransfer(state: FinanceState, transfer: Transfer): FinanceState {
+  if (state.transfers.some((item) => item.id === transfer.id)
+    || state.transactions.some((item) => item.transferId === transfer.id || item.id === `${transfer.id}-in` || item.id === `${transfer.id}-out`)
+    || state.store.cashMovements.some((item) => item.transferId === transfer.id || item.id === `${transfer.id}-store-cash`)) return state;
   const isStoreSource = transfer.fromAccountId === 'store-business';
   const isStoreTarget = transfer.toAccountId === 'store-business';
   const fromTransaction: Transaction | null = isStoreSource ? null : {

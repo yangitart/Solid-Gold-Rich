@@ -1,6 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { AppLanguage, AppState as FinanceState } from '@/domain/AppState';
 import type {
+  Account,
   FinanceCategory,
   FinanceCategories,
   PaymentMethod,
@@ -174,7 +175,7 @@ function normalizeTransaction(value: Partial<Transaction>, accountId: string): T
     status,
     reference: text(value.reference),
     description: text(value.description || value.payee),
-    baseAmount: Number.isFinite(value.baseAmount) && Number(value.baseAmount) >= 0 ? Number(value.baseAmount) : undefined,
+    baseAmount: Number.isFinite(value.baseAmount) && (kind === 'adjustment' || Number(value.baseAmount) >= 0) ? Number(value.baseAmount) : undefined,
     baseCurrency: text(value.baseCurrency).toUpperCase() || undefined,
     splits: Array.isArray(value.splits) ? value.splits : undefined,
     transferId: text(value.transferId) || undefined,
@@ -682,7 +683,7 @@ function parseCsvRecords(text: string): string[][] {
   return records;
 }
 
-export function importCsv(csv: string, accountId: string, fallbackCurrency: string) {
+export function importCsv(csv: string, accountId: string, fallbackCurrency: string, accounts?: Account[]) {
   let records: string[][];
   try {
     records = parseCsvRecords(csv);
@@ -693,31 +694,46 @@ export function importCsv(csv: string, accountId: string, fallbackCurrency: stri
   const [headers, ...rows] = records;
   const normalizedHeaders = headers.map((header, headerIndex) => (headerIndex === 0 ? header.replace(/^\uFEFF/, '') : header).trim());
   const index = (name: string) => normalizedHeaders.indexOf(name);
-  if (index('date') < 0 || index('kind') < 0 || index('amount') < 0 || index('currency') < 0) return { items: [] as Transaction[], errors: ['header'] };
+  if (new Set(normalizedHeaders).size !== normalizedHeaders.length || index('date') < 0 || index('kind') < 0 || index('amount') < 0 || index('currency') < 0) return { items: [] as Transaction[], errors: ['header'] };
   const errors: string[] = [];
   const items: Transaction[] = [];
   for (const [rowIndex, cells] of rows.entries()) {
+    const kindValue = cells[index('kind')];
+    const date = cells[index('date')];
+    const currency = (cells[index('currency')] || fallbackCurrency).trim().toUpperCase();
+    const importedAccountId = cells[index('accountId')];
+    const importedAccountName = cells[index('account')];
+    const namedAccounts = accounts?.filter((item) => item.name === importedAccountName) ?? [];
+    const target = accounts ? (importedAccountId ? accounts.find((item) => item.id === importedAccountId)
+      : importedAccountName ? (namedAccounts.length === 1 ? namedAccounts[0] : undefined)
+        : accounts.find((item) => item.id === accountId)) : undefined;
+    if (cells.length !== normalizedHeaders.length || !/^[A-Z]{3}$/.test(currency) || !date || !Number.isFinite(Date.parse(date)) || !['income', 'expense', 'adjustment'].includes(kindValue)
+      || cells[index('transferId')] || cells[index('debtId')] || cells[index('savingsGoalId')]
+      || (accounts && (!target || target.currency !== currency))) {
+      errors.push(`row:${rowIndex + 2}:invalid`);
+      continue;
+    }
     const amountValue = cells[index('amount')];
     const amount = number(amountValue);
-    if (!amountValue?.trim() || !Number.isFinite(Number(amountValue)) || amount <= 0) {
+    if (!amountValue?.trim() || !Number.isFinite(Number(amountValue)) || (kindValue === 'adjustment' ? amount === 0 : amount <= 0)) {
       errors.push(`row:${rowIndex + 2}:amount`);
       continue;
     }
-    const kind = cells[index('kind')] === 'income' ? 'income' : 'expense';
+    const kind = kindValue as TransactionKind;
     items.push(normalizeTransaction({
-      id: `csv-${Date.now()}-${rowIndex}`,
-      accountId,
+      id: `csv-${Date.now()}-${Math.random().toString(36).slice(2, 9)}-${rowIndex}`,
+      accountId: target?.id ?? accountId,
       kind,
       amount,
-      currency: (cells[index('currency')] || fallbackCurrency).trim().toUpperCase(),
-      date: cells[index('date')] || new Date().toISOString(),
+      currency,
+      date,
       payee: cells[index('payee')],
       category: cells[index('category')] || 'other',
       paymentMethod: cells[index('paymentMethod')] as PaymentMethod,
       status: cells[index('status')] as TransactionStatus,
       reference: cells[index('reference')],
       description: cells[index('description')],
-      baseAmount: index('baseAmount') >= 0 && cells[index('baseAmount')]?.trim() && Number.isFinite(Number(cells[index('baseAmount')])) && Number(cells[index('baseAmount')]) >= 0 ? Number(cells[index('baseAmount')]) : undefined,
+      baseAmount: index('baseAmount') >= 0 && cells[index('baseAmount')]?.trim() && Number.isFinite(Number(cells[index('baseAmount')])) && (kind === 'adjustment' || Number(cells[index('baseAmount')]) >= 0) ? Number(cells[index('baseAmount')]) : undefined,
       baseCurrency: index('baseCurrency') >= 0 ? cells[index('baseCurrency')]?.trim().toUpperCase() : undefined,
     }, accountId));
   }

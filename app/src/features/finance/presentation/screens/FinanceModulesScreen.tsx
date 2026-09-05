@@ -11,10 +11,11 @@ import { waitForImportLoading } from '@/shared/infrastructure/files/importLoadin
 import { supportedLanguages } from '@/shared/i18n/i18next';
 import type { Account, Budget, Debt, FinanceCategory, RecurringFrequency, RecurringTransaction, SavingsGoal, Transaction } from '@/features/finance/domain/entities/financeTypes';
 import { C, FORM_TYPOGRAPHY, SANS, SERIF, createThemeStyles } from '@/shared/theme/luxury';
+import { useCurrentDate } from '@/shared/ui/useCurrentDate';
 import DateSelect from '@/shared/ui/DateSelect';
 import { ConfirmDialog, SearchableSelect } from '@/shared/ui/FormKit';
-import { captureCurrencySnapshot, currencyRate as resolveCurrencyRate } from '@/shared/domain/finance/currency';
-import { accountHasHistory, budgetSpent, filterActivityTransactions, inDateRange, periodBounds, transactionMatchesActivityFilter, type FinanceActivityFilter } from '@/features/finance/domain/services/financeDomain';
+import { captureCurrencySnapshot, historicalAmountInCurrency, currencyRate as resolveCurrencyRate } from '@/shared/domain/finance/currency';
+import { accountHasHistory, budgetSpent, isCashFlowTransaction, isTransferTransaction, filterActivityTransactions, inDateRange, periodBounds, transactionMatchesActivityFilter, type FinanceActivityFilter } from '@/features/finance/domain/services/financeDomain';
 import { recordDebtPayment, recordSavingsContribution } from '@/features/finance/application/services/financeStateOperations';
 import { removeCategory as removeFinanceCategory } from '@/features/finance/application/useCases/removeCategory';
 import type { FileService } from '@/shared/application/ports/FileService';
@@ -143,7 +144,8 @@ function ResponsiveModal({ visible, onClose, children }: { visible: boolean; onC
 
 export default function FinanceModulesScreen({ module: initialModule, onBack, initialActivityAccountId, backupRepository, fileService }: { module: FinanceModuleName; onBack: () => void; initialActivityAccountId?: string; backupRepository: BackupRepository; fileService: FileService }) {
   const { t, i18n: translationI18n } = useTranslation();
-  const isTablet = useWindowDimensions().width >= 700;
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const isTablet = windowWidth >= 700;
   const finance = useFinance();
   const { state } = finance;
   const [module, setModule] = React.useState<FinanceModuleName>(initialModule);
@@ -186,6 +188,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
   const [settingsSection, setSettingsSection] = React.useState<SettingsSection | null>(null);
   const [confirmPrompt, setConfirmPrompt] = React.useState<ConfirmPrompt | null>(null);
   const [pendingFinanceImport, setPendingFinanceImport] = React.useState<PendingFinanceImport | null>(null);
+  const fileOperationInFlight = React.useRef(false);
   const [importBusy, setImportBusy] = React.useState(false);
   const [currencyRateCurrency, setCurrencyRateCurrency] = React.useState('USD');
   const [currencyBaseDraft, setCurrencyBaseDraft] = React.useState('USD');
@@ -195,10 +198,12 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
   const [activityFilter, setActivityFilter] = React.useState<ActivityFilter>('all');
   const [activityAccountId, setActivityAccountId] = React.useState(() => initialActivityAccountId ?? state.settings.activeAccountId ?? state.accounts.find((account) => !account.archived)?.id ?? 'all');
   const [activityPeriod, setActivityPeriod] = React.useState<ActivityPeriod>('today');
+  const [activityPeriodOpen, setActivityPeriodOpen] = React.useState(false);
   const [activityCategory, setActivityCategory] = React.useState('all');
   const [activityQuery, setActivityQuery] = React.useState('');
   const [activityFilterOpen, setActivityFilterOpen] = React.useState(false);
-  const [activityCategoryQuery, setActivityCategoryQuery] = React.useState('');
+  const [activityPage, setActivityPage] = React.useState(0);
+  const activityListRef = React.useRef<SectionList<Transaction>>(null);
   const [debtPaymentTarget, setDebtPaymentTarget] = React.useState<Debt | null>(null);
   const [debtPaymentAmount, setDebtPaymentAmount] = React.useState('');
   const [debtPaymentAccountId, setDebtPaymentAccountId] = React.useState('');
@@ -318,12 +323,15 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
   }, [activityCategories, activityCategory]);
 
   React.useEffect(() => {
-    if (activityAccountId === 'all' || accounts.some((account) => account.id === activityAccountId)) return;
+    if (activityAccountId === 'all' || state.accounts.some((account) => account.id === activityAccountId)) return;
     setActivityAccountId(state.settings.activeAccountId && accounts.some((account) => account.id === state.settings.activeAccountId) ? state.settings.activeAccountId : 'all');
-  }, [accounts, activityAccountId, state.settings.activeAccountId]);
+  }, [accounts, activityAccountId, state.accounts, state.settings.activeAccountId]);
+
+  React.useEffect(() => {
+    setActivityPage(0);
+  }, [activityAccountId, activityCategory, activityFilter, activityPeriod, activityQuery]);
 
   const openActivityFilters = () => {
-    setActivityCategoryQuery('');
     setActivityFilterOpen(true);
   };
 
@@ -598,10 +606,14 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
     if (error === 'header') return t('finance.releaseImport.csvHeaderError');
     const duplicates = /^duplicates:(\d+)$/.exec(error);
     if (duplicates) return t('finance.releaseImport.csvDuplicates', { count: duplicates[1] });
+    const invalid = /^row:(\d+):invalid$/.exec(error);
+    if (invalid) return t('finance.formUx.csvInvalidRow', { row: invalid[1] });
     const match = /^row:(\d+):amount$/.exec(error);
     return match ? t('finance.releaseImport.csvAmountError', { row: match[1] }) : t('finance.releaseImport.csvUnknownError');
   }, [t]);
   const share = async (format: 'json' | 'csv' | 'zip') => {
+    if (fileOperationInFlight.current || pendingFinanceImport) return;
+    fileOperationInFlight.current = true;
     try {
       const fileName = `solid-gold-rich-${new Date().toISOString().slice(0, 10)}.${format}`;
       const mimeType = format === 'json' ? 'application/json' : format === 'csv' ? 'text/csv' : 'application/zip';
@@ -611,9 +623,11 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
       await fileService.share(uri, mimeType, t('finance.releaseExtra.dataBackups'));
     } catch {
       Alert.alert(t('finance.releaseImport.exportFailed'), t('finance.releaseImport.exportFailedCopy'));
-    }
+    } finally { fileOperationInFlight.current = false; }
   };
   const pickImportFile = async () => {
+    if (fileOperationInFlight.current || pendingFinanceImport) return;
+    fileOperationInFlight.current = true;
     setImportBusy(true);
     try {
       const result = await fileService.pick(['application/json', 'text/csv', 'application/zip', 'application/x-zip-compressed', 'text/plain']);
@@ -636,19 +650,21 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
           setPendingFinanceImport({ kind: includesStore ? 'full-json' : 'finance', json: content });
         }
       } else if (accounts[0]) {
-        const errors = finance.importCsvText(content, accounts[0].id);
+        const errors = finance.importCsvText(content, accounts.find((account) => account.id === state.settings.activeAccountId)?.id ?? accounts[0].id);
         if (errors.length) Alert.alert(t('finance.releaseImport.csvWarnings'), errors.map(csvErrorText).join('\n'));
       } else throw new Error('invalid-backup');
     } catch {
       Alert.alert(t('finance.releaseImport.importFailed'), t('finance.releaseImport.invalidBackup'));
     } finally {
+      fileOperationInFlight.current = false;
       setImportBusy(false);
     }
   };
 
   const confirmFinanceImport = async () => {
     const pending = pendingFinanceImport;
-    if (!pending) return;
+    if (!pending || fileOperationInFlight.current) return;
+    fileOperationInFlight.current = true;
     setPendingFinanceImport(null);
     setImportBusy(true);
     try {
@@ -661,20 +677,22 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
     } catch {
       Alert.alert(t('finance.releaseImport.importFailed'), t('finance.releaseImport.invalidBackup'));
     } finally {
+      fileOperationInFlight.current = false;
       setImportBusy(false);
     }
   };
 
   const toolNumber = (value: string) => {
     const parsed = Number(value.replace(',', '.'));
-    return Number.isFinite(parsed) ? parsed : 0;
+    return Number.isFinite(parsed) ? parsed : NaN;
   };
   const toolMoney = (value: number, currency = '') => Number.isFinite(value) ? `${value.toLocaleString(undefined, { maximumFractionDigits: 2 })}${currency ? ` ${currency}` : ''}` : '—';
   const evaluateCalculator = (value: string) => {
     try {
       if (!value.trim()) return '';
       const expression = value.replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-').replace(/[^0-9+\-*/(). ]/g, '');
-      return String(Function(`"use strict"; return (${expression})`)());
+      const result = Function(`"use strict"; return (${expression})`)();
+      return typeof result === 'number' && Number.isFinite(result) ? String(result) : '—';
     } catch {
       return '—';
     }
@@ -706,7 +724,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
     { key: 'store' as const, label: t('finance.workspace.store') },
   ], [t]);
   const visibleBudgets = React.useMemo(() => state.budgets.filter((item) => item.limit > 0), [state.budgets]);
-  const [moduleReferenceNow] = React.useState(() => new Date());
+  const moduleReferenceNow = useCurrentDate();
   const accountsById = React.useMemo(() => new Map(state.accounts.map((item) => [item.id, item])), [state.accounts]);
   const budgetSummaries = React.useMemo(() => visibleBudgets.map((item) => {
     const account = accountsById.get(item.accountId);
@@ -730,15 +748,20 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
       const configured = [...state.categories.expense, ...state.categories.income].find((item) => item.id === category);
       return [category, configured?.name ?? t(`finance.categories.${category}`, { defaultValue: category })];
     }));
-    const selectedActivityAccount = accounts.find((account) => account.id === activityAccountId);
+    const selectedActivityAccount = state.accounts.find((account) => account.id === activityAccountId);
     const activityCurrency = selectedActivityAccount?.currency ?? baseCurrency;
     const availableTransactions = activityScopedTransactions.filter((item) => item.status !== 'void');
     const activityBounds = activityPeriod === 'all' ? undefined : periodBounds(activityPeriod, moduleReferenceNow, state.settings.firstDayOfWeek);
-    const items = filterActivityTransactions(activityScopedTransactions, { filter: activityFilter, category: activityCategory, query: activityQuery, categoryLabels, accountNames })
+    const filteredItems = filterActivityTransactions(activityScopedTransactions, { filter: activityFilter, category: activityCategory, query: activityQuery, categoryLabels, accountNames })
       .filter((item) => !activityBounds || inDateRange(item.date, activityBounds))
       .slice()
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    const today = new Date();
+    const pageSize = 50;
+    const pageCount = Math.max(1, Math.ceil(filteredItems.length / pageSize));
+    const currentPage = Math.min(activityPage, pageCount - 1);
+    const pageStart = currentPage * pageSize;
+    const items = filteredItems.slice(pageStart, pageStart + pageSize);
+    const today = moduleReferenceNow;
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     const todayKey = localDayKey(today);
@@ -760,77 +783,82 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
           : new Date(transactions[0].date).toLocaleDateString(translationI18n.resolvedLanguage, { weekday: 'long', day: 'numeric', month: 'long', year: new Date(transactions[0].date).getFullYear() === today.getFullYear() ? undefined : 'numeric' }),
     }));
     const filterCount = Number(activityFilter !== 'all') + Number(activityCategory !== 'all');
-    const activityDisplayAmount = (item: Transaction) => {
-      if ((item.currency ?? activityCurrency) === activityCurrency) return item.amount;
-      if (item.baseCurrency === activityCurrency && Number.isFinite(item.baseAmount)) return item.baseAmount as number;
-      const rate = rateBetweenCurrencies(item.currency ?? activityCurrency, activityCurrency);
-      return rate ? item.amount * rate : 0;
-    };
-    const activityTotals = items.reduce((totals, item) => {
-      if (item.kind !== 'income' && item.kind !== 'expense') return totals;
+    const activityDisplayAmount = (item: Transaction) => historicalAmountInCurrency(item, activityCurrency, currencyRates);
+    const activityTotals = filteredItems.reduce((totals, item) => {
+      if (!isCashFlowTransaction(item)) return totals;
       const amount = activityDisplayAmount(item);
+      if (amount === undefined || !Number.isFinite(amount)) { totals.incomplete = true; return totals; }
       if (item.kind === 'income') totals.income += amount;
       else totals.expenses += amount;
       return totals;
-    }, { income: 0, expenses: 0 });
-    const categoriesById = new Map([...state.categories.expense, ...state.categories.income].map((category) => [category.id, category]));
-    const activityQuickCategories = activityCategories.map((id) => {
-      const category = categoriesById.get(id);
-      return { id, name: categoryLabels[id] ?? id, icon: category?.icon as IconName ?? 'pricetag-outline' };
-    });
+    }, { income: 0, expenses: 0, incomplete: false });
+    const resetActivityFilters = () => {
+      setActivityFilter('all'); setActivityCategory('all'); setActivityQuery(''); setActivityPeriod('all');
+    };
+    const detailFilterLabel = [activityFilter !== 'all' ? activityFilterName(activityFilter) : '', activityCategory !== 'all' ? categoryLabels[activityCategory] : ''].filter(Boolean).join(' / ');
+    const changePage = (nextPage: number) => {
+      setActivityPage(Math.max(0, Math.min(pageCount - 1, nextPage)));
+      requestAnimationFrame(() => activityListRef.current?.scrollToLocation({ sectionIndex: 0, itemIndex: 0, viewOffset: 0, animated: true }));
+    };
     return <View style={styles.activityView}>
       <View style={styles.activityToolbar}>
-        <View style={styles.activitySearch}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={activityQuery} onChangeText={setActivityQuery} placeholder={t('finance.modules.searchActivity')} placeholderTextColor={C.textSubtle} style={styles.activitySearchInput} accessibilityLabel={t('finance.modules.searchActivity')} returnKeyType="search" /></View>
+        <View style={styles.activitySearch}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={activityQuery} onChangeText={setActivityQuery} placeholder={t('finance.modules.searchActivity')} placeholderTextColor={C.textSubtle} style={styles.activitySearchInput} accessibilityLabel={t('finance.modules.searchActivity')} returnKeyType="search" autoCorrect={false} />{activityQuery ? <Pressable style={{ width: 36, height: 44, alignItems: 'center', justifyContent: 'center' }} onPress={() => setActivityQuery('')} accessibilityRole="button" accessibilityLabel={t('finance.activityUx.clearSearch')}><Ionicons name="close-circle" size={18} color={C.textSubtle} /></Pressable> : null}</View>
         <Pressable style={[styles.activityFilterButton, filterCount > 0 && styles.activityFilterButtonActive]} onPress={openActivityFilters} accessibilityRole="button" accessibilityLabel={t('finance.activity.filterA11y', { count: filterCount })}><Ionicons name="options-outline" size={19} color={filterCount > 0 ? C.void : C.goldLight} />{filterCount > 0 && <View style={styles.activityFilterBadge}><Text style={styles.activityFilterBadgeText}>{filterCount}</Text></View>}</Pressable>
       </View>
-      <View style={styles.activityScopeBlock}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.activityBudgetTabs}>
-          {accounts.map((account) => <Pressable key={account.id} style={[styles.activityBudgetTab, activityAccountId === account.id && styles.activityBudgetTabSelected]} onPress={() => { setActivityAccountId(account.id); setActivityCategory('all'); }} accessibilityRole="radio" accessibilityState={{ selected: activityAccountId === account.id }}><View style={[styles.activityBudgetDot, { backgroundColor: account.color }]} /><Text style={[styles.activityBudgetTabText, activityAccountId === account.id && styles.activityBudgetTabTextSelected]} numberOfLines={1}>{account.name}</Text></Pressable>)}
-          <Pressable style={[styles.activityBudgetTab, activityAccountId === 'all' && styles.activityBudgetTabSelected]} onPress={() => { setActivityAccountId('all'); setActivityCategory('all'); }} accessibilityRole="radio" accessibilityState={{ selected: activityAccountId === 'all' }}><Ionicons name="layers-outline" size={13} color={activityAccountId === 'all' ? C.goldLight : C.textSubtle} /><Text style={[styles.activityBudgetTabText, activityAccountId === 'all' && styles.activityBudgetTabTextSelected]}>{t('finance.filters.all')}</Text></Pressable>
+      <View style={styles.activityAccountBar}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.activityAccountTabs}>
+          {state.accounts.map((account) => <Pressable key={account.id} style={[styles.activityAccountTab, activityAccountId === account.id && styles.activityAccountTabActive]} onPress={() => { setActivityAccountId(account.id); setActivityCategory('all'); }} accessibilityRole="tab" accessibilityState={{ selected: activityAccountId === account.id }} accessibilityLabel={`${account.name}${account.archived ? ` / ${t('finance.activityUx.archived')}` : ''}`}><Ionicons name={account.archived ? 'archive-outline' : 'wallet-outline'} size={15} color={activityAccountId === account.id ? C.gold : C.textSubtle} /><Text style={[styles.activityAccountText, activityAccountId === account.id && styles.activityAccountTextActive]} numberOfLines={1}>{account.name}</Text></Pressable>)}
+          <Pressable style={[styles.activityAccountTab, activityAccountId === 'all' && styles.activityAccountTabActive]} onPress={() => { setActivityAccountId('all'); setActivityCategory('all'); }} accessibilityRole="tab" accessibilityState={{ selected: activityAccountId === 'all' }}><Ionicons name="layers-outline" size={15} color={activityAccountId === 'all' ? C.goldLight : C.textSubtle} /><Text style={[styles.activityAccountText, activityAccountId === 'all' && styles.activityAccountTextActive]}>{t('finance.filters.all')}</Text></Pressable>
         </ScrollView>
       </View>
-      <View style={styles.activityPeriodBlock}>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.activityPeriodChoices}>
-          {(['today', 'week', 'month', 'year', 'all'] as ActivityPeriod[]).map((period) => <Pressable key={period} style={[styles.activityPeriodChoice, activityPeriod === period && styles.activityPeriodChoiceSelected]} onPress={() => setActivityPeriod(period)} accessibilityRole="radio" accessibilityState={{ selected: activityPeriod === period }} accessibilityLabel={activityPeriodName(period)}>
-            <Text style={[styles.activityPeriodChoiceText, activityPeriod === period && styles.activityPeriodChoiceTextSelected]} numberOfLines={1}>{activityPeriodName(period)}</Text>
-          </Pressable>)}
-        </ScrollView>
+      <View style={styles.activityScopeSummary}>
+        <Pressable style={styles.activityPeriodTrigger} onPress={() => setActivityPeriodOpen(true)} accessibilityRole="button" accessibilityLabel={`${t('finance.date')}: ${activityPeriodName(activityPeriod)}`}><Ionicons name="calendar-outline" size={15} color={C.gold} /><Text style={styles.activityScopeText} numberOfLines={1}>{activityPeriodName(activityPeriod)}</Text><Ionicons name="chevron-down" size={13} color={C.textSubtle} /></Pressable>
+        {detailFilterLabel ? <Pressable style={styles.activityActiveFilters} onPress={openActivityFilters} accessibilityRole="button"><Text style={styles.activityActiveFilterText} numberOfLines={1}>{detailFilterLabel}</Text></Pressable> : null}
       </View>
       <SectionList
+        ref={activityListRef}
         style={styles.activityList}
         sections={groups.map((group) => ({ title: group.label, data: group.transactions }))}
         keyExtractor={(item) => item.id}
         keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         stickySectionHeadersEnabled={false}
         contentContainerStyle={styles.activityListContent}
         ListHeaderComponent={<View style={styles.activityListHeader}>
-          <View style={styles.activitySummaryStrip}>
-            <View style={styles.activitySummaryMetric}><Text style={styles.activitySummaryLabel}>{t('finance.income')}</Text><Text style={styles.activitySummaryIncome} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>+{money(activityTotals.income, activityCurrency)}</Text></View>
+          <View style={styles.activitySummaryStrip} accessible accessibilityHint={t('finance.activityUx.totalsHint')}>
+            <View style={styles.activitySummaryMetric}><Text style={styles.activitySummaryLabel}>{t('finance.income')}</Text><Text style={styles.activitySummaryIncome} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>{activityTotals.incomplete ? '\u2014' : `+${money(activityTotals.income, activityCurrency)}`}</Text></View>
             <View style={styles.activitySummaryDivider} />
-            <View style={styles.activitySummaryMetric}><Text style={styles.activitySummaryLabel}>{t('finance.expenses')}</Text><Text style={styles.activitySummaryExpense} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>-{money(activityTotals.expenses, activityCurrency)}</Text></View>
+            <View style={styles.activitySummaryMetric}><Text style={styles.activitySummaryLabel}>{t('finance.expenses')}</Text><Text style={styles.activitySummaryExpense} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>{activityTotals.incomplete ? '\u2014' : `-${money(activityTotals.expenses, activityCurrency)}`}</Text></View>
             <View style={styles.activitySummaryDivider} />
-            <View style={styles.activitySummaryMetric}><Text style={styles.activitySummaryLabel}>{t('finance.cashFlow')}</Text><Text style={styles.activitySummaryNet} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>{money(activityTotals.income - activityTotals.expenses, activityCurrency)}</Text></View>
+            <View style={styles.activitySummaryMetric}><Text style={styles.activitySummaryLabel}>{t('finance.cashFlow')}</Text><Text style={[styles.activitySummaryNet, activityTotals.income < activityTotals.expenses && { color: C.red }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.65}>{activityTotals.incomplete ? '\u2014' : money(activityTotals.income - activityTotals.expenses, activityCurrency)}</Text></View>
           </View>
-          <View style={styles.activityQuickCategoryHeader}><Text style={styles.activityQuickCategoryLabel}>{t('finance.category')}</Text><Text style={styles.activityResultsLabel}>{items.length} {t('finance.operations')}</Text></View>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.activityQuickCategories}>
-            <Pressable style={[styles.activityQuickCategory, activityCategory === 'all' && styles.activityQuickCategorySelected]} onPress={() => setActivityCategory('all')} accessibilityRole="radio" accessibilityState={{ selected: activityCategory === 'all' }}><Ionicons name="apps-outline" size={14} color={activityCategory === 'all' ? C.void : C.gold} /><Text style={[styles.activityQuickCategoryText, activityCategory === 'all' && styles.activityQuickCategoryTextSelected]}>{t('finance.filters.all')}</Text></Pressable>
-            {activityQuickCategories.map((category) => <Pressable key={category.id} style={[styles.activityQuickCategory, activityCategory === category.id && styles.activityQuickCategorySelected]} onPress={() => setActivityCategory(category.id)} accessibilityRole="radio" accessibilityState={{ selected: activityCategory === category.id }}><Ionicons name={category.icon} size={14} color={activityCategory === category.id ? C.void : C.gold} /><Text style={[styles.activityQuickCategoryText, activityCategory === category.id && styles.activityQuickCategoryTextSelected]} numberOfLines={1}>{category.name}</Text></Pressable>)}
-          </ScrollView>
+          {activityTotals.incomplete ? <Text style={styles.activityNotice} accessibilityLiveRegion="polite">{t('finance.activityUx.totalsUnavailable')}</Text> : null}
+          <View style={styles.activityResultsHeader}><Text style={styles.activityHistoryTitle}>{t('finance.operations')}</Text><Text style={styles.activityResultsLabel}>{filteredItems.length}</Text></View>
         </View>}
         renderSectionHeader={({ section }) => <Text style={styles.activityGroupTitle}>{section.title}</Text>}
         renderItem={({ item }) => {
-            const category = [...state.categories.expense, ...state.categories.income].find((entry) => entry.id === item.category);
-            const icon: IconName = item.transferId ? 'swap-horizontal-outline' : category?.icon as IconName ?? (item.kind === 'income' ? 'cash-outline' : 'pricetag-outline');
-            const categoryLabel = categoryLabels[item.category] ?? t(`finance.categories.${item.category}`, { defaultValue: item.category });
+            const category = state.categories[item.kind === 'income' ? 'income' : 'expense'].find((entry) => entry.id === item.category);
+            const icon: IconName = isTransferTransaction(item) ? 'swap-horizontal-outline' : category?.icon as IconName ?? (item.kind === 'income' ? 'cash-outline' : 'pricetag-outline');
+            const categoryLabel = isTransferTransaction(item) ? t('finance.toolsList.transfer') : category?.name ?? categoryLabels[item.category] ?? t(`finance.categories.${item.category}`, { defaultValue: item.category });
             const accountName = accountNames[item.accountId];
-            const positive = item.kind === 'income' || item.kind === 'adjustment';
+            const positive = item.kind === 'income' || (item.kind === 'adjustment' && item.amount >= 0);
             return <View style={styles.activityRow}>
               <View style={[styles.activityIcon, positive && styles.activityIncomeIcon]}><Ionicons name={icon} size={18} color={positive ? C.goldLight : C.gold} /></View>
-              <View style={styles.activityRowMain}><Text style={styles.activityRowTitle} numberOfLines={1}>{item.payee || item.description || categoryLabel}</Text><Text style={styles.activityRowMeta} numberOfLines={1}>{[categoryLabel, accountName].filter(Boolean).join(' · ')}</Text></View>
-              <View style={styles.activityRowAmount}><Text style={positive ? styles.positive : styles.negative} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>{positive ? '+' : '-'}{money(item.amount, item.currency)}</Text><Text style={styles.activityTime}>{new Date(item.date).toLocaleTimeString(translationI18n.resolvedLanguage, { hour: 'numeric', minute: '2-digit' })}</Text></View>
+              <View style={styles.activityRowMain}><Text style={styles.activityRowTitle} numberOfLines={2}>{item.payee || item.description || categoryLabel}</Text><Text style={styles.activityRowMeta} numberOfLines={1}>{[categoryLabel, activityAccountId === 'all' ? accountName : ''].filter(Boolean).join(' · ')}</Text></View>
+              <View style={styles.activityRowAmount}><Text style={[styles.activityAmountText, !positive && { color: C.red }]} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.62}>{positive ? '+' : '-'}{money(Math.abs(item.amount), item.currency)}</Text><Text style={styles.activityTime}>{new Date(item.date).toLocaleTimeString(translationI18n.resolvedLanguage, { hour: 'numeric', minute: '2-digit' })}</Text></View>
             </View>;
         }}
-        ListEmptyComponent={!availableTransactions.length ? <Empty fullHeight title={t('finance.activity.emptyTitle')} body={t('finance.activity.emptyBody')} /> : <Empty fullHeight title={t('finance.modules.noResults')} body={t('finance.modules.noResultsCopy')} />}
+        ListEmptyComponent={!availableTransactions.length
+          ? <View style={[styles.activityEmptyState, { minHeight: Math.min(420, Math.max(270, windowHeight * 0.36)) }]}><Empty title={t('finance.activity.emptyTitle')} body={t('finance.activity.emptyBody')} /></View>
+          : <View style={[styles.activityEmptyState, { minHeight: Math.min(420, Math.max(270, windowHeight * 0.36)) }]}><Empty title={t('finance.modules.noResults')} body={t('finance.modules.noResultsCopy')} /><Pressable style={[styles.activityClearFilters, styles.activityEmptyReset]} onPress={resetActivityFilters} accessibilityRole="button"><Ionicons name="refresh-outline" size={16} color={C.gold} /><Text style={styles.activityClearFiltersText}>{t('finance.activity.clearFilters')}</Text></Pressable></View>}
+        ListFooterComponent={filteredItems.length > pageSize ? <View style={styles.activityPagination}>
+          <Text style={styles.activityPaginationRange}>{t('finance.activityPagination.showing', { from: pageStart + 1, to: Math.min(pageStart + pageSize, filteredItems.length), total: filteredItems.length })}</Text>
+          <View style={styles.activityPaginationControls}>
+            <Pressable style={[styles.activityPageButton, currentPage === 0 && styles.buttonDisabled]} disabled={currentPage === 0} onPress={() => changePage(currentPage - 1)} accessibilityRole="button" accessibilityLabel={t('finance.activityPagination.previous')}><Ionicons name="chevron-back" size={18} color={C.gold} /></Pressable>
+            <Text style={styles.activityPageLabel}>{t('finance.activityPagination.page', { page: currentPage + 1, pages: pageCount })}</Text>
+            <Pressable style={[styles.activityPageButton, currentPage >= pageCount - 1 && styles.buttonDisabled]} disabled={currentPage >= pageCount - 1} onPress={() => changePage(currentPage + 1)} accessibilityRole="button" accessibilityLabel={t('finance.activityPagination.next')}><Ionicons name="chevron-forward" size={18} color={C.gold} /></Pressable>
+          </View>
+        </View> : null}
       />
     </View>;
   };
@@ -901,14 +929,19 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
   };
   const renderTools = () => {
     const baseAmount = toolNumber(discountAmount);
-    const discountValue = baseAmount * toolNumber(discountPercent) / 100;
-    const taxedAmount = (baseAmount - discountValue) * (1 + toolNumber(taxPercent) / 100);
+    const discount = toolNumber(discountPercent);
+    const tax = toolNumber(taxPercent);
+    const validDiscount = baseAmount >= 0 && discount >= 0 && discount <= 100 && tax >= 0;
+    const discountValue = baseAmount * discount / 100;
+    const taxedAmount = validDiscount ? (baseAmount - discountValue) * (1 + tax / 100) : NaN;
     const principal = toolNumber(interestPrincipal);
     const annualRate = toolNumber(interestRate) / 100;
     const years = toolNumber(interestYears);
-    const compounds = Math.max(1, toolNumber(interestCompounds));
-    const interestTotal = principal * Math.pow(1 + annualRate / compounds, compounds * years);
+    const compounds = toolNumber(interestCompounds);
+    const validInterest = principal >= 0 && annualRate >= 0 && years >= 0 && Number.isSafeInteger(compounds) && compounds > 0;
+    const interestTotal = validInterest ? principal * Math.pow(1 + annualRate / compounds, compounds * years) : NaN;
     const cashTotal = cashRows.reduce((total, row) => total + toolNumber(row.denomination) * Math.max(0, Math.floor(toolNumber(row.quantity))), 0);
+    const invalidToolInput = activeTool === 'discountTax' ? !Number.isFinite(taxedAmount) : activeTool === 'interest' ? !Number.isFinite(interestTotal) : activeTool === 'cashCounter' ? !Number.isFinite(cashTotal) : false;
     const updateCashRow = (id: string, field: 'denomination' | 'quantity', value: string) => {
       const cleanValue = field === 'quantity' ? value.replace(/[^0-9]/g, '') : value.replace(/[^0-9.,]/g, '');
       setCashRows((current) => current.map((row) => row.id === id ? { ...row, [field]: cleanValue } : row));
@@ -930,6 +963,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
             <Text style={styles.toolBackText}>{t('finance.tools')}</Text>
           </Pressable>
           <Text style={styles.toolWorkspaceTitle}>{t(`finance.toolCalculators.${activeTool}`)}</Text>
+          {invalidToolInput ? <Text style={styles.pinError} accessibilityLiveRegion="polite">{t('finance.toolValidation')}</Text> : null}
 
         {activeTool === 'calculator' && <>
           <View style={styles.calculatorDisplay}><Text style={styles.calculatorExpression} numberOfLines={1} adjustsFontSizeToFit>{calculator || '0'}</Text>{Boolean(calculatorResult) && <Text style={styles.calculatorAnswer} numberOfLines={1} adjustsFontSizeToFit>{calculatorResult}</Text>}</View>
@@ -1025,7 +1059,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
           </View>
           <Text style={styles.fieldLabel}>{t('finance.exchangeRate')}</Text>
           <Pressable style={styles.settingsOption} onPress={() => { setCurrencyPickerMode('rate'); setCurrencyQuery(''); setCurrencyPickerOpen(true); }}><View style={styles.settingsRowMain}><Text style={styles.settingsOptionTextActive}>{currencyRateCurrency}</Text><Text style={styles.settingsRowValue}>{currencyRateLabel}</Text></View><Ionicons name="chevron-forward-outline" size={18} color={C.gold} /></Pressable>
-          <Field title={currencyRateLabel} value={currencyRate} onChangeText={(value) => { setCurrencyRate(value.replace(/[^0-9.]/g, '')); setCurrencyRateError(''); }} numeric placeholder={currencyRateCurrency === currencyBaseDraft ? '0.00' : '1.00'} />
+          <Field title={currencyRateLabel} value={currencyRate} onChangeText={(value) => { setCurrencyRate(value.replace(/,/g, '.').replace(/[^0-9.]/g, '')); setCurrencyRateError(''); }} numeric placeholder={currencyRateCurrency === currencyBaseDraft ? '0.00' : '1.00'} />
           <Pressable style={styles.rateSwap} onPress={() => { const value = Number(currencyRate); setCurrencyRateInverted((current) => !current); setCurrencyRate(Number.isFinite(value) && value > 0 ? String(Number((1 / value).toPrecision(12))) : ''); setCurrencyRateError(''); }} accessibilityRole="button" accessibilityLabel={t('finance.exchangeRate')}><Ionicons name="swap-horizontal-outline" size={17} color={C.gold} /><Text style={styles.rateSwapText}>1 {currencyRateRight} = ? {currencyRateLeft}</Text></Pressable>
           {Boolean(currencyRateError) && <Text style={styles.pinError}>{currencyRateError}</Text>}
           <Pressable style={styles.primary} onPress={saveCurrencyRate}><Text style={styles.primaryText}>{t('finance.done')}</Text></Pressable>
@@ -1081,10 +1115,18 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
       return { id, icon: category?.icon as IconName ?? 'pricetag-outline', label: category?.name ?? t(`finance.categories.${id}`, { defaultValue: id }) };
     });
   }, [activityCategories, state.categories.expense, state.categories.income, t]);
-  const normalizedActivityCategoryQuery = activityCategoryQuery.trim().toLowerCase();
-  const visibleActivityCategoryOptions = React.useMemo(() => activityCategoryOptions.filter((item) => !normalizedActivityCategoryQuery || `${item.label} ${item.id}`.toLowerCase().includes(normalizedActivityCategoryQuery)), [activityCategoryOptions, normalizedActivityCategoryQuery]);
 
   return <SafeAreaView style={[styles.root, styles.rootBackground]} edges={['top', 'bottom']}><View style={styles.header}><BackButton onPress={onBack} /><Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{titles[module]}</Text><View style={styles.headerSpace} /></View>{module === 'activity' ? <View style={[styles.content, styles.moduleContent, styles.moduleActivityContent]}>{content}</View> : <ScrollView contentContainerStyle={[styles.content, styles.moduleContent]} keyboardShouldPersistTaps="handled">{content}</ScrollView>}
+    <ResponsiveModal visible={activityPeriodOpen} onClose={() => setActivityPeriodOpen(false)}>
+      <Text style={styles.sheetTitle}>{t('finance.date')}</Text>
+      <View style={styles.activitySelectorGrid}>
+        {(['today', 'week', 'month', 'year', 'all'] as ActivityPeriod[]).map((period) => {
+          const selected = period === activityPeriod;
+          const icon: IconName = period === 'today' ? 'sunny-outline' : period === 'week' ? 'calendar-outline' : period === 'month' ? 'calendar-number-outline' : period === 'year' ? 'time-outline' : 'infinite-outline';
+          return <Pressable key={period} style={[styles.activitySelectorTile, period === 'all' && styles.activitySelectorWide, selected && styles.activitySelectorSelected]} onPress={() => { setActivityPeriod(period); setActivityPeriodOpen(false); }} accessibilityRole="radio" accessibilityState={{ selected }}><View style={[styles.activitySelectorIcon, selected && styles.activitySelectorIconSelected]}><Ionicons name={icon} size={21} color={selected ? C.void : C.gold} /></View><Text style={[styles.activitySelectorText, selected && styles.activitySelectorTextSelected]}>{activityPeriodName(period)}</Text>{selected ? <Ionicons name="checkmark-circle" size={17} color={C.gold} /> : null}</Pressable>;
+        })}
+      </View>
+    </ResponsiveModal>
     <Modal visible={activityFilterOpen} transparent animationType="fade" onRequestClose={closeActivityFilters} statusBarTranslucent>
       <KeyboardAvoidingView style={styles.activityFilterBackdrop} behavior="padding" enabled={Platform.OS === 'ios'}>
         <Pressable style={StyleSheet.absoluteFill} onPress={closeActivityFilters} accessibilityLabel={t('finance.activity.closeFilters')} />
@@ -1092,27 +1134,18 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
             <View style={styles.activityDragZone}><View style={styles.activityDragHandle} /></View>
             <View style={styles.activityFilterHeader}><View style={styles.activityFilterHeaderCopy}><Text style={styles.activityFilterEyebrow}>{t('finance.activity.eyebrow')}</Text><Text style={styles.activityFilterTitle}>{t('finance.activity.filterTitle')}</Text></View><Pressable style={styles.activityFilterClose} onPress={closeActivityFilters} accessibilityRole="button" accessibilityLabel={t('finance.activity.closeFilters')}><Ionicons name="close" size={19} color={C.goldLight} /></Pressable></View>
             <ScrollView style={styles.activityFilterScroll} contentContainerStyle={styles.activityFilterContent} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-              <Text style={styles.activityFilterSectionTitle}>{t('finance.activity.operationType')}</Text>
-              <View style={styles.activityFilterChoices}>
-                {(['all', 'expense', 'income', 'transfer'] as ActivityFilter[]).map((value) => {
+              <Text style={styles.activitySelectorLabel}>{t('finance.activity.operationType')}</Text>
+              <View style={styles.activitySelectorGrid}>
+                {(['expense', 'income', 'transfer', 'all'] as ActivityFilter[]).map((value) => {
                   const selected = activityFilter === value;
-                  const icon: IconName = value === 'expense' ? 'arrow-up-outline' : value === 'income' ? 'arrow-down-outline' : value === 'transfer' ? 'swap-horizontal-outline' : 'layers-outline';
-                  return <Pressable key={value} style={[styles.activityFilterChoice, selected && styles.activityFilterChoiceSelected]} onPress={() => { setActivityFilter(value); setActivityCategoryQuery(''); }} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={activityFilterName(value)}><Ionicons name={icon} size={16} color={selected ? C.void : C.gold} /><Text style={[styles.activityFilterChoiceText, selected && styles.activityFilterChoiceTextSelected]} numberOfLines={1}>{activityFilterName(value)}</Text></Pressable>;
+                  const icon: IconName = value === 'all' ? 'layers-outline' : value === 'expense' ? 'arrow-up-outline' : value === 'income' ? 'arrow-down-outline' : 'swap-horizontal-outline';
+                  return <Pressable key={value} style={[styles.activitySelectorTile, selected && styles.activitySelectorSelected]} onPress={() => { setActivityFilter(value); setActivityCategory('all'); }} accessibilityRole="radio" accessibilityState={{ selected }}><View style={[styles.activitySelectorIcon, selected && styles.activitySelectorIconSelected]}><Ionicons name={icon} size={20} color={selected ? C.void : C.gold} /></View><Text style={[styles.activitySelectorText, selected && styles.activitySelectorTextSelected]}>{activityFilterName(value)}</Text></Pressable>;
                 })}
               </View>
-              <View style={styles.activityFilterDivider} />
-              <Text style={styles.activityFilterSectionTitle}>{t('finance.category')}</Text>
-              <View style={styles.activityCategorySearch}><Ionicons name="search-outline" size={17} color={C.textSubtle} /><TextInput value={activityCategoryQuery} onChangeText={setActivityCategoryQuery} placeholder={t('finance.activity.categorySearch')} placeholderTextColor={C.textSubtle} style={styles.activityCategorySearchInput} accessibilityLabel={t('finance.activity.categorySearch')} returnKeyType="search" /></View>
-              <View style={styles.activityFilterChoices}>
-              <Pressable style={[styles.activityFilterChoice, activityCategory === 'all' && styles.activityFilterChoiceSelected]} onPress={() => setActivityCategory('all')} accessibilityRole="radio" accessibilityState={{ selected: activityCategory === 'all' }} accessibilityLabel={t('finance.activity.allCategories')}><Ionicons name="apps-outline" size={16} color={activityCategory === 'all' ? C.void : C.gold} /><Text style={[styles.activityFilterChoiceText, activityCategory === 'all' && styles.activityFilterChoiceTextSelected]}>{t('finance.activity.allCategories')}</Text></Pressable>
-              {visibleActivityCategoryOptions.map((item) => {
-                const selected = activityCategory === item.id;
-                return <Pressable key={item.id} style={[styles.activityFilterChoice, selected && styles.activityFilterChoiceSelected]} onPress={() => setActivityCategory(item.id)} accessibilityRole="radio" accessibilityState={{ selected }} accessibilityLabel={item.label}><Ionicons name={item.icon} size={16} color={selected ? C.void : C.gold} /><Text style={[styles.activityFilterChoiceText, selected && styles.activityFilterChoiceTextSelected]} numberOfLines={1}>{item.label}</Text></Pressable>;
-              })}
-              </View>
-              {!visibleActivityCategoryOptions.length && <View style={styles.activityFilterNoResults}><Text style={styles.activityFilterNoResultsText}>{t('finance.modules.noResults')}</Text></View>}
-              <Pressable style={styles.activityClearFilters} onPress={() => { setActivityFilter('all'); setActivityCategory('all'); setActivityCategoryQuery(''); }} accessibilityRole="button" accessibilityLabel={t('finance.activity.clearFilters')}><Ionicons name="refresh-outline" size={16} color={C.gold} /><Text style={styles.activityClearFiltersText}>{t('finance.activity.clearFilters')}</Text></Pressable>
+              <SearchableSelect label={t('finance.category')} value={activityCategory} options={[{ value: 'all', label: t('finance.activity.allCategories'), icon: 'apps-outline' }, ...activityCategoryOptions.map((item) => ({ value: item.id, label: item.label, icon: item.icon }))]} onChange={setActivityCategory} placeholder={t('finance.activity.allCategories')} searchPlaceholder={t('finance.activity.categorySearch')} closeLabel={t('finance.close')} emptyLabel={t('finance.modules.noResults')} />
+              <Pressable style={styles.activityClearFilters} onPress={() => { setActivityFilter('all'); setActivityCategory('all'); }} accessibilityRole="button"><Ionicons name="refresh-outline" size={16} color={C.gold} /><Text style={styles.activityClearFiltersText}>{t('finance.activity.clearFilters')}</Text></Pressable>
             </ScrollView>
+            <View style={styles.activityFilterFooter}><Pressable style={styles.activityDoneButton} onPress={closeActivityFilters} accessibilityRole="button"><Text style={styles.primaryText}>{t('finance.done')}</Text></Pressable></View>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -1249,37 +1282,43 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   currencyOptionCode: { flex: 1, color: C.goldLight, fontFamily: SANS, fontSize: 11, fontWeight: '600', letterSpacing: 0.8 },
   settingsOptionList: { borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, overflow: 'hidden', marginBottom: 18 },
   fullHeightEmpty: { flex: 1, minHeight: 250, justifyContent: 'center', paddingVertical: 24 },
+  activitySummaryNet: { color: C.gold, fontFamily: SERIF, fontSize: 14, marginTop: 5 },
+  activitySelectorLabel: { color: C.textSubtle, fontFamily: SANS, fontSize: 11, marginBottom: 10 },
+  activitySelectorGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, paddingBottom: 12 },
+  activitySelectorTile: { flexBasis: '46%', flexGrow: 1, minWidth: 0, minHeight: 78, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 10, paddingVertical: 12, borderRadius: 16, borderWidth: 1, borderColor: C.line, backgroundColor: C.glass },
+  activitySelectorWide: { flexBasis: '100%' },
+  activitySelectorSelected: { borderColor: C.gold, backgroundColor: 'rgba(233,200,119,0.08)' },
+  activitySelectorIcon: { width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: C.glass },
+  activitySelectorIconSelected: { backgroundColor: C.gold },
+  activitySelectorText: { flex: 1, color: C.textSubtle, fontFamily: SANS, fontSize: 12 },
+  activitySelectorTextSelected: { color: C.goldLight, fontWeight: '700' },
+  activityAccountBar: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line },
+  activityAccountTabs: { gap: 4 },
+  activityAccountTab: { minHeight: 46, maxWidth: 190, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 7, borderBottomWidth: 2, borderBottomColor: 'transparent' },
+  activityAccountTabActive: { borderBottomColor: C.gold, borderTopLeftRadius: 12, borderTopRightRadius: 12, backgroundColor: C.glass },
+  activityAccountText: { flexShrink: 1, color: C.textSubtle, fontFamily: SANS, fontSize: 12 },
+  activityAccountTextActive: { color: C.goldLight, fontWeight: '700' },
+  activityPeriodTrigger: { minHeight: 44, maxWidth: '65%', flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass },
+  activityActiveFilters: { flex: 1, minWidth: 0, minHeight: 44, justifyContent: 'center' },
+  activityActiveFilterText: { color: C.gold, fontFamily: SANS, fontSize: 11, textAlign: 'right' },
+  activityScopeSummary: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 3, paddingVertical: 10 },
+  activityScopeText: { flexShrink: 1, color: C.textSubtle, fontFamily: SANS, fontSize: 12 },
+  activityResultsHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 22, paddingHorizontal: 3 },
+  activityHistoryTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 15, fontWeight: '600' },
+  activityAmountText: { color: C.goldLight, fontFamily: SERIF, fontSize: 16 },
+  activityNotice: { color: C.textSubtle, fontFamily: SANS, fontSize: 11, lineHeight: 16, marginTop: 10 },
+  activityFilterFooter: { paddingHorizontal: 18, paddingTop: 12, paddingBottom: 28, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: C.line },
+  activityDoneButton: { minHeight: 48, borderRadius: 14, backgroundColor: C.gold, alignItems: 'center', justifyContent: 'center' },
   activityView: { flex: 1, width: '100%', maxWidth: 720, alignSelf: 'center' },
   activityToolbar: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 9 },
-  activityScopeBlock: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.14)', marginBottom: 4 },
-  activityBudgetTabs: { minHeight: 40 },
-  activityBudgetTab: { maxWidth: 170, minHeight: 40, flexDirection: 'row', alignItems: 'center', gap: 6, borderBottomWidth: 2, borderBottomColor: 'transparent', paddingHorizontal: 11 },
-  activityBudgetTabSelected: { borderBottomColor: C.gold },
-  activityBudgetDot: { width: 7, height: 7, borderRadius: 4 },
-  activityBudgetTabText: { flexShrink: 1, color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 9.5 },
-  activityBudgetTabTextSelected: { color: C.goldLight, fontWeight: '700' },
-  activityPeriodBlock: { borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.14)', marginBottom: 6 },
-  activityPeriodChoices: { minHeight: 41 },
-  activityPeriodChoice: { minHeight: 41, alignItems: 'center', justifyContent: 'center', borderBottomWidth: 2, borderBottomColor: 'transparent', paddingHorizontal: 12 },
-  activityPeriodChoiceSelected: { borderBottomColor: C.gold },
-  activityPeriodChoiceText: { color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 9, fontWeight: '600' },
-  activityPeriodChoiceTextSelected: { color: C.goldLight, fontWeight: '700' },
   activityListHeader: { paddingTop: 2, paddingBottom: 7 },
-  activitySummaryStrip: { minHeight: 70, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.12)', marginBottom: 10 },
+  activitySummaryStrip: { minHeight: 70, flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line },
   activitySummaryMetric: { flex: 1, minWidth: 0 },
-  activitySummaryLabel: { color: 'rgba(255,244,208,0.38)', fontFamily: SANS, fontSize: 8, textTransform: 'uppercase' },
-  activitySummaryIncome: { color: C.goldLight, fontFamily: SERIF, fontSize: 13, marginTop: 5 },
-  activitySummaryExpense: { color: C.red, fontFamily: SERIF, fontSize: 13, marginTop: 5 },
-  activitySummaryNet: { color: C.gold, fontFamily: SERIF, fontSize: 13, marginTop: 5 },
+  activitySummaryLabel: { color: C.textSubtle, fontFamily: SANS, fontSize: 10 },
+  activitySummaryIncome: { color: C.goldLight, fontFamily: SERIF, fontSize: 14, marginTop: 5 },
+  activitySummaryExpense: { color: C.red, fontFamily: SERIF, fontSize: 14, marginTop: 5 },
   activitySummaryDivider: { width: StyleSheet.hairlineWidth, height: 30, backgroundColor: C.line, marginHorizontal: 8 },
-  activityQuickCategoryHeader: { minHeight: 26, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
-  activityQuickCategoryLabel: { color: 'rgba(233,200,119,0.58)', fontFamily: SANS, fontSize: 9, fontWeight: '700', textTransform: 'uppercase' },
-  activityResultsLabel: { color: 'rgba(255,244,208,0.32)', fontFamily: SANS, fontSize: 8.5 },
-  activityQuickCategories: { gap: 7, paddingVertical: 6, paddingRight: 8 },
-  activityQuickCategory: { minHeight: 36, maxWidth: 180, flexDirection: 'row', alignItems: 'center', gap: 6, borderRadius: 10, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.025)', paddingHorizontal: 10 },
-  activityQuickCategorySelected: { backgroundColor: C.gold, borderColor: C.gold },
-  activityQuickCategoryText: { color: 'rgba(255,244,208,0.56)', fontFamily: SANS, fontSize: 9.5 },
-  activityQuickCategoryTextSelected: { color: C.void, fontWeight: '700' },
+  activityResultsLabel: { color: C.textSubtle, fontFamily: SANS, fontSize: 12 },
   activitySearch: { flex: 1, minWidth: 0, height: 48, flexDirection: 'row', alignItems: 'center', gap: 9, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, paddingHorizontal: 13 },
   activitySearchInput: { flex: 1, minWidth: 0, height: 46, color: C.goldLight, fontFamily: SANS, fontSize: 12, paddingVertical: 0 },
   activityFilterButton: { width: 44, height: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', alignItems: 'center', justifyContent: 'center' },
@@ -1288,11 +1327,12 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   activityFilterBadgeText: { color: C.void, fontFamily: SANS, fontSize: 8, fontWeight: '800' },
   activityList: { flex: 1, paddingTop: 3 },
   activityListContent: { flexGrow: 1, paddingBottom: 24 },
+  activityEmptyState: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingBottom: 18 },
   activityGroup: { marginBottom: 18 },
-  activityGroupTitle: { color: 'rgba(233,200,119,0.7)', fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 1.15, textTransform: 'uppercase', marginBottom: 5, paddingHorizontal: 3 },
-  activityRow: { minHeight: 70, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.11)', paddingVertical: 8 },
+  activityGroupTitle: { color: 'rgba(233,200,119,0.7)', fontFamily: SANS, fontSize: 11, fontWeight: '600', marginTop: 16, marginBottom: 3, paddingHorizontal: 3 },
+  activityRow: { minHeight: 78, flexDirection: 'row', alignItems: 'center', gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.11)', paddingVertical: 8 },
   activityRowMain: { flex: 1, minWidth: 0 },
-  activityRowTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13, fontWeight: '500' },
+  activityRowTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 14, fontWeight: '500' },
   activityRowMeta: { color: 'rgba(255,244,208,0.43)', fontFamily: SANS, fontSize: 9.5, marginTop: 5 },
   activityRowAmount: { maxWidth: '42%', minWidth: 72, alignItems: 'flex-end', marginLeft: 3 },
   activityTime: { color: 'rgba(255,244,208,0.34)', fontFamily: SANS, fontSize: 8.5, marginTop: 5 },
@@ -1309,18 +1349,13 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   activityFilterClose: { width: 44, height: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.045)', alignItems: 'center', justifyContent: 'center' },
   activityFilterScroll: { flex: 1 },
   activityFilterContent: { paddingHorizontal: 18, paddingTop: 14, paddingBottom: 30 },
-  activityFilterSectionTitle: { color: 'rgba(233,200,119,0.66)', fontFamily: SANS, fontSize: 9, fontWeight: '700', letterSpacing: 1, marginBottom: 5 },
-  activityFilterChoices: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingTop: 4 },
-  activityFilterChoice: { minHeight: 40, maxWidth: '100%', flexGrow: 1, flexBasis: '46%', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(255,255,255,0.035)', paddingHorizontal: 10 },
-  activityFilterChoiceSelected: { backgroundColor: C.gold, borderColor: C.gold },
-  activityFilterChoiceText: { color: 'rgba(255,244,208,0.62)', fontFamily: SANS, fontSize: 10, fontWeight: '600' },
-  activityFilterChoiceTextSelected: { color: C.void },
-  activityFilterDivider: { height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(233,200,119,0.2)', marginVertical: 17 },
-  activityCategorySearch: { height: 44, flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, paddingHorizontal: 12, marginBottom: 5 },
-  activityCategorySearchInput: { flex: 1, minWidth: 0, height: 42, color: C.goldLight, fontFamily: SANS, fontSize: 11, paddingVertical: 0 },
-  activityFilterNoResults: { minHeight: 72, alignItems: 'center', justifyContent: 'center' },
-  activityFilterNoResultsText: { color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 10 },
   activityClearFilters: { minHeight: 44, alignSelf: 'center', flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 10, marginTop: 14 },
+  activityEmptyReset: { marginTop: 22 },
+  activityPagination: { alignItems: 'center', gap: 12, paddingTop: 24, paddingBottom: 12 },
+  activityPaginationRange: { color: C.textSubtle, fontFamily: SANS, fontSize: 11 },
+  activityPaginationControls: { flexDirection: 'row', alignItems: 'center', gap: 16 },
+  activityPageButton: { width: 44, height: 44, borderRadius: 14, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: C.glass, alignItems: 'center', justifyContent: 'center' },
+  activityPageLabel: { minWidth: 100, color: C.goldLight, fontFamily: SANS, fontSize: 11, textAlign: 'center' },
   activityClearFiltersText: { color: C.gold, fontFamily: SANS, fontSize: 10, fontWeight: '700', letterSpacing: 0.4 },
   chartCategory: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   summaryCard: { borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.07)', padding: 14, marginBottom: 18 },

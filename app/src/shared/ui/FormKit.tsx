@@ -33,7 +33,7 @@ export function ResponsiveSheet({ visible, title, onClose, children, closeLabel,
       <SafeAreaView style={[styles.sheet, tablet && styles.tabletSheet]} edges={['bottom']}>
         <View style={styles.handle} />
         <View style={styles.header}><Text style={styles.title} numberOfLines={2}>{title}</Text><Pressable style={styles.close} onPress={onClose} accessibilityRole="button" accessibilityLabel={closeLabel}><Ionicons name="close" size={20} color={C.goldLight} /></Pressable></View>
-        <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>{children}</ScrollView>
+        <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>{children}</ScrollView>
         {footer ? <View style={styles.footer}>{footer}</View> : null}
       </SafeAreaView>
     </KeyboardAvoidingView>
@@ -65,7 +65,7 @@ export function FormField({ label, value, onChangeText, placeholder, error, requ
       accessibilityLabel={label}
       style={[styles.input, focused && styles.inputFocused, multiline && styles.multiline, !editable && styles.disabledInput, Boolean(error) && styles.inputError]}
     />
-    {error ? <Text style={styles.error} numberOfLines={2}>{error}</Text> : null}
+    {error ? <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text> : null}
   </View>;
 }
 
@@ -87,7 +87,7 @@ export function SearchableSelect({ label, value, options, onChange, placeholder,
   return <View style={styles.field}>
     <Text style={styles.label} numberOfLines={2}>{label}{required ? <Text style={styles.required}> *</Text> : null}</Text>
     <Pressable style={[styles.select, disabled && styles.disabledInput, Boolean(error) && styles.inputError]} onPress={() => !disabled && setOpen(true)} disabled={disabled} accessibilityRole="button" accessibilityLabel={label} accessibilityState={{ disabled }}><View style={styles.selectCopy}>{selected?.icon ? <Ionicons name={selected.icon} size={18} color={C.gold} /> : null}<Text style={[styles.selectText, !selected && styles.placeholder]} numberOfLines={1}>{selected?.label ?? placeholder}</Text></View><Ionicons name="chevron-down" size={17} color={C.textSubtle} /></Pressable>
-    {error ? <Text style={styles.error} numberOfLines={2}>{error}</Text> : null}
+    {error ? <Text style={styles.error} accessibilityLiveRegion="polite">{error}</Text> : null}
     <ResponsiveSheet visible={open} title={label} onClose={close} closeLabel={closeLabel}>
       <View style={styles.search}><Ionicons name="search-outline" size={18} color={C.textSubtle} /><TextInput value={query} onChangeText={setQuery} placeholder={searchPlaceholder} placeholderTextColor={C.textSubtle} style={styles.searchInput} accessibilityLabel={searchPlaceholder} /></View>
       <View style={styles.options}>{visible.map((option) => {
@@ -126,21 +126,21 @@ const styles = createThemeStyles((C) => StyleSheet.create({
   scroll: { flexShrink: 1 },
   content: { paddingHorizontal: 18, paddingTop: 4, paddingBottom: 26 },
   footer: { paddingHorizontal: 18, paddingTop: 9, paddingBottom: 12, backgroundColor: '#0A0C14' },
-  field: { marginTop: 8 },
-  label: { color: 'rgba(233,200,119,0.54)', fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.label, lineHeight: 14, marginBottom: 1, letterSpacing: 0.25 },
+  field: { marginTop: 12 },
+  label: { color: 'rgba(233,200,119,0.54)', fontFamily: SANS, fontSize: Math.max(FORM_TYPOGRAPHY.label, 11), lineHeight: 17, marginBottom: 6, letterSpacing: 0.25 },
   required: { color: '#F08B88' },
-  input: { minHeight: 43, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.16)', backgroundColor: 'transparent', color: C.goldLight, fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.input, paddingHorizontal: 2, paddingVertical: 8 },
-  inputFocused: { borderBottomColor: C.gold },
+  input: { minHeight: 48, borderWidth: 1, borderColor: 'rgba(233,200,119,0.16)', borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.025)', color: C.goldLight, fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.input, paddingHorizontal: 12, paddingVertical: 10 },
+  inputFocused: { borderColor: C.gold },
   multiline: { minHeight: 82, textAlignVertical: 'top', paddingTop: 10 },
   disabledInput: { opacity: 0.48 },
-  inputError: { borderBottomColor: 'rgba(240,139,136,0.8)' },
+  inputError: { borderColor: 'rgba(240,139,136,0.8)' },
   error: { color: '#F08B88', fontFamily: SANS, fontSize: 10, lineHeight: 15, marginTop: 5 },
   segments: { minHeight: 45, flexDirection: 'row', gap: 6, marginTop: 3 },
   segment: { flex: 1, minWidth: 0, minHeight: 41, borderRadius: 11, backgroundColor: 'rgba(255,255,255,0.025)', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 7 },
   segmentSelected: { backgroundColor: C.gold, borderColor: C.gold },
   segmentText: { color: 'rgba(255,244,208,0.62)', fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.option },
   segmentTextSelected: { color: C.void, fontWeight: '700' },
-  select: { minHeight: 43, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: 'rgba(233,200,119,0.16)', backgroundColor: 'transparent', flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 2 },
+  select: { minHeight: 48, borderWidth: 1, borderColor: 'rgba(233,200,119,0.16)', borderRadius: 12, backgroundColor: 'rgba(255,255,255,0.025)', flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 12 },
   selectCopy: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 9 },
   selectText: { flex: 1, minWidth: 0, color: C.goldLight, fontFamily: SANS, fontSize: FORM_TYPOGRAPHY.input },
   placeholder: { color: 'rgba(255,244,208,0.3)' },

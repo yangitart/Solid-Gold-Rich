@@ -10,14 +10,15 @@ export function currencyRate(
   toCurrency: string,
   rates: CurrencyRates,
 ): number | undefined {
-  const from = fromCurrency.toUpperCase();
-  const to = toCurrency.toUpperCase();
+  const from = fromCurrency.trim().toUpperCase();
+  const to = toCurrency.trim().toUpperCase();
   if (from === to) return 1;
 
   const fromRate = from === 'USD' ? 1 : rates[from];
   const toRate = to === 'USD' ? 1 : rates[to];
-  if (!Number.isFinite(fromRate) || !Number.isFinite(toRate) || !fromRate || !toRate) return undefined;
-  return fromRate / toRate;
+  if (!Number.isFinite(fromRate) || !Number.isFinite(toRate) || fromRate <= 0 || toRate <= 0) return undefined;
+  const rate = fromRate / toRate;
+  return Number.isFinite(rate) && rate > 0 ? rate : undefined;
 }
 
 export function convertCurrency(
@@ -27,7 +28,8 @@ export function convertCurrency(
   rates: CurrencyRates,
 ): number | undefined {
   const rate = currencyRate(fromCurrency, toCurrency, rates);
-  return rate === undefined ? undefined : amount * rate;
+  const converted = rate === undefined ? undefined : amount * rate;
+  return converted !== undefined && Number.isFinite(converted) ? converted : undefined;
 }
 
 export function captureCurrencySnapshot(
@@ -38,7 +40,8 @@ export function captureCurrencySnapshot(
 ): CurrencySnapshot {
   if (!Number.isFinite(amount)) return {};
   const rate = currencyRate(fromCurrency, baseCurrency, rates);
-  return rate === undefined ? {} : { baseAmount: amount * rate, baseCurrency: baseCurrency.toUpperCase() };
+  const converted = rate === undefined ? undefined : amount * rate;
+  return converted !== undefined && Number.isFinite(converted) ? { baseAmount: converted, baseCurrency: baseCurrency.toUpperCase() } : {};
 }
 
 export function historicalAmountInCurrency(
@@ -46,12 +49,16 @@ export function historicalAmountInCurrency(
   targetCurrency: string,
   rates: CurrencyRates,
 ): number | undefined {
-  const target = targetCurrency.toUpperCase();
+  if (!Number.isFinite(transaction.amount)) return undefined;
+  const target = targetCurrency.trim().toUpperCase();
   if (transaction.currency.toUpperCase() === target) return transaction.amount;
   if (Number.isFinite(transaction.baseAmount) && transaction.baseCurrency) {
     if (transaction.baseCurrency.toUpperCase() === target) return transaction.baseAmount;
     const historicalRate = currencyRate(transaction.baseCurrency, target, rates);
-    if (historicalRate !== undefined) return (transaction.baseAmount as number) * historicalRate;
+    if (historicalRate !== undefined) {
+      const converted = (transaction.baseAmount as number) * historicalRate;
+      return Number.isFinite(converted) ? converted : undefined;
+    }
   }
   return convertCurrency(transaction.amount, transaction.currency, target, rates);
 }
