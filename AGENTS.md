@@ -39,4 +39,4 @@
 
 - Ejecutar comprobaciones proporcionales: TypeScript, ESLint, traducciones, pruebas de dominio y bundle Android cuando correspondan.
 - No crear commits ni hacer push salvo petición explícita.
-- Commits en inglés: `type(front): description` o `type(back): description`.
+- Commits en inglés usando Conventional Commits y sin scope: `type: description` (por ejemplo, `fix: prepare production release`).
