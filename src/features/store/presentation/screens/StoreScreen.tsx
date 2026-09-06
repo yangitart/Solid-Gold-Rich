@@ -25,7 +25,7 @@ import DeveloperContactCard from '@/shared/ui/DeveloperContactCard';
 import { useCurrentDate } from '@/shared/ui/useCurrentDate';
 import DateSelect from '@/shared/ui/DateSelect';
 import { C, SANS, SERIF, createThemeStyles } from '@/shared/theme/luxury';
-import { waitForImportLoading } from '@/shared/infrastructure/files/importLoading';
+import { waitForImportLoading } from '@/shared/ui/importLoading';
 
 type StoreView = 'inventory' | 'archived' | 'operations' | 'employees' | 'clients' | 'providers' | 'services' | 'reports' | 'movements' | 'statistics' | 'settings';
 type DirectoryKind = 'employees' | 'clients' | 'providers';

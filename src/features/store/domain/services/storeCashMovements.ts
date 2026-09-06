@@ -1,5 +1,5 @@
 import type { StoreCashMovement } from '@/features/store/domain/entities/Store';
-import { inDateRange, type DateRange } from '@/features/finance/domain/services/financeDomain';
+import { inDateRange, type DateRange } from '@/shared/domain/dates/dateRange';
 
 export type CashFlowFilter = 'all' | 'income' | 'expense';
 

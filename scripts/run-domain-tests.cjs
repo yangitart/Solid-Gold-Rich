@@ -625,6 +625,7 @@ async function run() {
   assert.equal(storage.has('@solid-gold/finance-state-v6'), false);
 
   console.log('Domain tests passed');
+  require('./test-application-use-cases.cjs')(emptyFinanceState);
 }
 
 run().catch((error) => {

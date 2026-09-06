@@ -14,8 +14,8 @@ import type {
 } from '@/features/finance/domain/entities/financeTypes';
 import type { Note, NoteFolder } from '@/features/notes/domain/entities/Note';
 import type { AppStateRepository } from '@/features/app-state/application/ports/AppStateRepository';
-import { generateDueRecurring } from '@/features/finance/domain/services/financeDomain';
-import { mergeImportedTransactions, resolveImportedFinanceState } from '@/features/finance/application/services/financeStateOperations';
+import { applyDueRecurring } from '@/features/finance/application/useCases/applyDueRecurring';
+import { prepareJsonImport, importCsvIntoState } from '@/features/app-state/application/useCases/importFinanceState';
 import { addAccount as createAccount, addTransaction as createTransaction, addTransfer as createTransfer, archiveAccount as archiveAccountState, removeTransaction, removeTransfer, restoreAccount as restoreAccountState, updateAccount as updateAccountState, updateTransaction as updateTransactionState } from '@/features/finance/application/commands/financeCommands';
 import { removeNoteFolder } from '@/features/notes/application/useCases/removeNoteFolder';
 
@@ -152,12 +152,7 @@ export function FinanceProvider({ children, repository }: { children: React.Reac
 
   React.useEffect(() => {
     if (!loaded) return;
-    const due = state.recurring.filter((item) => item.active && new Date(item.nextDate).getTime() <= Date.now());
-    if (!due.length) return;
-    setState((current) => {
-      const generated = generateDueRecurring(current.recurring, current.transactions, new Date(), () => newId('recurring'), current.settings.preferredCurrency, current.settings.exchangeRates ?? { USD: 1 });
-      return { ...current, recurring: generated.recurring, transactions: generated.transactions };
-    });
+    setState((current) => applyDueRecurring(current, new Date(), () => newId('recurring')));
   }, [loaded, setState, state.recurring]);
 
   const updateState = React.useCallback((updater: (current: FinanceState) => FinanceState) => {
@@ -213,19 +208,17 @@ export function FinanceProvider({ children, repository }: { children: React.Reac
   }, [repository, retryLoad, setPersistenceError, setPersistenceErrorPhase, setPersistenceStatus, state]);
 
   const importJson = React.useCallback((json: string, options?: { preserveStore?: boolean }) => {
-    const parsed = repository.parseJson(json);
-    if (!parsed) return false;
-    setState((current) => resolveImportedFinanceState(current, parsed, Boolean(options?.preserveStore)));
+    const applyImport = prepareJsonImport(repository, json, Boolean(options?.preserveStore));
+    if (!applyImport) return false;
+    setState(applyImport);
     return true;
   }, [repository, setState]);
 
   const importCsvText = React.useCallback((csv: string, accountId: string) => {
     const current = store.getState().state;
-    const account = current.accounts.find((item) => item.id === accountId);
-    const result = repository.importCsv(csv, accountId, account?.currency ?? current.settings.preferredCurrency, current.accounts);
-    const merged = mergeImportedTransactions(current, result.items);
-    if (merged.state !== current) updateState(() => merged.state);
-    return merged.duplicateCount ? [...result.errors, `duplicates:${merged.duplicateCount}`] : result.errors;
+    const result = importCsvIntoState(current, repository, csv, accountId);
+    if (result.state !== current) updateState(() => result.state);
+    return result.errors;
   }, [repository, store, updateState]);
 
   const resetData = React.useCallback(() => setState(repository.reset()), [repository, setState]);

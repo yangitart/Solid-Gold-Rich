@@ -1,7 +1,8 @@
 import type { Account, Budget, RecurringFrequency, RecurringTransaction, Transaction, Transfer } from '@/features/finance/domain/entities/financeTypes';
 import { captureCurrencySnapshot, type CurrencyRates } from '@/shared/domain/finance/currency';
 
-export type DateRange = { start: Date; end: Date };
+import { inDateRange, type DateRange } from '@/shared/domain/dates/dateRange';
+export { inDateRange, type DateRange } from '@/shared/domain/dates/dateRange';
 export type FinanceActivityFilter = 'all' | 'expense' | 'income' | 'transfer';
 
 function normalizedSearch(value: string) {
@@ -79,10 +80,6 @@ export function previousPeriodBounds(period: 'today' | 'week' | 'month' | 'year'
   return { start: new Date(current.start.getTime() - duration), end: new Date(current.start) };
 }
 
-export function inDateRange(date: string, range: DateRange) {
-  const timestamp = new Date(date).getTime();
-  return timestamp >= range.start.getTime() && timestamp < range.end.getTime();
-}
 
 export function budgetSpent(budget: Budget, transactions: Transaction[], currency: string, range: DateRange, rateFor: (from: string, to: string) => number | undefined) {
   return transactions

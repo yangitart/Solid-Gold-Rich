@@ -4,7 +4,7 @@
 
 - App Expo/React Native para Android. Entrada: `index.js`; no usa Expo Router ni web.
 - Nombre público: `Solid Gold Rich`. Package Android: `com.escobar.solidgold`. No cambiarlos sin autorización.
-- Alias `@/` = `src/`. Capas por feature: `domain` → `application` → `infrastructure`; `presentation` consume casos de uso y contratos.
+- Alias `@/` = `src/`. Dependencias por feature: `presentation` → `application` → `domain`; `infrastructure` implementa contratos de aplicación y depende hacia adentro. `ioc` ensambla adaptadores.
 - `AppRoot.tsx` ensambla dependencias con Inversify. `AppStateContext.tsx` expone `useFinance`, mantiene Zustand y persiste mediante `AppStateRepository`. No duplicar el estado ni usar AsyncStorage desde presentación.
 - No modificar archivos generados en `dist/` o `android/` ni recrear documentación eliminada.
 
@@ -40,3 +40,5 @@
 - Ejecutar comprobaciones proporcionales: TypeScript, ESLint, traducciones, pruebas de dominio y bundle Android cuando correspondan.
 - No crear commits ni hacer push salvo petición explícita.
 - Commits en inglés usando Conventional Commits y sin scope: `type: description` (por ejemplo, `fix: prepare production release`).
+- Para contribuir y consultar arquitectura o seguridad, leer README.md. Ejecutar `npm run check` antes de entregar cambios de código.
+- Dominio y aplicación no importan frameworks ni adaptadores; presentación no importa infraestructura. `npm run check:architecture` verifica estas dependencias.

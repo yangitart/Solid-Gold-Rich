@@ -7,7 +7,7 @@ import { useFinance } from '@/features/app-state/presentation/components/AppStat
 import type { AppLanguage } from '@/domain/AppState';
 import { DEFAULT_COLORS } from '@/features/finance/domain/entities/defaultColors';
 import { hashPin } from '@/shared/security/pin';
-import { waitForImportLoading } from '@/shared/infrastructure/files/importLoading';
+import { waitForImportLoading } from '@/shared/ui/importLoading';
 import { supportedLanguages } from '@/shared/i18n/i18next';
 import type { Account, Budget, Debt, FinanceCategory, RecurringFrequency, RecurringTransaction, SavingsGoal, Transaction } from '@/features/finance/domain/entities/financeTypes';
 import { C, FORM_TYPOGRAPHY, SANS, SERIF, createThemeStyles } from '@/shared/theme/luxury';

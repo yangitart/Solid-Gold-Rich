@@ -36,6 +36,8 @@ Thumbs.db
 # Native signing material and patch artifacts.
 *.orig.*
 *.jks
+*.keystore
+credentials.json
 *.p8
 *.p12
 *.key
