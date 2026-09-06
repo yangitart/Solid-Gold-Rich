@@ -31,7 +31,7 @@ export function ResponsiveSheet({ visible, title, onClose, children, closeLabel,
   return <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose} statusBarTranslucent>
     <KeyboardAvoidingView style={[styles.backdrop, tablet && styles.tabletBackdrop]} behavior="padding" enabled={Platform.OS === 'ios'}>
       <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityRole="button" accessibilityLabel={closeLabel} />
-      <SafeAreaView style={[styles.sheet, tablet && styles.tabletSheet]} edges={['bottom']}>
+      <SafeAreaView style={[styles.sheet, tablet && styles.tabletSheet]} edges={['bottom', 'left', 'right']}>
         <View style={styles.handle} />
         <View style={styles.header}><Text style={styles.title} numberOfLines={2}>{title}</Text><Pressable style={styles.close} onPress={onClose} accessibilityRole="button" accessibilityLabel={closeLabel}><Ionicons name="close" size={20} color={C.goldLight} /></Pressable></View>
         <ScrollView style={styles.scroll} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag" showsVerticalScrollIndicator={false}>{children}</ScrollView>

@@ -10,7 +10,8 @@
     "ios": "expo run:ios",
     "lint": "expo lint",
     "test:domain": "node scripts/run-domain-tests.cjs",
-    "check:i18n": "node scripts/check-translations.cjs"
+    "check:i18n": "node scripts/check-translations.cjs",
+    "check:android-release": "node scripts/check-android-release.cjs"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",

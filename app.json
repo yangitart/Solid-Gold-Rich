@@ -3,7 +3,7 @@
     "name": "Solid Gold Rich",
     "slug": "solid-gold-rich",
     "version": "1.0.1",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/iconapp.png",
     "scheme": "imrich",
     "userInterfaceStyle": "dark",
@@ -29,12 +29,9 @@
       ]
     },
     "androidStatusBar": {
-      "backgroundColor": "#04050A",
-      "barStyle": "light-content",
-      "translucent": false
+      "barStyle": "light-content"
     },
     "androidNavigationBar": {
-      "backgroundColor": "#04050A",
       "barStyle": "light-content"
     },
     "plugins": [
@@ -47,7 +44,8 @@
           "backgroundColor": "#04050A"
         }
       ],
-      "expo-localization"
+      "expo-localization",
+      "./plugins/withAndroidReleaseOptimizations"
     ],
     "extra": {
       "eas": {

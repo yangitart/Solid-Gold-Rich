@@ -1,17 +1,43 @@
-# The Expo project lives inside the repository under /app.
-/app/node_modules/
-/app/android/
-/app/dist/
-/app/.expo/
-/app/.idea/
-/app/.vscode/
-/app/.env*
-/app/*.tsbuildinfo
-
-# Repository and local tooling files are not needed by EAS Build.
+# Repository metadata and local agent state.
 /.git/
 /.codex/
 /.agents/
+
+# Dependencies and caches.
+node_modules/
+.cache/
+
+# Expo and generated build output.
+.expo/
+dist/
+web-build/
+expo-env.d.ts
+android/
+.kotlin/
+
+# Local IDE and tooling files.
+.idea/
+.vscode/
+.claude/
+app-example/
+
+# Local environment files and logs.
+.env*
 *.log
-Thumbs.db
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+
+# TypeScript and operating-system files.
+*.tsbuildinfo
 .DS_Store
+Thumbs.db
+
+# Native signing material and patch artifacts.
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.pem

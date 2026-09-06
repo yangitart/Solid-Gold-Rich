@@ -1119,7 +1119,7 @@ export default function FinanceModulesScreen({ module: initialModule, onBack, in
     });
   }, [activityCategories, state.categories.expense, state.categories.income, t]);
 
-  return <SafeAreaView style={[styles.root, styles.rootBackground]} edges={['top', 'bottom']}><View style={styles.header}><BackButton onPress={onBack} /><Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{titles[module]}</Text><View style={styles.headerSpace} /></View>{module === 'activity' ? <View style={[styles.content, styles.moduleContent, styles.moduleActivityContent]}>{content}</View> : <ScrollView contentContainerStyle={[styles.content, styles.moduleContent]} keyboardShouldPersistTaps="handled">{content}</ScrollView>}
+  return <SafeAreaView style={[styles.root, styles.rootBackground]} edges={['top', 'bottom', 'left', 'right']}><View style={styles.header}><BackButton onPress={onBack} /><Text style={styles.headerTitle} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.72}>{titles[module]}</Text><View style={styles.headerSpace} /></View>{module === 'activity' ? <View style={[styles.content, styles.moduleContent, styles.moduleActivityContent]}>{content}</View> : <ScrollView contentContainerStyle={[styles.content, styles.moduleContent]} keyboardShouldPersistTaps="handled">{content}</ScrollView>}
     <ResponsiveModal visible={activityPeriodOpen} onClose={() => setActivityPeriodOpen(false)}>
       <Text style={styles.sheetTitle}>{t('finance.date')}</Text>
       <View style={styles.activitySelectorGrid}>

@@ -1,5 +1,6 @@
 import React from 'react';
-import { Pressable, SafeAreaView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useTranslation } from 'react-i18next';
 import { C, SANS, SERIF, createThemeStyles } from '@/shared/theme/luxury';
@@ -33,7 +34,7 @@ export default function PinScreen({ pinHash, onUnlock }: { pinHash: string; onUn
 
   return (
     <SafeAreaView style={styles.safe}>
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.lockIcon}><Ionicons name="lock-closed-outline" size={28} color={C.gold} /></View>
         <Text style={styles.title}>{t('finance.pin.enter')}</Text>
         <Text style={styles.subtitle}>{t('finance.pin.subtitle')}</Text>
@@ -48,14 +49,14 @@ export default function PinScreen({ pinHash, onUnlock }: { pinHash: string; onUn
             </Pressable>
           ))}
         </View>
-      </View>
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = createThemeStyles((C) => StyleSheet.create({
   safe: { flex: 1 },
-  content: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 32 },
+  content: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 20, paddingVertical: 24 },
   lockIcon: { width: 64, height: 64, borderRadius: 22, borderWidth: StyleSheet.hairlineWidth, borderColor: C.line, backgroundColor: 'rgba(233,200,119,0.08)', alignItems: 'center', justifyContent: 'center', marginBottom: 22 },
   title: { color: C.goldLight, fontFamily: SERIF, fontSize: 26, textAlign: 'center' },
   subtitle: { color: 'rgba(255,244,208,0.42)', fontFamily: SANS, fontSize: 10, letterSpacing: 0.7, marginTop: 8, textAlign: 'center' },

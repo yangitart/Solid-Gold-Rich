@@ -3,7 +3,7 @@ import { KeyboardAvoidingView, Modal, NativeScrollEvent, NativeSyntheticEvent, P
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useTranslation } from 'react-i18next';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { C, SANS, SERIF, createThemeStyles } from '@/shared/theme/luxury';
 import { useFinance } from '@/features/app-state/presentation/components/AppStateContext';
 import i18n, { getPhoneLanguage, supportedLanguages, type SupportedLanguage } from '@/shared/i18n/i18next';
@@ -23,7 +23,9 @@ const PAGES: { key: 'accounts' | 'operations' | 'store' | 'currency'; icon: Icon
 export default function OnboardingScreen({ onComplete }: { onComplete: () => void }) {
   const { t } = useTranslation();
   const { state, updateState } = useFinance();
-  const { width, height } = useWindowDimensions();
+  const { width: windowWidth, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const width = Math.max(1, windowWidth - insets.left - insets.right);
   const scrollRef = React.useRef<ScrollView>(null);
   const previousWidth = React.useRef(width);
   const [page, setPage] = React.useState(0);
@@ -90,7 +92,7 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
   };
 
   return (
-    <SafeAreaView style={styles.root} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.root} edges={['top', 'bottom', 'left', 'right']}>
       <View style={styles.topBar}>
         <View style={styles.brandMark}><View style={styles.brandDiamond} /></View>
         <Text style={styles.brand}>SOLID GOLD RICH</Text>

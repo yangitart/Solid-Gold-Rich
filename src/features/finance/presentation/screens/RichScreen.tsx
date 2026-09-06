@@ -1123,7 +1123,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
   const headerSubtitle = screenMode === 'allActivity' ? t('finance.portfolio') : t('finance.budgetAccount');
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom', 'left', 'right']}>
       <View style={styles.root} {...budgetSwipeResponder.panHandlers}>
         <View style={styles.header}>
           <Pressable
@@ -1210,7 +1210,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
       <Modal visible={drawerOpen} transparent animationType="fade" onRequestClose={() => setDrawerOpen(false)}>
         <View style={styles.drawerBackdrop}>
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setDrawerOpen(false)} />
-          <SafeAreaView style={styles.drawer} edges={['top', 'bottom']}>
+          <SafeAreaView style={styles.drawer} edges={['top', 'bottom', 'left', 'right']}>
             <ScrollView style={styles.drawerMenuScroll} contentContainerStyle={styles.drawerMenuContent} showsVerticalScrollIndicator={false}>
               <View style={styles.drawerBalanceCard}>
                 <Text style={styles.microLabel}>{t('finance.totalAcrossBudgets')}</Text>
@@ -1240,7 +1240,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
       <Modal visible={statsOpen} animationType="slide" onRequestClose={() => setStatsOpen(false)}>
         <View style={styles.statsRoot}>
           <LinearGradient colors={['rgba(233,200,119,0.12)', 'transparent']} style={StyleSheet.absoluteFill} />
-          <SafeAreaView style={styles.statsSafe} edges={['top', 'bottom']}>
+          <SafeAreaView style={styles.statsSafe} edges={['top', 'bottom', 'left', 'right']}>
             <View style={styles.managerHeader}>
               <View style={styles.managerHeaderSide}><HeaderBackButton onPress={() => setStatsOpen(false)} /></View>
               <Text style={styles.managerHeaderTitle}>{t('finance.statistics')}</Text>
@@ -1366,7 +1366,7 @@ export default function RichScreen({ onOpenModule, drawerReopenSignal = 0 }: { o
       <Modal visible={managerOpen} animationType="fade" onRequestClose={() => editingBudget ? setEditingBudget(null) : setManagerOpen(false)}>
         <View style={styles.managerRoot}>
           <LinearGradient colors={['rgba(233,200,119,0.12)', 'transparent']} style={StyleSheet.absoluteFill} />
-          <SafeAreaView style={styles.managerSafe} edges={['top', 'bottom']}>
+          <SafeAreaView style={styles.managerSafe} edges={['top', 'bottom', 'left', 'right']}>
             <View style={styles.managerHeader}>
               <View style={styles.managerHeaderSide}>
                 <HeaderBackButton onPress={() => editingBudget ? setEditingBudget(null) : setManagerOpen(false)} />

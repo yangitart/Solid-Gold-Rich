@@ -32,7 +32,7 @@ export default function DateSelect({ label, value, onChange, firstDayOfWeek = 1,
       <Ionicons name="chevron-down-outline" size={17} color="rgba(255,244,208,0.42)" />
     </Pressable>
     <Modal visible={open} transparent animationType="fade" onRequestClose={() => setOpen(false)}>
-      <SafeAreaView style={styles.backdrop} edges={['top', 'bottom']}>
+      <SafeAreaView style={styles.backdrop} edges={['top', 'bottom', 'left', 'right']}>
         <Pressable style={StyleSheet.absoluteFill} onPress={() => setOpen(false)} />
         <ScrollView contentContainerStyle={styles.center} keyboardShouldPersistTaps="handled">
           <View style={styles.sheet}>

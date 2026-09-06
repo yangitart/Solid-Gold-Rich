@@ -15,7 +15,7 @@ function Root() {
 
   return (
     <SafeAreaProvider style={{ flex: 1, backgroundColor: C.void }}>
-      <StatusBar style="light" backgroundColor={C.void} />
+      <StatusBar style="light" />
       <AppRoot />
     </SafeAreaProvider>
   );
