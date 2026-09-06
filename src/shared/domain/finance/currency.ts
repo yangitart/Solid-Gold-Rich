@@ -16,7 +16,8 @@ export function currencyRate(
 
   const fromRate = from === 'USD' ? 1 : rates[from];
   const toRate = to === 'USD' ? 1 : rates[to];
-  if (!Number.isFinite(fromRate) || !Number.isFinite(toRate) || fromRate <= 0 || toRate <= 0) return undefined;
+  if (!Number.isFinite(fromRate) || !Number.isFinite(toRate) || fromRate <= 0 || toRate <= 0)
+    return undefined;
   const rate = fromRate / toRate;
   return Number.isFinite(rate) && rate > 0 ? rate : undefined;
 }
@@ -41,7 +42,9 @@ export function captureCurrencySnapshot(
   if (!Number.isFinite(amount)) return {};
   const rate = currencyRate(fromCurrency, baseCurrency, rates);
   const converted = rate === undefined ? undefined : amount * rate;
-  return converted !== undefined && Number.isFinite(converted) ? { baseAmount: converted, baseCurrency: baseCurrency.toUpperCase() } : {};
+  return converted !== undefined && Number.isFinite(converted)
+    ? { baseAmount: converted, baseCurrency: baseCurrency.toUpperCase() }
+    : {};
 }
 
 export function historicalAmountInCurrency(

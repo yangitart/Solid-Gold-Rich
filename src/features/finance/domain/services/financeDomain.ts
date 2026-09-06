@@ -1,4 +1,11 @@
-import type { Account, Budget, RecurringFrequency, RecurringTransaction, Transaction, Transfer } from '@/features/finance/domain/entities/financeTypes';
+import type {
+  Account,
+  Budget,
+  RecurringFrequency,
+  RecurringTransaction,
+  Transaction,
+  Transfer,
+} from '@/features/finance/domain/entities/financeTypes';
 import { captureCurrencySnapshot, type CurrencyRates } from '@/shared/domain/finance/currency';
 
 import { inDateRange, type DateRange } from '@/shared/domain/dates/dateRange';
@@ -6,34 +13,89 @@ export { inDateRange, type DateRange } from '@/shared/domain/dates/dateRange';
 export type FinanceActivityFilter = 'all' | 'expense' | 'income' | 'transfer';
 
 function normalizedSearch(value: string) {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim();
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase()
+    .trim();
 }
 
-export function accountBalance(state: { accounts: Account[]; transactions: Transaction[] }, accountId: string) {
+export function accountBalance(
+  state: { accounts: Account[]; transactions: Transaction[] },
+  accountId: string,
+) {
   const account = state.accounts.find((item) => item.id === accountId);
   if (!account) return 0;
   return state.transactions
     .filter((item) => item.accountId === accountId && item.status !== 'void')
-    .reduce((total, item) => item.kind === 'income' || item.kind === 'adjustment' ? total + item.amount : total - item.amount, account.openingBalance);
+    .reduce(
+      (total, item) =>
+        item.kind === 'income' || item.kind === 'adjustment'
+          ? total + item.amount
+          : total - item.amount,
+      account.openingBalance,
+    );
 }
 
-export function accountHasHistory(state: { transactions: Transaction[]; transfers: Transfer[] }, accountId: string) {
-  return state.transactions.some((item) => item.accountId === accountId)
-    || state.transfers.some((item) => item.fromAccountId === accountId || item.toAccountId === accountId);
+export function accountHasHistory(
+  state: { transactions: Transaction[]; transfers: Transfer[] },
+  accountId: string,
+) {
+  return (
+    state.transactions.some((item) => item.accountId === accountId) ||
+    state.transfers.some(
+      (item) => item.fromAccountId === accountId || item.toAccountId === accountId,
+    )
+  );
 }
 
 export function isTransferTransaction(item: { transferId?: string; kind: string }) {
   return Boolean(item.transferId) || item.kind === 'transfer';
 }
 
-export function transactionImportKey(item: Pick<Transaction, 'accountId' | 'kind' | 'amount' | 'currency' | 'date' | 'payee' | 'category' | 'paymentMethod' | 'status' | 'reference' | 'description'>) {
-  return [item.accountId, item.kind, item.amount, item.currency, item.date, item.payee, item.category, item.paymentMethod, item.status, item.reference, item.description]
-    .map((value) => String(value ?? '').trim().toLocaleLowerCase())
+export function transactionImportKey(
+  item: Pick<
+    Transaction,
+    | 'accountId'
+    | 'kind'
+    | 'amount'
+    | 'currency'
+    | 'date'
+    | 'payee'
+    | 'category'
+    | 'paymentMethod'
+    | 'status'
+    | 'reference'
+    | 'description'
+  >,
+) {
+  return [
+    item.accountId,
+    item.kind,
+    item.amount,
+    item.currency,
+    item.date,
+    item.payee,
+    item.category,
+    item.paymentMethod,
+    item.status,
+    item.reference,
+    item.description,
+  ]
+    .map((value) =>
+      String(value ?? '')
+        .trim()
+        .toLocaleLowerCase(),
+    )
     .join('\u001f');
 }
 
 export function isCashFlowTransaction(item: Transaction) {
-  return item.status !== 'void' && !isTransferTransaction(item) && (item.kind === 'expense' || item.kind === 'income');
+  return (
+    item.status !== 'void' &&
+    !isTransferTransaction(item) &&
+    (item.kind === 'expense' || item.kind === 'income')
+  );
 }
 
 export function transactionMatchesActivityFilter(item: Transaction, filter: FinanceActivityFilter) {
@@ -44,18 +106,35 @@ export function transactionMatchesActivityFilter(item: Transaction, filter: Fina
 
 export function filterActivityTransactions(
   transactions: Transaction[],
-  options: { filter: FinanceActivityFilter; category: string; query: string; categoryLabels?: Record<string, string>; accountNames?: Record<string, string> },
+  options: {
+    filter: FinanceActivityFilter;
+    category: string;
+    query: string;
+    categoryLabels?: Record<string, string>;
+    accountNames?: Record<string, string>;
+  },
 ) {
   const query = normalizedSearch(options.query);
   return transactions.filter((item) => {
-    if (item.status === 'void' || !transactionMatchesActivityFilter(item, options.filter) || (options.category !== 'all' && item.category !== options.category)) return false;
+    if (
+      item.status === 'void' ||
+      !transactionMatchesActivityFilter(item, options.filter) ||
+      (options.category !== 'all' && item.category !== options.category)
+    )
+      return false;
     if (!query) return true;
-    const searchable = normalizedSearch(`${item.payee} ${item.description} ${item.category} ${options.categoryLabels?.[item.category] ?? ''} ${options.accountNames?.[item.accountId] ?? ''} ${item.amount} ${item.currency} ${item.paymentMethod} ${item.reference} ${item.date}`);
+    const searchable = normalizedSearch(
+      `${item.payee} ${item.description} ${item.category} ${options.categoryLabels?.[item.category] ?? ''} ${options.accountNames?.[item.accountId] ?? ''} ${item.amount} ${item.currency} ${item.paymentMethod} ${item.reference} ${item.date}`,
+    );
     return searchable.includes(query);
   });
 }
 
-export function periodBounds(period: 'today' | 'week' | 'month' | 'year', reference = new Date(), firstDayOfWeek: 0 | 1 = 1): DateRange {
+export function periodBounds(
+  period: 'today' | 'week' | 'month' | 'year',
+  reference = new Date(),
+  firstDayOfWeek: 0 | 1 = 1,
+): DateRange {
   const start = new Date(reference.getFullYear(), reference.getMonth(), reference.getDate());
   if (period === 'week') {
     const delta = (start.getDay() - firstDayOfWeek + 7) % 7;
@@ -73,24 +152,49 @@ export function periodBounds(period: 'today' | 'week' | 'month' | 'year', refere
   return { start, end };
 }
 
-export function previousPeriodBounds(period: 'today' | 'week' | 'month' | 'year', current: DateRange): DateRange {
-  if (period === 'month') return { start: new Date(current.start.getFullYear(), current.start.getMonth() - 1, 1), end: new Date(current.start) };
-  if (period === 'year') return { start: new Date(current.start.getFullYear() - 1, 0, 1), end: new Date(current.start) };
+export function previousPeriodBounds(
+  period: 'today' | 'week' | 'month' | 'year',
+  current: DateRange,
+): DateRange {
+  if (period === 'month')
+    return {
+      start: new Date(current.start.getFullYear(), current.start.getMonth() - 1, 1),
+      end: new Date(current.start),
+    };
+  if (period === 'year')
+    return { start: new Date(current.start.getFullYear() - 1, 0, 1), end: new Date(current.start) };
   const duration = current.end.getTime() - current.start.getTime();
   return { start: new Date(current.start.getTime() - duration), end: new Date(current.start) };
 }
 
-
-export function budgetSpent(budget: Budget, transactions: Transaction[], currency: string, range: DateRange, rateFor: (from: string, to: string) => number | undefined) {
+export function budgetSpent(
+  budget: Budget,
+  transactions: Transaction[],
+  currency: string,
+  range: DateRange,
+  rateFor: (from: string, to: string) => number | undefined,
+) {
   return transactions
-    .filter((item) => item.status !== 'void' && !isTransferTransaction(item) && item.kind === 'expense' && item.accountId === budget.accountId && (budget.category === 'all' || item.category === budget.category) && inDateRange(item.date, range))
+    .filter(
+      (item) =>
+        item.status !== 'void' &&
+        !isTransferTransaction(item) &&
+        item.kind === 'expense' &&
+        item.accountId === budget.accountId &&
+        (budget.category === 'all' || item.category === budget.category) &&
+        inDateRange(item.date, range),
+    )
     .reduce((total, item) => {
       const rate = rateFor(item.currency, currency);
       return rate ? total + item.amount * rate : total;
     }, 0);
 }
 
-export function advanceRecurringDate(date: string, frequency: RecurringFrequency, preferredDay?: number) {
+export function advanceRecurringDate(
+  date: string,
+  frequency: RecurringFrequency,
+  preferredDay?: number,
+) {
   const next = new Date(date);
   if (frequency === 'daily') next.setDate(next.getDate() + 1);
   if (frequency === 'weekly') next.setDate(next.getDate() + 7);
@@ -107,12 +211,20 @@ export function advanceRecurringDate(date: string, frequency: RecurringFrequency
     next.setDate(1);
     next.setFullYear(next.getFullYear() + 1);
     next.setMonth(intendedMonth);
-    next.setDate(Math.min(intendedDay, new Date(next.getFullYear(), intendedMonth + 1, 0).getDate()));
+    next.setDate(
+      Math.min(intendedDay, new Date(next.getFullYear(), intendedMonth + 1, 0).getDate()),
+    );
   }
   return next.toISOString();
 }
 
-function generatedTransaction(item: RecurringTransaction, occurrence: string, id: string, baseCurrency?: string, rates?: CurrencyRates): Transaction {
+function generatedTransaction(
+  item: RecurringTransaction,
+  occurrence: string,
+  id: string,
+  baseCurrency?: string,
+  rates?: CurrencyRates,
+): Transaction {
   return {
     id,
     accountId: item.accountId,
@@ -127,7 +239,9 @@ function generatedTransaction(item: RecurringTransaction, occurrence: string, id
     reference: item.id,
     description: item.description,
     recurringId: item.id,
-    ...(baseCurrency && rates ? captureCurrencySnapshot(item.amount, item.currency, baseCurrency, rates) : {}),
+    ...(baseCurrency && rates
+      ? captureCurrencySnapshot(item.amount, item.currency, baseCurrency, rates)
+      : {}),
   };
 }
 
@@ -139,7 +253,11 @@ export function generateDueRecurring(
   baseCurrency?: string,
   rates?: CurrencyRates,
 ) {
-  const existing = new Set(transactions.filter((item) => item.recurringId).map((item) => `${item.recurringId}|${item.date}`));
+  const existing = new Set(
+    transactions
+      .filter((item) => item.recurringId)
+      .map((item) => `${item.recurringId}|${item.date}`),
+  );
   const generated: Transaction[] = [];
   const nextRecurring = recurring.map((item) => {
     if (!item.active || new Date(item.nextDate).getTime() > now.getTime()) return item;

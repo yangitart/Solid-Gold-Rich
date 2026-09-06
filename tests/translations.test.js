@@ -1,8 +1,10 @@
-const fs = require('fs');
-const path = require('path');
+import { test, expect } from 'vitest';
+import { fileURLToPath } from 'node:url';
+import fs from 'fs';
+import path from 'node:path';
 
 const locales = ['en', 'es', 'pt', 'fr', 'de', 'it'];
-const localeDirectory = path.join(__dirname, '..', 'src', 'shared', 'i18n');
+const localeDirectory = fileURLToPath(new URL('../src/shared/i18n', import.meta.url));
 
 function completeTranslation(root) {
   const finance = root.finance ?? {};
@@ -15,7 +17,10 @@ function completeTranslation(root) {
       ...(storeCompletion?.common ?? {}),
       ...(financeCompletion?.common ?? {}),
       pin: { ...(finance.pin ?? {}), ...(financeCompletion?.pin ?? {}) },
-      releaseImport: { ...(finance.releaseImport ?? {}), ...(financeCompletion?.releaseImport ?? {}) },
+      releaseImport: {
+        ...(finance.releaseImport ?? {}),
+        ...(financeCompletion?.releaseImport ?? {}),
+      },
       store: {
         ...(finance.store ?? {}),
         ...(storeCompletion?.store ?? {}),
@@ -32,25 +37,19 @@ function completeTranslation(root) {
 
 function leafKeys(value, prefix = '') {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return [prefix];
-  return Object.entries(value).flatMap(([key, child]) => leafKeys(child, prefix ? `${prefix}.${key}` : key));
+  return Object.entries(value).flatMap(([key, child]) =>
+    leafKeys(child, prefix ? `${prefix}.${key}` : key),
+  );
 }
 
-const resources = Object.fromEntries(locales.map((locale) => {
-  const filename = path.join(localeDirectory, `translation_${locale}.json`);
-  return [locale, completeTranslation(JSON.parse(fs.readFileSync(filename, 'utf8')))];
-}));
+const resources = Object.fromEntries(
+  locales.map((locale) => {
+    const filename = path.join(localeDirectory, `translation_${locale}.json`);
+    return [locale, completeTranslation(JSON.parse(fs.readFileSync(filename, 'utf8')))];
+  }),
+);
 const expected = new Set(leafKeys(resources.en));
-let failed = false;
-
-for (const locale of locales.slice(1)) {
+test.each(locales.slice(1))('%s contains all English translation keys', (locale) => {
   const actual = new Set(leafKeys(resources[locale]));
-  const missing = [...expected].filter((key) => !actual.has(key));
-  if (missing.length) {
-    failed = true;
-    console.error(`${locale}: missing ${missing.length} keys`);
-    missing.forEach((key) => console.error(`  ${key}`));
-  }
-}
-
-if (failed) process.exit(1);
-console.log(`Translation parity passed for ${locales.length} languages`);
+  expect([...expected].filter((key) => !actual.has(key))).toEqual([]);
+});

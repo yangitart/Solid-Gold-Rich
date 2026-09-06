@@ -93,7 +93,10 @@ function remapLightStyles(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(remapLightStyles);
   if (value && typeof value === 'object') {
     return Object.fromEntries(
-      Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, remapLightStyles(item)]),
+      Object.entries(value as Record<string, unknown>).map(([key, item]) => [
+        key,
+        remapLightStyles(item),
+      ]),
     );
   }
   if (typeof value !== 'string') return value;

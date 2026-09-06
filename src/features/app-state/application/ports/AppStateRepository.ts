@@ -9,5 +9,10 @@ export type AppStateRepository = {
   reset: () => FinanceState;
   normalize: (state: Partial<FinanceState>) => FinanceState;
   parseJson: (json: string) => FinanceState | null;
-  importCsv: (csv: string, accountId: string, fallbackCurrency: string, accounts?: Account[]) => CsvImportResult;
+  importCsv: (
+    csv: string,
+    accountId: string,
+    fallbackCurrency: string,
+    accounts?: Account[],
+  ) => CsvImportResult;
 };

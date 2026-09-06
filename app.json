@@ -44,8 +44,7 @@
           "backgroundColor": "#04050A"
         }
       ],
-      "expo-localization",
-      "./plugins/withAndroidReleaseOptimizations"
+      "expo-localization"
     ],
     "extra": {
       "eas": {

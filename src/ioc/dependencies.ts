@@ -32,7 +32,9 @@ appContainer.bind<EmergencyBackup>(APP_TYPES.emergencyBackup).toConstantValue(em
 appContainer.bind<BackupRepository>(APP_TYPES.backupRepository).toConstantValue(backupRepository);
 appContainer.bind<FileService>(APP_TYPES.fileService).toConstantValue(expoFileService);
 appContainer.bind<ImageStorage>(APP_TYPES.imageStorage).toConstantValue(expoImageStorage);
-appContainer.bind<AppStateRepository>(APP_TYPES.appStateRepository).toConstantValue(appStateRepository);
+appContainer
+  .bind<AppStateRepository>(APP_TYPES.appStateRepository)
+  .toConstantValue(appStateRepository);
 appContainer.bind<ReportRepository>(APP_TYPES.reportRepository).toConstantValue(reportRepository);
 
 export const appDependencies = {

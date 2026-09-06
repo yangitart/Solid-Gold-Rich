@@ -9,7 +9,7 @@ import Animated, {
   withTiming,
   interpolate,
 } from 'react-native-reanimated';
-import { createThemeStyles } from '@/shared/theme/luxury';
+import { createThemeStyles } from '@/shared/ui/theme/luxury';
 
 const WINDOW = 120; // ancho de la ventana de brillo
 
@@ -87,15 +87,17 @@ export default function ShimmerText({
   );
 }
 
-const styles = createThemeStyles((C) => StyleSheet.create({
-  base: { color: C.gold },
-  window: {
-    position: 'absolute',
-    top: 0,
-    bottom: 0,
-    left: 0,
-    width: WINDOW,
-    overflow: 'hidden',
-  },
-  shine: { color: '#FFFFFF' },
-}));
+const styles = createThemeStyles((C) =>
+  StyleSheet.create({
+    base: { color: C.gold },
+    window: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      left: 0,
+      width: WINDOW,
+      overflow: 'hidden',
+    },
+    shine: { color: '#FFFFFF' },
+  }),
+);

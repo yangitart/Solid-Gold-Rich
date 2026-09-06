@@ -17,7 +17,8 @@ function completeTranslation(source: unknown) {
   const root = source as Record<string, unknown>;
   const finance = root.finance as Record<string, unknown>;
   const completion = finance.storeCompletion as Record<string, Record<string, unknown>> | undefined;
-  const financeCompletion = finance.financeCompletion as Record<string, Record<string, unknown>> | undefined;
+  const financeCompletion = finance.financeCompletion as
+    Record<string, Record<string, unknown>> | undefined;
   const storeMessages = finance.storeMessages as Record<string, unknown> | undefined;
   if (!completion && !financeCompletion) return root;
   return {
@@ -27,17 +28,24 @@ function completeTranslation(source: unknown) {
       ...(completion?.common ?? {}),
       ...(financeCompletion?.common ?? {}),
       pin: { ...(finance.pin as Record<string, unknown>), ...(financeCompletion?.pin ?? {}) },
-      releaseImport: { ...(finance.releaseImport as Record<string, unknown>), ...(financeCompletion?.releaseImport ?? {}) },
+      releaseImport: {
+        ...(finance.releaseImport as Record<string, unknown>),
+        ...(financeCompletion?.releaseImport ?? {}),
+      },
       store: {
         ...(finance.store as Record<string, unknown>),
         ...(completion?.store ?? {}),
         ...(storeMessages ?? {}),
         errors: {
-          ...((finance.store as Record<string, unknown>)?.errors as Record<string, unknown> | undefined),
+          ...((finance.store as Record<string, unknown>)?.errors as
+            Record<string, unknown> | undefined),
           ...((completion?.store?.errors as Record<string, unknown> | undefined) ?? {}),
         },
       },
-      storeFilters: { ...(finance.storeFilters as Record<string, unknown>), ...(completion?.filters ?? {}) },
+      storeFilters: {
+        ...(finance.storeFilters as Record<string, unknown>),
+        ...(completion?.filters ?? {}),
+      },
     },
   };
 }

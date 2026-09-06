@@ -1,8 +1,16 @@
-import { hasFinanceImportIntegrity, hasStoreImportIntegrity } from '@/features/backup/application/services/backupIntegrity';
+import {
+  hasFinanceImportIntegrity,
+  hasStoreImportIntegrity,
+} from '@/features/backup/application/services/backupIntegrity';
 import { Directory, File, Paths } from 'expo-file-system';
 import type { AppState as FinanceState } from '@/domain/AppState';
 import type { StoreState } from '@/features/store/domain/entities/Store';
-import type { AppBackup, EmbeddedPicture, StoreBackup, StoreProductBackup } from '@/features/backup/application/ports/BackupTypes';
+import type {
+  AppBackup,
+  EmbeddedPicture,
+  StoreBackup,
+  StoreProductBackup,
+} from '@/features/backup/application/ports/BackupTypes';
 
 const BACKUP_KIND = 'solid-gold-rich-store';
 const BACKUP_VERSION = 1;
@@ -13,7 +21,9 @@ const APP_ARCHIVE_VERSION = 1;
 
 type ArchivePicture = { mimeType: string; path: string };
 type ArchiveProduct = Omit<StoreProductBackup, 'picture'> & { picture?: ArchivePicture };
-type ArchiveState = Omit<AppBackup['state'], 'store'> & { store: Omit<StoreBackup['store'], 'products'> & { products: ArchiveProduct[] } };
+type ArchiveState = Omit<AppBackup['state'], 'store'> & {
+  store: Omit<StoreBackup['store'], 'products'> & { products: ArchiveProduct[] };
+};
 type ArchiveFile = { name: string; bytes: Uint8Array };
 
 function mimeTypeFor(uri: string) {
@@ -43,7 +53,10 @@ function concatBytes(chunks: Uint8Array[]) {
   const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0);
   const result = new Uint8Array(total);
   let offset = 0;
-  chunks.forEach((chunk) => { result.set(chunk, offset); offset += chunk.length; });
+  chunks.forEach((chunk) => {
+    result.set(chunk, offset);
+    offset += chunk.length;
+  });
   return result;
 }
 
@@ -51,14 +64,15 @@ function crc32(bytes: Uint8Array) {
   let crc = 0xffffffff;
   for (const byte of bytes) {
     crc ^= byte;
-    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
   }
   return (crc ^ 0xffffffff) >>> 0;
 }
 
 function base64ToBytes(value: string) {
   const input = value.replace(/\s/g, '');
-  if (!input || input.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(input)) throw new Error('invalid-archive-data');
+  if (!input || input.length % 4 !== 0 || !/^[A-Za-z0-9+/]+={0,2}$/.test(input))
+    throw new Error('invalid-archive-data');
   const padding = input.endsWith('==') ? 2 : input.endsWith('=') ? 1 : 0;
   const bytes = new Uint8Array((input.length / 4) * 3 - padding);
   let buffer = 0;
@@ -66,7 +80,9 @@ function base64ToBytes(value: string) {
   let offset = 0;
   for (const character of input) {
     if (character === '=') break;
-    const code = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'.indexOf(character);
+    const code = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'.indexOf(
+      character,
+    );
     buffer = (buffer << 6) | code;
     bits += 6;
     if (bits >= 8) {
@@ -103,14 +119,34 @@ function zip(files: ArchiveFile[]) {
     const crc = crc32(data);
     const header = new Uint8Array(30 + name.length);
     const view = new DataView(header.buffer);
-    view.setUint32(0, 0x04034b50, true); view.setUint16(4, 20, true); view.setUint16(8, 0, true); view.setUint16(10, 0, true);
-    view.setUint32(14, crc, true); view.setUint32(18, data.length, true); view.setUint32(22, data.length, true); view.setUint16(26, name.length, true); view.setUint16(28, 0, true);
+    view.setUint32(0, 0x04034b50, true);
+    view.setUint16(4, 20, true);
+    view.setUint16(8, 0, true);
+    view.setUint16(10, 0, true);
+    view.setUint32(14, crc, true);
+    view.setUint32(18, data.length, true);
+    view.setUint32(22, data.length, true);
+    view.setUint16(26, name.length, true);
+    view.setUint16(28, 0, true);
     header.set(name, 30);
     local.push(header, data);
     const record = new Uint8Array(46 + name.length);
     const recordView = new DataView(record.buffer);
-    recordView.setUint32(0, 0x02014b50, true); recordView.setUint16(4, 20, true); recordView.setUint16(6, 20, true); recordView.setUint16(8, 0, true); recordView.setUint16(10, 0, true);
-    recordView.setUint32(16, crc, true); recordView.setUint32(20, data.length, true); recordView.setUint32(24, data.length, true); recordView.setUint16(28, name.length, true); recordView.setUint16(30, 0, true); recordView.setUint16(32, 0, true); recordView.setUint16(34, 0, true); recordView.setUint16(36, 0, true); recordView.setUint32(38, 0, true); recordView.setUint32(42, offset, true);
+    recordView.setUint32(0, 0x02014b50, true);
+    recordView.setUint16(4, 20, true);
+    recordView.setUint16(6, 20, true);
+    recordView.setUint16(8, 0, true);
+    recordView.setUint16(10, 0, true);
+    recordView.setUint32(16, crc, true);
+    recordView.setUint32(20, data.length, true);
+    recordView.setUint32(24, data.length, true);
+    recordView.setUint16(28, name.length, true);
+    recordView.setUint16(30, 0, true);
+    recordView.setUint16(32, 0, true);
+    recordView.setUint16(34, 0, true);
+    recordView.setUint16(36, 0, true);
+    recordView.setUint32(38, 0, true);
+    recordView.setUint32(42, offset, true);
     record.set(name, 46);
     central.push(record);
     offset += header.length + data.length;
@@ -119,7 +155,11 @@ function zip(files: ArchiveFile[]) {
   const centralBytes = concatBytes(central);
   const end = new Uint8Array(22);
   const endView = new DataView(end.buffer);
-  endView.setUint32(0, 0x06054b50, true); endView.setUint16(8, files.length, true); endView.setUint16(10, files.length, true); endView.setUint32(12, centralBytes.length, true); endView.setUint32(16, localBytes.length, true);
+  endView.setUint32(0, 0x06054b50, true);
+  endView.setUint16(8, files.length, true);
+  endView.setUint16(10, files.length, true);
+  endView.setUint32(12, centralBytes.length, true);
+  endView.setUint32(16, localBytes.length, true);
   return concatBytes([localBytes, centralBytes, end]);
 }
 
@@ -129,47 +169,74 @@ function unzip(bytes: Uint8Array) {
   let endOffset = bytes.length - 22;
   for (; endOffset >= Math.max(0, bytes.length - 65557); endOffset -= 1) {
     const candidate = new DataView(bytes.buffer, bytes.byteOffset + endOffset);
-    if (candidate.getUint32(0, true) === 0x06054b50 && endOffset + 22 + candidate.getUint16(20, true) === bytes.length) break;
+    if (
+      candidate.getUint32(0, true) === 0x06054b50 &&
+      endOffset + 22 + candidate.getUint16(20, true) === bytes.length
+    )
+      break;
   }
   if (endOffset < Math.max(0, bytes.length - 65557)) throw new Error('invalid-archive');
   const end = new DataView(bytes.buffer, bytes.byteOffset + endOffset);
   const entryCount = end.getUint16(10, true);
   const centralStart = end.getUint32(16, true);
-  if (end.getUint16(4, true) !== 0 || end.getUint16(6, true) !== 0 || end.getUint16(8, true) !== entryCount
-    || centralStart + end.getUint32(12, true) !== endOffset) throw new Error('invalid-archive');
+  if (
+    end.getUint16(4, true) !== 0 ||
+    end.getUint16(6, true) !== 0 ||
+    end.getUint16(8, true) !== entryCount ||
+    centralStart + end.getUint32(12, true) !== endOffset
+  )
+    throw new Error('invalid-archive');
   let offset = 0;
   while (offset + 30 <= centralStart) {
     const view = new DataView(bytes.buffer, bytes.byteOffset + offset);
     if (view.getUint32(0, true) !== 0x04034b50) break;
-    if ((view.getUint16(6, true) & ~0x0800) !== 0 || view.getUint16(8, true) !== 0) throw new Error('unsupported-archive-compression');
+    if ((view.getUint16(6, true) & ~0x0800) !== 0 || view.getUint16(8, true) !== 0)
+      throw new Error('unsupported-archive-compression');
     const compressedSize = view.getUint32(18, true);
     const nameLength = view.getUint16(26, true);
     const extraLength = view.getUint16(28, true);
     const nameStart = offset + 30;
     const dataStart = nameStart + nameLength + extraLength;
     const dataEnd = dataStart + compressedSize;
-    if (dataEnd > centralStart || compressedSize !== view.getUint32(22, true)) throw new Error('invalid-archive');
+    if (dataEnd > centralStart || compressedSize !== view.getUint32(22, true))
+      throw new Error('invalid-archive');
     const name = textFromBytes(bytes.slice(nameStart, nameStart + nameLength));
-    if (files.has(name) || (name !== 'backup.json' && !/^images\/[A-Za-z0-9_-]+\.(?:jpg|png|webp|gif)$/i.test(name))) throw new Error('invalid-archive');
-    if (crc32(bytes.slice(dataStart, dataEnd)) !== view.getUint32(14, true)) throw new Error('invalid-archive');
+    if (
+      files.has(name) ||
+      (name !== 'backup.json' && !/^images\/[A-Za-z0-9_-]+\.(?:jpg|png|webp|gif)$/i.test(name))
+    )
+      throw new Error('invalid-archive');
+    if (crc32(bytes.slice(dataStart, dataEnd)) !== view.getUint32(14, true))
+      throw new Error('invalid-archive');
     localOffsets.set(name, offset);
     files.set(name, bytes.slice(dataStart, dataEnd));
     offset = dataEnd;
   }
-  if (!files.size || offset !== centralStart || files.size !== entryCount) throw new Error('invalid-archive');
+  if (!files.size || offset !== centralStart || files.size !== entryCount)
+    throw new Error('invalid-archive');
   const seen = new Set<string>();
   for (let index = 0; index < entryCount; index += 1) {
     if (offset + 46 > endOffset) throw new Error('invalid-archive');
     const central = new DataView(bytes.buffer, bytes.byteOffset + offset);
     const nameLength = central.getUint16(28, true);
-    const recordEnd = offset + 46 + nameLength + central.getUint16(30, true) + central.getUint16(32, true);
-    if (central.getUint32(0, true) !== 0x02014b50 || recordEnd > endOffset) throw new Error('invalid-archive');
+    const recordEnd =
+      offset + 46 + nameLength + central.getUint16(30, true) + central.getUint16(32, true);
+    if (central.getUint32(0, true) !== 0x02014b50 || recordEnd > endOffset)
+      throw new Error('invalid-archive');
     const name = textFromBytes(bytes.slice(offset + 46, offset + 46 + nameLength));
     const file = files.get(name);
-    if (!file || seen.has(name) || localOffsets.get(name) !== central.getUint32(42, true)
-      || central.getUint16(10, true) !== 0 || (central.getUint16(8, true) & ~0x0800) !== 0
-      || central.getUint16(34, true) !== 0 || central.getUint32(20, true) !== file.length
-      || central.getUint32(24, true) !== file.length || central.getUint32(16, true) !== crc32(file)) throw new Error('invalid-archive');
+    if (
+      !file ||
+      seen.has(name) ||
+      localOffsets.get(name) !== central.getUint32(42, true) ||
+      central.getUint16(10, true) !== 0 ||
+      (central.getUint16(8, true) & ~0x0800) !== 0 ||
+      central.getUint16(34, true) !== 0 ||
+      central.getUint32(20, true) !== file.length ||
+      central.getUint32(24, true) !== file.length ||
+      central.getUint32(16, true) !== crc32(file)
+    )
+      throw new Error('invalid-archive');
     seen.add(name);
     offset = recordEnd;
   }
@@ -182,82 +249,152 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function isEmbeddedPicture(value: unknown): value is EmbeddedPicture {
-  return isRecord(value)
-    && typeof value.mimeType === 'string'
-    && value.mimeType.startsWith('image/')
-    && typeof value.data === 'string'
-    && value.data.length > 0
-    && value.data.length % 4 === 0
-    && /^[A-Za-z0-9+/]+={0,2}$/.test(value.data);
+  return (
+    isRecord(value) &&
+    typeof value.mimeType === 'string' &&
+    value.mimeType.startsWith('image/') &&
+    typeof value.data === 'string' &&
+    value.data.length > 0 &&
+    value.data.length % 4 === 0 &&
+    /^[A-Za-z0-9+/]+={0,2}$/.test(value.data)
+  );
 }
 
 function isStoreBackup(value: unknown): value is StoreBackup {
-  if (!isRecord(value) || value.kind !== BACKUP_KIND || value.version !== BACKUP_VERSION || typeof value.exportedAt !== 'string' || !isRecord(value.store)) return false;
+  if (
+    !isRecord(value) ||
+    value.kind !== BACKUP_KIND ||
+    value.version !== BACKUP_VERSION ||
+    typeof value.exportedAt !== 'string' ||
+    !isRecord(value.store)
+  )
+    return false;
   const store = value.store;
-  return hasStoreImportIntegrity(store)
-    && Array.isArray(store.categories)
-    && Array.isArray(store.products)
-    && Array.isArray(store.stockMovements)
-    && Array.isArray(store.sales)
-    && Array.isArray(store.clients)
-    && Array.isArray(store.employees)
-    && Array.isArray(store.cashMovements)
-    && store.products.every((product) => isRecord(product) && (!('picture' in product) || product.picture === undefined || isEmbeddedPicture(product.picture)));
+  return (
+    hasStoreImportIntegrity(store) &&
+    Array.isArray(store.categories) &&
+    Array.isArray(store.products) &&
+    Array.isArray(store.stockMovements) &&
+    Array.isArray(store.sales) &&
+    Array.isArray(store.clients) &&
+    Array.isArray(store.employees) &&
+    Array.isArray(store.cashMovements) &&
+    store.products.every(
+      (product) =>
+        isRecord(product) &&
+        (!('picture' in product) ||
+          product.picture === undefined ||
+          isEmbeddedPicture(product.picture)),
+    )
+  );
 }
 
 export async function createStoreBackup(store: StoreState): Promise<StoreBackup> {
-  const products = await Promise.all(store.products.map(async (product): Promise<StoreProductBackup> => {
-    const { picture, ...productWithoutPicture } = product;
-    if (!picture) return productWithoutPicture;
-    if (picture.startsWith('data:')) {
-      const match = /^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/]+={0,2})$/i.exec(picture);
-      if (!match) throw new Error('invalid-product-picture');
-      return { ...productWithoutPicture, picture: { mimeType: match[1].toLowerCase(), data: match[2] } };
-    }
-    const data = await new File(picture).base64();
-    if (!data) throw new Error('invalid-product-picture');
-    return { ...productWithoutPicture, picture: { mimeType: mimeTypeFor(picture), data } };
-  }));
-  return { kind: BACKUP_KIND, version: BACKUP_VERSION, exportedAt: new Date().toISOString(), store: { ...store, products } };
+  const products = await Promise.all(
+    store.products.map(async (product): Promise<StoreProductBackup> => {
+      const { picture, ...productWithoutPicture } = product;
+      if (!picture) return productWithoutPicture;
+      if (picture.startsWith('data:')) {
+        const match = /^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+/]+={0,2})$/i.exec(picture);
+        if (!match) throw new Error('invalid-product-picture');
+        return {
+          ...productWithoutPicture,
+          picture: { mimeType: match[1].toLowerCase(), data: match[2] },
+        };
+      }
+      const data = await new File(picture).base64();
+      if (!data) throw new Error('invalid-product-picture');
+      return { ...productWithoutPicture, picture: { mimeType: mimeTypeFor(picture), data } };
+    }),
+  );
+  return {
+    kind: BACKUP_KIND,
+    version: BACKUP_VERSION,
+    exportedAt: new Date().toISOString(),
+    store: { ...store, products },
+  };
 }
 
 export async function createAppBackup(state: FinanceState): Promise<AppBackup> {
   const storeBackup = await createStoreBackup(state.store);
-  return { kind: APP_BACKUP_KIND, version: APP_BACKUP_VERSION, exportedAt: new Date().toISOString(), state: { ...state, store: storeBackup.store } };
+  return {
+    kind: APP_BACKUP_KIND,
+    version: APP_BACKUP_VERSION,
+    exportedAt: new Date().toISOString(),
+    state: { ...state, store: storeBackup.store },
+  };
 }
 
 export async function createAppArchive(state: FinanceState): Promise<Uint8Array> {
   const backup = await createAppBackup(state);
   const imageFiles: ArchiveFile[] = [];
-  const products: ArchiveProduct[] = backup.state.store.products.map((product, index): ArchiveProduct => {
-    if (!product.picture) {
+  const products: ArchiveProduct[] = backup.state.store.products.map(
+    (product, index): ArchiveProduct => {
+      if (!product.picture) {
+        const { picture: _picture, ...productWithoutPicture } = product;
+        return productWithoutPicture;
+      }
+      const safeId = product.id.replace(/[^a-z0-9_-]/gi, '') || `product-${index + 1}`;
+      const path = `images/${safeId}-${index + 1}.${extensionFor(product.picture.mimeType)}`;
+      imageFiles.push({ name: path, bytes: base64ToBytes(product.picture.data) });
       const { picture: _picture, ...productWithoutPicture } = product;
-      return productWithoutPicture;
-    }
-    const safeId = product.id.replace(/[^a-z0-9_-]/gi, '') || `product-${index + 1}`;
-    const path = `images/${safeId}-${index + 1}.${extensionFor(product.picture.mimeType)}`;
-    imageFiles.push({ name: path, bytes: base64ToBytes(product.picture.data) });
-    const { picture: _picture, ...productWithoutPicture } = product;
-    return { ...productWithoutPicture, picture: { mimeType: product.picture.mimeType, path } };
-  });
-  const archiveState: ArchiveState = { ...backup.state, store: { ...backup.state.store, products } };
-  const manifest = { kind: APP_ARCHIVE_KIND, version: APP_ARCHIVE_VERSION, exportedAt: backup.exportedAt, state: archiveState };
-  return zip([{ name: 'backup.json', bytes: utf8(JSON.stringify(manifest, null, 2)) }, ...imageFiles]);
+      return { ...productWithoutPicture, picture: { mimeType: product.picture.mimeType, path } };
+    },
+  );
+  const archiveState: ArchiveState = {
+    ...backup.state,
+    store: { ...backup.state.store, products },
+  };
+  const manifest = {
+    kind: APP_ARCHIVE_KIND,
+    version: APP_ARCHIVE_VERSION,
+    exportedAt: backup.exportedAt,
+    state: archiveState,
+  };
+  return zip([
+    { name: 'backup.json', bytes: utf8(JSON.stringify(manifest, null, 2)) },
+    ...imageFiles,
+  ]);
 }
 
 export function parseStoreBackup(text: string): StoreBackup {
   let value: unknown;
-  try { value = JSON.parse(text); } catch { throw new Error('invalid-store-backup'); }
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new Error('invalid-store-backup');
+  }
   if (!isStoreBackup(value)) throw new Error('invalid-store-backup');
   return value;
 }
 
 export function parseAppBackup(text: string): AppBackup {
   let value: unknown;
-  try { value = JSON.parse(text); } catch { throw new Error('invalid-app-backup'); }
-  if (!isRecord(value) || value.kind !== APP_BACKUP_KIND || value.version !== APP_BACKUP_VERSION || typeof value.exportedAt !== 'string' || !isRecord(value.state)) throw new Error('invalid-app-backup');
+  try {
+    value = JSON.parse(text);
+  } catch {
+    throw new Error('invalid-app-backup');
+  }
+  if (
+    !isRecord(value) ||
+    value.kind !== APP_BACKUP_KIND ||
+    value.version !== APP_BACKUP_VERSION ||
+    typeof value.exportedAt !== 'string' ||
+    !isRecord(value.state)
+  )
+    throw new Error('invalid-app-backup');
   if (!hasFinanceImportIntegrity(value.state)) throw new Error('invalid-app-backup');
-  if (!Array.isArray(value.state.accounts) || !Array.isArray(value.state.transactions) || !isStoreBackup({ kind: BACKUP_KIND, version: BACKUP_VERSION, exportedAt: value.exportedAt, store: value.state.store })) throw new Error('invalid-app-backup');
+  if (
+    !Array.isArray(value.state.accounts) ||
+    !Array.isArray(value.state.transactions) ||
+    !isStoreBackup({
+      kind: BACKUP_KIND,
+      version: BACKUP_VERSION,
+      exportedAt: value.exportedAt,
+      store: value.state.store,
+    })
+  )
+    throw new Error('invalid-app-backup');
   return value as AppBackup;
 }
 
@@ -266,18 +403,44 @@ export function parseAppArchive(base64: string): AppBackup {
   const manifestFile = files.get('backup.json');
   if (!manifestFile) throw new Error('invalid-app-archive');
   let value: unknown;
-  try { value = JSON.parse(textFromBytes(manifestFile)); } catch { throw new Error('invalid-app-archive'); }
-  if (!isRecord(value) || value.kind !== APP_ARCHIVE_KIND || value.version !== APP_ARCHIVE_VERSION || typeof value.exportedAt !== 'string' || !isRecord(value.state) || !isRecord(value.state.store) || !Array.isArray(value.state.store.products)) throw new Error('invalid-app-archive');
+  try {
+    value = JSON.parse(textFromBytes(manifestFile));
+  } catch {
+    throw new Error('invalid-app-archive');
+  }
+  if (
+    !isRecord(value) ||
+    value.kind !== APP_ARCHIVE_KIND ||
+    value.version !== APP_ARCHIVE_VERSION ||
+    typeof value.exportedAt !== 'string' ||
+    !isRecord(value.state) ||
+    !isRecord(value.state.store) ||
+    !Array.isArray(value.state.store.products)
+  )
+    throw new Error('invalid-app-archive');
   const products = value.state.store.products.map((product) => {
     if (!isRecord(product)) throw new Error('invalid-app-archive');
     const picture = product.picture;
     if (picture === undefined) return product;
-    if (!isRecord(picture) || typeof picture.mimeType !== 'string' || typeof picture.path !== 'string' || !/^images\/[A-Za-z0-9_-]+\.(?:jpg|png|webp|gif)$/i.test(picture.path)) throw new Error('invalid-app-archive');
+    if (
+      !isRecord(picture) ||
+      typeof picture.mimeType !== 'string' ||
+      typeof picture.path !== 'string' ||
+      !/^images\/[A-Za-z0-9_-]+\.(?:jpg|png|webp|gif)$/i.test(picture.path)
+    )
+      throw new Error('invalid-app-archive');
     const image = files.get(picture.path);
     if (!image) throw new Error('invalid-app-archive');
     return { ...product, picture: { mimeType: picture.mimeType, data: bytesToBase64(image) } };
   });
-  return parseAppBackup(JSON.stringify({ kind: APP_BACKUP_KIND, version: APP_BACKUP_VERSION, exportedAt: value.exportedAt, state: { ...value.state, store: { ...value.state.store, products } } }));
+  return parseAppBackup(
+    JSON.stringify({
+      kind: APP_BACKUP_KIND,
+      version: APP_BACKUP_VERSION,
+      exportedAt: value.exportedAt,
+      state: { ...value.state, store: { ...value.state.store, products } },
+    }),
+  );
 }
 
 export function restoreStoreBackup(backup: StoreBackup): StoreState {
@@ -295,27 +458,42 @@ export function restoreStoreBackup(backup: StoreBackup): StoreState {
 export function isolateStoreBackupForImport(store: StoreState): StoreState {
   return {
     ...store,
-    stockMovements: store.stockMovements.map(({ personalTransactionId: _personalTransactionId, ...movement }) => movement),
-    cashMovements: store.cashMovements.map(({ transferId: _transferId, personalTransactionId: _personalTransactionId, ...movement }) => movement),
+    stockMovements: store.stockMovements.map(
+      ({ personalTransactionId: _personalTransactionId, ...movement }) => movement,
+    ),
+    cashMovements: store.cashMovements.map(
+      ({ transferId: _transferId, personalTransactionId: _personalTransactionId, ...movement }) =>
+        movement,
+    ),
   };
 }
 
 export async function restoreStoreBackupToDevice(backup: StoreBackup): Promise<StoreState> {
   const directory = new Directory(Paths.document, 'product-images');
   directory.create({ idempotent: true, intermediates: true });
-  const products = await Promise.all(backup.store.products.map(async (product, index) => {
-    const { picture, ...productWithoutPicture } = product;
-    if (!picture) return productWithoutPicture;
-    const safeId = product.id.replace(/[^a-z0-9_-]/gi, '') || `product-${index + 1}`;
-    const destination = new File(directory, `${safeId}-${Date.now()}-${index}.${extensionFor(picture.mimeType)}`);
-    destination.create({ overwrite: true, intermediates: true });
-    destination.write(picture.data, { encoding: 'base64' });
-    return { ...productWithoutPicture, picture: destination.uri };
-  }));
+  const products = await Promise.all(
+    backup.store.products.map(async (product, index) => {
+      const { picture, ...productWithoutPicture } = product;
+      if (!picture) return productWithoutPicture;
+      const safeId = product.id.replace(/[^a-z0-9_-]/gi, '') || `product-${index + 1}`;
+      const destination = new File(
+        directory,
+        `${safeId}-${Date.now()}-${index}.${extensionFor(picture.mimeType)}`,
+      );
+      destination.create({ overwrite: true, intermediates: true });
+      destination.write(picture.data, { encoding: 'base64' });
+      return { ...productWithoutPicture, picture: destination.uri };
+    }),
+  );
   return { ...backup.store, products } as StoreState;
 }
 
 export async function restoreAppBackupToDevice(backup: AppBackup): Promise<FinanceState> {
-  const store = await restoreStoreBackupToDevice({ kind: BACKUP_KIND, version: BACKUP_VERSION, exportedAt: backup.exportedAt, store: backup.state.store });
+  const store = await restoreStoreBackupToDevice({
+    kind: BACKUP_KIND,
+    version: BACKUP_VERSION,
+    exportedAt: backup.exportedAt,
+    store: backup.state.store,
+  });
   return { ...backup.state, store } as FinanceState;
 }

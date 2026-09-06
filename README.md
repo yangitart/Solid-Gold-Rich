@@ -23,15 +23,15 @@ npm ci
 npm start
 ```
 
-For a local native Android build with the configured native plugins:
+For a local native Android build:
 
 ```sh
 npm run android
 ```
 
-Run commands from the repository root. `npm run emulator -- YourAvdName` starts
-an existing Android virtual device (the default name is `Pixel`). Set
-`ANDROID_HOME` if your SDK is outside its default location.
+Run commands from the repository root. Use Android Studio or the Android SDK
+tools to start an emulator. Set `ANDROID_HOME` if your SDK is outside its
+default location.
 
 No backend or secret environment variables are required for the current app.
 Keep local configuration and signing keys out of Git. The iOS configuration is
@@ -39,12 +39,16 @@ present, but iOS is not currently a validated release target. There is no web ap
 
 ## Quality checks
 
+Run `npm run format` to apply Prettier to source, tests and configuration.
+`npm run format:check` verifies formatting without modifying files.
+
 ```sh
 npm run check
 ```
 
-This runs TypeScript, ESLint, architecture boundaries, translation consistency
-and the domain/storage/report regression suite. Tests mock native storage and
+This runs TypeScript, ESLint and Vitest (architecture, translations, domain,
+storage, application use cases and reports). Use `npm test` for a single run
+or `npm run test:watch` during development. Tests mock native storage and
 files; they do not replace Android device testing.
 
 Validate the Android JavaScript bundle separately with:
@@ -53,10 +57,8 @@ Validate the Android JavaScript bundle separately with:
 npx expo export --platform android
 ```
 
-After generating Android with the current Expo configuration, run
-`npm run check:android-release` to inspect native release settings. An old local
-`android/` directory may fail this check; generated native code is excluded from
-Git and EAS uploads. Preserve any local native edits before regenerating it.
+The native `android/` directory is generated locally and excluded from Git and
+EAS uploads. Preserve local native edits before regenerating it.
 
 CI runs source checks and Android export on pushes to `master` and pull requests.
 It does not sign binaries or publish releases.
@@ -76,13 +78,14 @@ ioc -> adapters and contracts (dependency assembly)
 - `features/*/infrastructure`: persistence and native service implementations.
 - `features/*/presentation`: screens, interaction state and React hooks.
 - `shared/domain`: business utilities shared across features, including dates.
+- `shared/utils`: framework independent helpers such as Base64 and PIN hashing.
 - `shared/ui`: reusable interface components and presentation helpers.
 - `domain/AppState.ts`: aggregate persisted state. Its format remains compatible.
 - `ioc/dependencies.ts`: Inversify assembly, consumed by `AppRoot`.
 
 The app-state provider owns Zustand and adapts application use cases to React.
 Import orchestration and recurring-operation generation live in application code.
-`npm run check:architecture` checks literal imports, re-exports, require calls and
+`npm test -- tests/architecture.test.js` checks literal imports, re-exports, require calls and
 dynamic imports, including aliases and local barrels. Domain cannot depend on
 application or platform code; application cannot depend on adapters or UI;
 presentation cannot reach infrastructure through local imports. Computed imports

@@ -1,16 +1,37 @@
-import type { StoreCashMovement, StoreProduct, StoreProductType, StoreSale, StoreState, StoreStockMovement } from '@/features/store/domain/entities/Store';
+import type {
+  StoreCashMovement,
+  StoreProduct,
+  StoreProductType,
+  StoreSale,
+  StoreState,
+  StoreStockMovement,
+} from '@/features/store/domain/entities/Store';
 import { currencyRate, type CurrencyRates } from '@/shared/domain/finance/currency';
 
-export type StoreStateContainer = { store: StoreState; settings?: { exchangeRates?: CurrencyRates } };
+export type StoreStateContainer = {
+  store: StoreState;
+  settings?: { exchangeRates?: CurrencyRates };
+};
 
-export type StoreActionResult<T extends StoreStateContainer = StoreStateContainer> = { state: T; error?: 'duplicate' | 'missing-product' | 'insufficient-stock' | 'already-void' | 'invalid-sale' };
-export type StoreCurrencyChangeResult<T extends StoreStateContainer = StoreStateContainer> = { state: T; rate?: number; error?: 'missing-rate' };
+export type StoreActionResult<T extends StoreStateContainer = StoreStateContainer> = {
+  state: T;
+  error?: 'duplicate' | 'missing-product' | 'insufficient-stock' | 'already-void' | 'invalid-sale';
+};
+export type StoreCurrencyChangeResult<T extends StoreStateContainer = StoreStateContainer> = {
+  state: T;
+  rate?: number;
+  error?: 'missing-rate';
+};
 export type StoreStatisticsRange = { start: Date; end: Date };
 export type StoreStockFilter = '' | 'low' | 'out' | 'expired' | 'expiring';
 export type StoreSalePeriod = 'all' | 'today' | 'week' | 'month';
 
 function normalizedSearch(value: string) {
-  return value.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase().trim();
+  return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLocaleLowerCase()
+    .trim();
 }
 
 function localDate(value: string | Date) {
@@ -42,31 +63,52 @@ function productStockIndex(state: StoreStateContainer) {
       return;
     }
     const movements = movementTotals.get(productId);
-    stockByProductId.set(productId, (movements?.hasInitial ? 0 : product.initialStock) + (movements?.total ?? 0));
+    stockByProductId.set(
+      productId,
+      (movements?.hasInitial ? 0 : product.initialStock) + (movements?.total ?? 0),
+    );
   });
   return stockByProductId;
 }
 
-function availableStockFromIndex(stockByProductId: ReadonlyMap<string, number>, product: StoreProduct) {
+function availableStockFromIndex(
+  stockByProductId: ReadonlyMap<string, number>,
+  product: StoreProduct,
+) {
   return Math.max(0, (stockByProductId.get(product.id) ?? 0) - product.reservedQuantity);
 }
 
 export function storeAmount(state: StoreStateContainer, amount: number, sourceCurrency?: string) {
   const fromCurrency = sourceCurrency ?? state.store.currency;
-  const rate = currencyRate(fromCurrency, state.store.currency, state.settings?.exchangeRates ?? { USD: 1 });
+  const rate = currencyRate(
+    fromCurrency,
+    state.store.currency,
+    state.settings?.exchangeRates ?? { USD: 1 },
+  );
   return rate === undefined ? amount : amount * rate;
 }
 
 export function storeBalance(state: StoreStateContainer) {
-  return state.store.cashMovements.reduce((total, item) => total + storeAmount(state, item.amount, item.currency), 0);
+  return state.store.cashMovements.reduce(
+    (total, item) => total + storeAmount(state, item.amount, item.currency),
+    0,
+  );
 }
 
 export function withStoreBalance<T extends StoreStateContainer>(state: T): T {
   const balance = storeBalance(state);
-  return { ...state, store: { ...state.store, businessAccount: { ...state.store.businessAccount, balance } } };
+  return {
+    ...state,
+    store: { ...state.store, businessAccount: { ...state.store.businessAccount, balance } },
+  };
 }
 
-export function changeStoreCurrency<T extends StoreStateContainer>(state: T, targetCurrency: string, rates: CurrencyRates, convertHistory = true): StoreCurrencyChangeResult<T> {
+export function changeStoreCurrency<T extends StoreStateContainer>(
+  state: T,
+  targetCurrency: string,
+  rates: CurrencyRates,
+  convertHistory = true,
+): StoreCurrencyChangeResult<T> {
   const sourceCurrency = state.store.currency.toUpperCase();
   const target = targetCurrency.trim().toUpperCase();
   const rate = currencyRate(sourceCurrency, target, rates);
@@ -74,15 +116,34 @@ export function changeStoreCurrency<T extends StoreStateContainer>(state: T, tar
   if (sourceCurrency === target) return { state, rate };
 
   const amounts = [
-    ...state.store.products.flatMap((product) => [product.purchasePrice, product.salePrice, ...product.additionalSalePrices].map((amount) => ({ amount, currency: product.currency }))),
-    ...state.store.cashMovements.map((movement) => ({ amount: movement.amount, currency: movement.currency })),
-    ...state.store.sales.flatMap((sale) => [sale.total, ...sale.items.flatMap((item) => [item.unitPrice, item.total])].map((amount) => ({ amount, currency: sale.currency }))),
-    ...state.store.employees.map((employee) => ({ amount: employee.salary, currency: employee.salaryCurrency })),
+    ...state.store.products.flatMap((product) =>
+      [product.purchasePrice, product.salePrice, ...product.additionalSalePrices].map((amount) => ({
+        amount,
+        currency: product.currency,
+      })),
+    ),
+    ...state.store.cashMovements.map((movement) => ({
+      amount: movement.amount,
+      currency: movement.currency,
+    })),
+    ...state.store.sales.flatMap((sale) =>
+      [sale.total, ...sale.items.flatMap((item) => [item.unitPrice, item.total])].map((amount) => ({
+        amount,
+        currency: sale.currency,
+      })),
+    ),
+    ...state.store.employees.map((employee) => ({
+      amount: employee.salary,
+      currency: employee.salaryCurrency,
+    })),
   ];
-  if (amounts.some((item) => {
-    const itemRate = currencyRate(item.currency ?? sourceCurrency, target, rates);
-    return itemRate === undefined || !Number.isFinite(item.amount * itemRate);
-  })) return { state, error: 'missing-rate' };
+  if (
+    amounts.some((item) => {
+      const itemRate = currencyRate(item.currency ?? sourceCurrency, target, rates);
+      return itemRate === undefined || !Number.isFinite(item.amount * itemRate);
+    })
+  )
+    return { state, error: 'missing-rate' };
   const convert = (amount: number, fromCurrency?: string) => {
     const historicalRate = currencyRate(fromCurrency ?? sourceCurrency, target, rates);
     return historicalRate === undefined ? amount : amount * historicalRate;
@@ -99,17 +160,33 @@ export function changeStoreCurrency<T extends StoreStateContainer>(state: T, tar
         currency: target,
         purchasePrice: convert(product.purchasePrice, product.currency ?? sourceCurrency),
         salePrice: convert(product.salePrice, product.currency ?? sourceCurrency),
-        additionalSalePrices: product.additionalSalePrices.map((amount) => convert(amount, product.currency ?? sourceCurrency)),
+        additionalSalePrices: product.additionalSalePrices.map((amount) =>
+          convert(amount, product.currency ?? sourceCurrency),
+        ),
       })),
-      sales: state.store.sales.map((sale) => convertHistory ? {
-        ...sale,
-        currency: target,
-        total: convert(sale.total, sale.currency ?? sourceCurrency),
-        items: sale.items.map((item) => ({ ...item, unitPrice: convert(item.unitPrice, sale.currency ?? sourceCurrency), total: convert(item.total, sale.currency ?? sourceCurrency) })),
-      } : { ...sale, currency: sale.currency ?? sourceCurrency }),
-      cashMovements: state.store.cashMovements.map((movement) => convertHistory
-        ? { ...movement, currency: target, amount: convert(movement.amount, movement.currency ?? sourceCurrency) }
-        : { ...movement, currency: movement.currency ?? sourceCurrency }),
+      sales: state.store.sales.map((sale) =>
+        convertHistory
+          ? {
+              ...sale,
+              currency: target,
+              total: convert(sale.total, sale.currency ?? sourceCurrency),
+              items: sale.items.map((item) => ({
+                ...item,
+                unitPrice: convert(item.unitPrice, sale.currency ?? sourceCurrency),
+                total: convert(item.total, sale.currency ?? sourceCurrency),
+              })),
+            }
+          : { ...sale, currency: sale.currency ?? sourceCurrency },
+      ),
+      cashMovements: state.store.cashMovements.map((movement) =>
+        convertHistory
+          ? {
+              ...movement,
+              currency: target,
+              amount: convert(movement.amount, movement.currency ?? sourceCurrency),
+            }
+          : { ...movement, currency: movement.currency ?? sourceCurrency },
+      ),
       employees: state.store.employees.map((employee) => ({
         ...employee,
         salaryCurrency: target,
@@ -129,35 +206,64 @@ export function productStock(state: StoreStateContainer, productId: string) {
 
 export function storeReportData(state: StoreStateContainer) {
   const sales = state.store.sales.filter((item) => item.status === 'completed');
-  const daily = Array.from(sales.reduce((map, sale) => {
-    const date = new Date(sale.date);
-    const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    const value = map.get(key) ?? { count: 0, total: 0 };
-    map.set(key, { count: value.count + 1, total: value.total + storeAmount(state, sale.total, sale.currency) });
-    return map;
-  }, new Map<string, { count: number; total: number }>())).sort(([left], [right]) => right.localeCompare(left));
-  const topProducts = Array.from(sales.reduce((map, sale) => {
-    sale.items.forEach((item) => {
-      const value = map.get(item.productId) ?? { name: item.name, quantity: 0, total: 0 };
-      map.set(item.productId, { name: value.name, quantity: value.quantity + item.quantity, total: value.total + storeAmount(state, item.total, sale.currency) });
-    });
-    return map;
-  }, new Map<string, { name: string; quantity: number; total: number }>())).sort(([, left], [, right]) => right.quantity - left.quantity || right.total - left.total).slice(0, 10);
-  const topClients = Array.from(sales.reduce((map, sale) => {
-    if (!sale.clientId) return map;
-    const value = map.get(sale.clientId) ?? { count: 0, total: 0 };
-    map.set(sale.clientId, { count: value.count + 1, total: value.total + storeAmount(state, sale.total, sale.currency) });
-    return map;
-  }, new Map<string, { count: number; total: number }>())).sort(([, left], [, right]) => right.total - left.total).slice(0, 10);
-  return { sales, daily, topProducts, topClients, total: sales.reduce((sum, sale) => sum + storeAmount(state, sale.total, sale.currency), 0) };
+  const daily = Array.from(
+    sales.reduce((map, sale) => {
+      const date = new Date(sale.date);
+      const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+      const value = map.get(key) ?? { count: 0, total: 0 };
+      map.set(key, {
+        count: value.count + 1,
+        total: value.total + storeAmount(state, sale.total, sale.currency),
+      });
+      return map;
+    }, new Map<string, { count: number; total: number }>()),
+  ).sort(([left], [right]) => right.localeCompare(left));
+  const topProducts = Array.from(
+    sales.reduce((map, sale) => {
+      sale.items.forEach((item) => {
+        const value = map.get(item.productId) ?? { name: item.name, quantity: 0, total: 0 };
+        map.set(item.productId, {
+          name: value.name,
+          quantity: value.quantity + item.quantity,
+          total: value.total + storeAmount(state, item.total, sale.currency),
+        });
+      });
+      return map;
+    }, new Map<string, { name: string; quantity: number; total: number }>()),
+  )
+    .sort(([, left], [, right]) => right.quantity - left.quantity || right.total - left.total)
+    .slice(0, 10);
+  const topClients = Array.from(
+    sales.reduce((map, sale) => {
+      if (!sale.clientId) return map;
+      const value = map.get(sale.clientId) ?? { count: 0, total: 0 };
+      map.set(sale.clientId, {
+        count: value.count + 1,
+        total: value.total + storeAmount(state, sale.total, sale.currency),
+      });
+      return map;
+    }, new Map<string, { count: number; total: number }>()),
+  )
+    .sort(([, left], [, right]) => right.total - left.total)
+    .slice(0, 10);
+  return {
+    sales,
+    daily,
+    topProducts,
+    topClients,
+    total: sales.reduce((sum, sale) => sum + storeAmount(state, sale.total, sale.currency), 0),
+  };
 }
 
 export function storeReportHasMissingRates(state: StoreStateContainer) {
   const rates = state.settings?.exchangeRates ?? { USD: 1 };
-  const missing = (currency?: string) => currencyRate(currency ?? state.store.currency, state.store.currency, rates) === undefined;
-  return state.store.sales.some((sale) => sale.status === 'completed' && missing(sale.currency))
-    || state.store.cashMovements.some((movement) => missing(movement.currency))
-    || state.store.products.some((product) => missing(product.currency));
+  const missing = (currency?: string) =>
+    currencyRate(currency ?? state.store.currency, state.store.currency, rates) === undefined;
+  return (
+    state.store.sales.some((sale) => sale.status === 'completed' && missing(sale.currency)) ||
+    state.store.cashMovements.some((movement) => missing(movement.currency)) ||
+    state.store.products.some((product) => missing(product.currency))
+  );
 }
 
 export function storeStatistics(state: StoreStateContainer, range: StoreStatisticsRange) {
@@ -165,25 +271,63 @@ export function storeStatistics(state: StoreStateContainer, range: StoreStatisti
     const timestamp = new Date(value).getTime();
     return timestamp >= range.start.getTime() && timestamp < range.end.getTime();
   };
-  const sales = state.store.sales.filter((sale) => sale.status === 'completed' && inRange(sale.date));
+  const sales = state.store.sales.filter(
+    (sale) => sale.status === 'completed' && inRange(sale.date),
+  );
   const movements = state.store.cashMovements.filter((movement) => inRange(movement.date));
-  const salesRevenue = sales.reduce((sum, sale) => sum + storeAmount(state, sale.total, sale.currency), 0);
-  const cashOutflow = movements.reduce((sum, movement) => { const amount = storeAmount(state, movement.amount, movement.currency); return sum + (amount < 0 ? -amount : 0); }, 0);
-  const netFlow = movements.reduce((sum, movement) => sum + storeAmount(state, movement.amount, movement.currency), 0);
-  const itemsSold = sales.reduce((sum, sale) => sum + sale.items.reduce((itemSum, item) => itemSum + item.quantity, 0), 0);
+  const salesRevenue = sales.reduce(
+    (sum, sale) => sum + storeAmount(state, sale.total, sale.currency),
+    0,
+  );
+  const cashOutflow = movements.reduce((sum, movement) => {
+    const amount = storeAmount(state, movement.amount, movement.currency);
+    return sum + (amount < 0 ? -amount : 0);
+  }, 0);
+  const netFlow = movements.reduce(
+    (sum, movement) => sum + storeAmount(state, movement.amount, movement.currency),
+    0,
+  );
+  const itemsSold = sales.reduce(
+    (sum, sale) => sum + sale.items.reduce((itemSum, item) => itemSum + item.quantity, 0),
+    0,
+  );
   const topProductsMap = sales.reduce((map, sale) => {
     sale.items.forEach((item) => {
-      const current = map.get(item.productId) ?? { productId: item.productId, name: item.name, quantity: 0, total: 0 };
-      map.set(item.productId, { ...current, quantity: current.quantity + item.quantity, total: current.total + storeAmount(state, item.total, sale.currency) });
+      const current = map.get(item.productId) ?? {
+        productId: item.productId,
+        name: item.name,
+        quantity: 0,
+        total: 0,
+      };
+      map.set(item.productId, {
+        ...current,
+        quantity: current.quantity + item.quantity,
+        total: current.total + storeAmount(state, item.total, sale.currency),
+      });
     });
     return map;
   }, new Map<string, { productId: string; name: string; quantity: number; total: number }>());
-  const topProducts = Array.from(topProductsMap.values()).sort((left, right) => right.total - left.total || right.quantity - left.quantity).slice(0, 5);
+  const topProducts = Array.from(topProductsMap.values())
+    .sort((left, right) => right.total - left.total || right.quantity - left.quantity)
+    .slice(0, 5);
   const stockByProductId = productStockIndex(state);
   const activeProducts = state.store.products.filter((product) => product.active).length;
   const archivedProducts = state.store.products.filter((product) => !product.active).length;
-  const lowStock = state.store.products.filter((product) => product.active && product.type === 'product' && availableStockFromIndex(stockByProductId, product) <= product.stockMinimum).length;
-  const inventoryValue = state.store.products.reduce((sum, product) => sum + (product.type === 'product' ? (stockByProductId.get(product.id) ?? 0) * storeAmount(state, product.purchasePrice, product.currency) : 0), 0);
+  const lowStock = state.store.products.filter(
+    (product) =>
+      product.active &&
+      product.type === 'product' &&
+      availableStockFromIndex(stockByProductId, product) <= product.stockMinimum,
+  ).length;
+  const inventoryValue = state.store.products.reduce(
+    (sum, product) =>
+      sum +
+      (product.type === 'product'
+        ? (stockByProductId.get(product.id) ?? 0) *
+          storeAmount(state, product.purchasePrice, product.currency)
+        : 0),
+    0,
+  );
   return {
     sales,
     movements,
@@ -207,7 +351,14 @@ export function availableStock(state: StoreStateContainer, product: StoreProduct
 
 export function filterStoreProducts(
   state: StoreStateContainer,
-  filters: { type: StoreProductType; query: string; categoryId: string; status: string; stock: StoreStockFilter; today?: Date },
+  filters: {
+    type: StoreProductType;
+    query: string;
+    categoryId: string;
+    status: string;
+    stock: StoreStockFilter;
+    today?: Date;
+  },
 ) {
   const query = normalizedSearch(filters.query);
   const today = localDate(filters.today ?? new Date());
@@ -218,9 +369,14 @@ export function filterStoreProducts(
   return state.store.products.filter((product) => {
     if (product.type !== filters.type) return false;
     const category = categoriesById.get(product.categoryId)?.name ?? '';
-    const matchesQuery = !query || normalizedSearch(`${product.name} ${product.key} ${product.sku ?? ''} ${category}`).includes(query);
+    const matchesQuery =
+      !query ||
+      normalizedSearch(`${product.name} ${product.key} ${product.sku ?? ''} ${category}`).includes(
+        query,
+      );
     const matchesCategory = !filters.categoryId || product.categoryId === filters.categoryId;
-    const matchesStatus = !filters.status || (filters.status === 'active' ? product.active : !product.active);
+    const matchesStatus =
+      !filters.status || (filters.status === 'active' ? product.active : !product.active);
     if (!matchesQuery || !matchesCategory || !matchesStatus) return false;
     if (!filters.stock) return true;
     if (product.type === 'service') return false;
@@ -247,9 +403,17 @@ export function filterStoreSales(
   const employeesById = firstById(state.store.employees);
   const productsById = firstById(state.store.products);
   return state.store.sales.filter((sale) => {
-    const client = sale.clientId === undefined ? '' : clientsById.get(sale.clientId)?.name ?? '';
-    const employee = sale.employeeId === undefined ? '' : employeesById.get(sale.employeeId)?.name ?? '';
-    const searchable = normalizedSearch(`${client} ${employee} ${sale.note} ${sale.paymentMethod ?? ''} ${sale.status} ${sale.items.map((item) => { const product = productsById.get(item.productId); return `${item.name} ${product?.key ?? ''} ${product?.sku ?? ''}`; }).join(' ')}`);
+    const client = sale.clientId === undefined ? '' : (clientsById.get(sale.clientId)?.name ?? '');
+    const employee =
+      sale.employeeId === undefined ? '' : (employeesById.get(sale.employeeId)?.name ?? '');
+    const searchable = normalizedSearch(
+      `${client} ${employee} ${sale.note} ${sale.paymentMethod ?? ''} ${sale.status} ${sale.items
+        .map((item) => {
+          const product = productsById.get(item.productId);
+          return `${item.name} ${product?.key ?? ''} ${product?.sku ?? ''}`;
+        })
+        .join(' ')}`,
+    );
     if (query && !searchable.includes(query)) return false;
     if (filters.period === 'all') return true;
     const date = localDate(sale.date);
@@ -259,12 +423,27 @@ export function filterStoreSales(
   });
 }
 
-export function appendCashMovement<T extends StoreStateContainer>(state: T, movement: StoreCashMovement): T {
+export function appendCashMovement<T extends StoreStateContainer>(
+  state: T,
+  movement: StoreCashMovement,
+): T {
   if (state.store.cashMovements.some((item) => item.id === movement.id)) return state;
-  return withStoreBalance({ ...state, store: { ...state.store, cashMovements: [...state.store.cashMovements, { ...movement, currency: movement.currency ?? state.store.currency }] } });
+  return withStoreBalance({
+    ...state,
+    store: {
+      ...state.store,
+      cashMovements: [
+        ...state.store.cashMovements,
+        { ...movement, currency: movement.currency ?? state.store.currency },
+      ],
+    },
+  });
 }
 
-export function validateSale(state: StoreStateContainer, sale: StoreSale): StoreActionResult['error'] {
+export function validateSale(
+  state: StoreStateContainer,
+  sale: StoreSale,
+): StoreActionResult['error'] {
   if (state.store.sales.some((item) => item.id === sale.id)) return 'duplicate';
   if (!sale.items.length || !Number.isFinite(sale.total) || sale.total < 0) return 'invalid-sale';
   const productsById = firstById(state.store.products.filter((product) => product.active));
@@ -274,12 +453,21 @@ export function validateSale(state: StoreStateContainer, sale: StoreSale): Store
   for (const line of sale.items) {
     const product = productsById.get(line.productId);
     if (!product) return 'missing-product';
-    if (line.type !== product.type || !Number.isFinite(line.quantity) || line.quantity <= 0
-      || !Number.isFinite(line.unitPrice) || line.unitPrice < 0 || !Number.isFinite(line.total) || line.total < 0
-      || Math.abs(line.quantity * line.unitPrice - line.total) > 0.005 + 1e-8) return 'invalid-sale';
+    if (
+      line.type !== product.type ||
+      !Number.isFinite(line.quantity) ||
+      line.quantity <= 0 ||
+      !Number.isFinite(line.unitPrice) ||
+      line.unitPrice < 0 ||
+      !Number.isFinite(line.total) ||
+      line.total < 0 ||
+      Math.abs(line.quantity * line.unitPrice - line.total) > 0.005 + 1e-8
+    )
+      return 'invalid-sale';
     const quantity = (requested.get(product.id) ?? 0) + line.quantity;
     requested.set(product.id, quantity);
-    if (product.type === 'product' && quantity > availableStockFromIndex(stockByProductId, product)) return 'insufficient-stock';
+    if (product.type === 'product' && quantity > availableStockFromIndex(stockByProductId, product))
+      return 'insufficient-stock';
     total += line.total;
   }
   if (!Number.isFinite(total) || Math.abs(total - sale.total) > 0.005 + 1e-8) return 'invalid-sale';
@@ -363,7 +551,9 @@ export function voidSale<T extends StoreStateContainer>(
       ...state,
       store: {
         ...state.store,
-        sales: state.store.sales.map((item) => item.id === saleId ? { ...item, status: 'void' } : item),
+        sales: state.store.sales.map((item) =>
+          item.id === saleId ? { ...item, status: 'void' } : item,
+        ),
         stockMovements: [...state.store.stockMovements, ...reversals],
         cashMovements: [...state.store.cashMovements, cashMovement],
       },

@@ -13,7 +13,10 @@ export function countNotesByFolderTree(folders: NoteFolder[], notes: Note[]): Ma
 
   folders.forEach((folder) => {
     if (!folder.parentFolderId) return;
-    childrenByParent.set(folder.parentFolderId, [...(childrenByParent.get(folder.parentFolderId) ?? []), folder.id]);
+    childrenByParent.set(folder.parentFolderId, [
+      ...(childrenByParent.get(folder.parentFolderId) ?? []),
+      folder.id,
+    ]);
   });
   notes.forEach((note) => {
     if (note.folderId) directCount.set(note.folderId, (directCount.get(note.folderId) ?? 0) + 1);
@@ -26,8 +29,12 @@ export function countNotesByFolderTree(folders: NoteFolder[], notes: Note[]): Ma
     if (ancestors.has(folderId)) return 0;
 
     const nextAncestors = new Set(ancestors).add(folderId);
-    const total = (directCount.get(folderId) ?? 0)
-      + (childrenByParent.get(folderId) ?? []).reduce((sum, childId) => sum + countTree(childId, nextAncestors), 0);
+    const total =
+      (directCount.get(folderId) ?? 0) +
+      (childrenByParent.get(folderId) ?? []).reduce(
+        (sum, childId) => sum + countTree(childId, nextAncestors),
+        0,
+      );
     counts.set(folderId, total);
     return total;
   };
@@ -36,7 +43,11 @@ export function countNotesByFolderTree(folders: NoteFolder[], notes: Note[]): Ma
   return counts;
 }
 
-export function continueListAfterNewline(previousBody: string, nextBody: string, selection: TextSelection): TextEdit | undefined {
+export function continueListAfterNewline(
+  previousBody: string,
+  nextBody: string,
+  selection: TextSelection,
+): TextEdit | undefined {
   const start = Math.max(0, Math.min(selection.start, previousBody.length));
   const end = Math.max(start, Math.min(selection.end, previousBody.length));
   const nativeNewlineBody = `${previousBody.slice(0, start)}\n${previousBody.slice(end)}`;
@@ -68,7 +79,11 @@ export function continueListAfterNewline(previousBody: string, nextBody: string,
   return { body, selection: { start: cursor, end: cursor } };
 }
 
-export function applyPrefixToCurrentLine(body: string, selection: TextSelection, prefix: string): TextEdit {
+export function applyPrefixToCurrentLine(
+  body: string,
+  selection: TextSelection,
+  prefix: string,
+): TextEdit {
   const start = Math.max(0, Math.min(selection.start, body.length));
   const end = Math.max(start, Math.min(selection.end, body.length));
   const lineStart = body.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
@@ -94,7 +109,11 @@ export function applyPrefixToCurrentLine(body: string, selection: TextSelection,
   };
 }
 
-export function insertDividerAfterCurrentLine(body: string, selection: TextSelection, divider: string): TextEdit {
+export function insertDividerAfterCurrentLine(
+  body: string,
+  selection: TextSelection,
+  divider: string,
+): TextEdit {
   const start = Math.max(0, Math.min(selection.start, body.length));
   const lineStart = body.lastIndexOf('\n', Math.max(0, start - 1)) + 1;
   const lineEndIndex = body.indexOf('\n', start);

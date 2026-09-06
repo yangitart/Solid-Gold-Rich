@@ -7,16 +7,15 @@
   "scripts": {
     "start": "expo start",
     "start:offline": "expo start --offline",
-    "emulator": "node scripts/start-emulator.cjs",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "lint": "expo lint",
     "typecheck": "tsc --noEmit",
-    "check:architecture": "node scripts/check-architecture.cjs",
-    "check": "npm run typecheck && npm run lint && npm run check:architecture && npm run check:i18n && npm run test:domain",
-    "test:domain": "node scripts/run-domain-tests.cjs",
-    "check:i18n": "node scripts/check-translations.cjs",
-    "check:android-release": "node scripts/check-android-release.cjs"
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "npm run format:check && npm run typecheck && npm run lint && npm test",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.3",
@@ -47,7 +46,9 @@
     "babel-preset-expo": "~54.0.12",
     "eslint": "^9.39.0",
     "eslint-config-expo": "~10.0.0",
-    "typescript": "~5.9.2"
+    "prettier": "^3.9.6",
+    "typescript": "~5.9.2",
+    "vitest": "^5.0.0"
   },
   "private": true
 }

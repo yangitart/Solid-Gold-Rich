@@ -17,7 +17,10 @@ export function useCurrentDate(refreshKey?: unknown) {
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') refresh();
     });
-    return () => { clearTimeout(timer); subscription.remove(); };
+    return () => {
+      clearTimeout(timer);
+      subscription.remove();
+    };
   }, [refreshKey]);
   return date;
 }
