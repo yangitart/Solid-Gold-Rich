@@ -58,8 +58,12 @@ export function AppContent({
   const [moduleActivityAccountId, setModuleActivityAccountId] = useState<string | undefined>(
     undefined,
   );
+  const [moduleCategoryType, setModuleCategoryType] = useState<'expense' | 'income' | undefined>(
+    undefined,
+  );
   const [reopenDrawerAfterModule, setReopenDrawerAfterModule] = useState(false);
   const [drawerReopenSignal, setDrawerReopenSignal] = useState(0);
+  const [moduleCloseSignal, setModuleCloseSignal] = useState(0);
   const initializedLock = useRef(false);
   const onDone = useCallback(() => setBooted(true), []);
   const hasPin = Boolean(state.settings.pinHash);
@@ -99,9 +103,15 @@ export function AppContent({
   }, [preferences]);
 
   const openModule = useCallback(
-    (module: FinanceModuleName, returnToDrawer = false, activityAccountId?: string) => {
+    (
+      module: FinanceModuleName,
+      returnToDrawer = false,
+      activityAccountId?: string,
+      categoryType?: 'expense' | 'income',
+    ) => {
       setReopenDrawerAfterModule(returnToDrawer);
       setModuleActivityAccountId(module === 'activity' ? activityAccountId : undefined);
+      setModuleCategoryType(module === 'categories' ? categoryType : undefined);
       setModuleScreen(module);
     },
     [],
@@ -110,6 +120,8 @@ export function AppContent({
   const closeModule = useCallback(() => {
     setModuleScreen(null);
     setModuleActivityAccountId(undefined);
+    setModuleCategoryType(undefined);
+    setModuleCloseSignal((current) => current + 1);
     if (reopenDrawerAfterModule) setDrawerReopenSignal((current) => current + 1);
     setReopenDrawerAfterModule(false);
   }, [reopenDrawerAfterModule]);
@@ -186,7 +198,11 @@ export function AppContent({
                 reportRepository={reportRepository}
               />
             ) : (
-              <RichScreen onOpenModule={openModule} drawerReopenSignal={drawerReopenSignal} />
+              <RichScreen
+                onOpenModule={openModule}
+                drawerReopenSignal={drawerReopenSignal}
+                moduleCloseSignal={moduleCloseSignal}
+              />
             )}
           </Animated.View>
           {moduleScreen && (
@@ -205,6 +221,7 @@ export function AppContent({
                   module={moduleScreen}
                   onBack={closeModule}
                   initialActivityAccountId={moduleActivityAccountId}
+                  initialCategoryType={moduleCategoryType}
                   backupRepository={backupRepository}
                   fileService={fileService}
                 />

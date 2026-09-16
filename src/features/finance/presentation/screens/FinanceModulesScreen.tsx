@@ -443,12 +443,14 @@ export default function FinanceModulesScreen({
   module: initialModule,
   onBack,
   initialActivityAccountId,
+  initialCategoryType,
   backupRepository,
   fileService,
 }: {
   module: FinanceModuleName;
   onBack: () => void;
   initialActivityAccountId?: string;
+  initialCategoryType?: 'expense' | 'income';
   backupRepository: BackupRepository;
   fileService: FileService;
 }) {
@@ -509,7 +511,9 @@ export default function FinanceModulesScreen({
     date: new Date().toISOString(),
     note: '',
   });
-  const [categoryType, setCategoryType] = React.useState<'expense' | 'income' | 'store'>('expense');
+  const [categoryType, setCategoryType] = React.useState<'expense' | 'income' | 'store'>(
+    initialCategoryType ?? 'expense',
+  );
   const [categoryName, setCategoryName] = React.useState('');
   const [categoryIcon, setCategoryIcon] = React.useState<IconName>('pricetag-outline');
   const [categoryCreateOpen, setCategoryCreateOpen] = React.useState(false);
@@ -587,7 +591,8 @@ export default function FinanceModulesScreen({
     if (initialModule === 'settings') setSettingsSection(null);
     if (initialModule === 'activity' && initialActivityAccountId)
       setActivityAccountId(initialActivityAccountId);
-  }, [initialActivityAccountId, initialModule]);
+    if (initialModule === 'categories' && initialCategoryType) setCategoryType(initialCategoryType);
+  }, [initialActivityAccountId, initialCategoryType, initialModule]);
 
   React.useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {

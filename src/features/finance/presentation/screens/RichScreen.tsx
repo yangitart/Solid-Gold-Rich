@@ -221,13 +221,16 @@ function ProgressBar({ progress, color }: { progress: number; color: string }) {
 export default function RichScreen({
   onOpenModule,
   drawerReopenSignal = 0,
+  moduleCloseSignal = 0,
 }: {
   onOpenModule?: (
     module: FinanceModuleName,
     returnToDrawer?: boolean,
     activityAccountId?: string,
+    categoryType?: 'expense' | 'income',
   ) => void;
   drawerReopenSignal?: number;
+  moduleCloseSignal?: number;
 }) {
   const { t, i18n } = useTranslation();
   const finance = useFinance();
@@ -372,8 +375,10 @@ export default function RichScreen({
     budgetId: string;
     transaction: Transaction;
   } | null>(null);
+  const [restoreEntryAfterModule, setRestoreEntryAfterModule] = React.useState(false);
   const promptedForFirstAccount = React.useRef(false);
   const lastDrawerReopenSignal = React.useRef(drawerReopenSignal);
+  const lastModuleCloseSignal = React.useRef(moduleCloseSignal);
 
   React.useEffect(() => {
     if (!financeLoaded || !budgets[0] || financeState.settings.activeAccountId) return;
@@ -390,6 +395,14 @@ export default function RichScreen({
     if (drawerReopenSignal > lastDrawerReopenSignal.current) setDrawerOpen(true);
     lastDrawerReopenSignal.current = drawerReopenSignal;
   }, [drawerReopenSignal]);
+
+  React.useLayoutEffect(() => {
+    if (moduleCloseSignal > lastModuleCloseSignal.current && restoreEntryAfterModule) {
+      setEntryOpen(true);
+      setRestoreEntryAfterModule(false);
+    }
+    lastModuleCloseSignal.current = moduleCloseSignal;
+  }, [moduleCloseSignal, restoreEntryAfterModule]);
 
   React.useEffect(() => {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -1078,6 +1091,7 @@ export default function RichScreen({
 
   const closeEntry = React.useCallback(() => {
     setEntryOpen(false);
+    setRestoreEntryAfterModule(false);
     setCategoryPickerOpen(false);
     setCategoryQuery('');
     setEditingTransaction(null);
@@ -1094,6 +1108,7 @@ export default function RichScreen({
 
   const openEntry = React.useCallback(
     (kind: TransactionKind) => {
+      setRestoreEntryAfterModule(false);
       setEditingTransaction(null);
       setEntryKind(kind);
       setEntryAccountId(activeBudget?.id ?? budgets[0]?.id ?? '');
@@ -1128,6 +1143,7 @@ export default function RichScreen({
         Alert.alert(t('finance.linkedOperationTitle'), t('finance.linkedOperationCopy'));
         return;
       }
+      setRestoreEntryAfterModule(false);
       setEditingTransaction({ budgetId, transaction: { ...transaction } });
       setEntryKind(transaction.kind);
       setEntryAccountId(budgetId);
@@ -3177,14 +3193,14 @@ export default function RichScreen({
         onRequestClose={() => setSelectedTransaction(null)}
       >
         <KeyboardAvoidingView
-          style={styles.entryBackdrop}
+          style={[styles.entryBackdrop, tabletLayout && styles.entryBackdropTablet]}
           behavior="padding"
           enabled={Platform.OS === 'ios'}
         >
           <Pressable style={StyleSheet.absoluteFill} onPress={() => setSelectedTransaction(null)} />
           {selectedTransaction && (
             <ScrollView
-              style={styles.detailSheet}
+              style={[styles.detailSheet, tabletLayout && styles.detailSheetTablet]}
               contentContainerStyle={styles.detailSheetContent}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
@@ -3282,14 +3298,7 @@ export default function RichScreen({
                       }}
                     >
                       <Ionicons name="create-outline" size={18} color={C.gold} />
-                      <Text
-                        style={styles.detailEditText}
-                        numberOfLines={1}
-                        adjustsFontSizeToFit
-                        minimumFontScale={0.8}
-                      >
-                        {t('finance.editEntry')}
-                      </Text>
+                      <Text style={styles.detailEditText}>{t('finance.editEntry')}</Text>
                     </Pressable>
                   )}
                 <Pressable
@@ -3301,14 +3310,7 @@ export default function RichScreen({
                   }}
                 >
                   <Ionicons name="trash-outline" size={18} color={C.red} />
-                  <Text
-                    style={styles.detailDeleteText}
-                    numberOfLines={1}
-                    adjustsFontSizeToFit
-                    minimumFontScale={0.8}
-                  >
-                    {t('finance.deleteAction')}
-                  </Text>
+                  <Text style={styles.detailDeleteText}>{t('finance.deleteAction')}</Text>
                 </Pressable>
               </View>
             </ScrollView>
@@ -3659,8 +3661,11 @@ export default function RichScreen({
                           <Pressable
                             style={styles.categoryPickerAdd}
                             onPress={() => {
+                              if (!onOpenModule) return;
                               setCategoryPickerOpen(false);
-                              onOpenModule?.('categories');
+                              setEntryOpen(false);
+                              setRestoreEntryAfterModule(true);
+                              onOpenModule('categories', false, undefined, entryKind);
                             }}
                             accessibilityRole="button"
                             accessibilityLabel={t('finance.addCategory')}
@@ -5095,6 +5100,10 @@ const styles = createThemeStyles((C) =>
       backgroundColor: '#0A0C14',
     },
     detailSheet: {
+      width: '100%',
+      maxWidth: 560,
+      flexGrow: 0,
+      flexShrink: 1,
       maxHeight: '90%',
       borderTopLeftRadius: 28,
       borderTopRightRadius: 28,
@@ -5102,7 +5111,8 @@ const styles = createThemeStyles((C) =>
       borderColor: C.line,
       backgroundColor: '#0A0C14',
     },
-    detailSheetContent: { flexGrow: 1, paddingHorizontal: 19, paddingBottom: 28 },
+    detailSheetTablet: { borderRadius: 28, maxHeight: '86%' },
+    detailSheetContent: { paddingHorizontal: 19, paddingBottom: 28 },
     sheetHandle: {
       width: 38,
       height: 4,
@@ -5424,8 +5434,8 @@ const styles = createThemeStyles((C) =>
     detailAction: {
       flex: 1,
       minWidth: 0,
-      minHeight: 48,
-      paddingHorizontal: 9,
+      minHeight: 54,
+      paddingHorizontal: 12,
       borderRadius: 15,
       borderWidth: StyleSheet.hairlineWidth,
       flexDirection: 'row',
@@ -5439,21 +5449,25 @@ const styles = createThemeStyles((C) =>
       backgroundColor: 'rgba(240,139,136,0.07)',
     },
     detailEditText: {
+      flex: 1,
       flexShrink: 1,
       color: C.gold,
       fontFamily: SANS,
-      fontSize: 9,
+      fontSize: 12,
+      lineHeight: 16,
       fontWeight: '700',
-      letterSpacing: 0.7,
+      letterSpacing: 0.4,
       textAlign: 'center',
     },
     detailDeleteText: {
+      flex: 1,
       flexShrink: 1,
       color: C.red,
       fontFamily: SANS,
-      fontSize: 9,
+      fontSize: 12,
+      lineHeight: 16,
       fontWeight: '700',
-      letterSpacing: 0.7,
+      letterSpacing: 0.4,
       textAlign: 'center',
     },
     saveButton: {
