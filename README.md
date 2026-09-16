@@ -124,6 +124,10 @@ currently identifies the upstream application and EAS project.
 
 ## License
 
-[MIT](LICENSE). Dependencies retain their respective licenses. Before publishing
-your own distribution, review the licenses and provenance of bundled dependencies,
-fonts and artwork; this repository does not yet contain a complete asset audit.
+[PolyForm Noncommercial 1.0.0](LICENSE). The code may be copied, modified and
+distributed for permitted noncommercial purposes. Commercial sale, commercial
+integration and monetized derivatives require separate permission from the
+copyright holder. Dependencies retain their respective licenses. Before
+publishing a distribution, review the licenses and provenance of bundled
+dependencies, fonts and artwork; this repository does not yet contain a complete
+asset audit.

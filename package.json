@@ -1,7 +1,7 @@
 {
   "name": "solid-gold-rich",
   "description": "Local-first personal finance and small-business management for Android.",
-  "license": "MIT",
+  "license": "PolyForm-Noncommercial-1.0.0",
   "main": "./index.js",
   "version": "1.0.0",
   "scripts": {
