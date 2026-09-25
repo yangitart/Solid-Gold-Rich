@@ -71,6 +71,20 @@ test('source dependencies point toward inner layers', () => {
               : ['domain', 'application', 'utility'];
         const location = source.getLineAndCharacterOfPosition(specifier.getStart()).line + 1;
         if (
+          request === 'react-native' &&
+          ts.isImportDeclaration(node) &&
+          node.importClause?.namedBindings &&
+          ts.isNamedImports(node.importClause.namedBindings)
+        ) {
+          for (const binding of node.importClause.namedBindings.elements) {
+            const imported = (binding.propertyName ?? binding.name).text;
+            if (['Alert', 'ToastAndroid', 'ActionSheetIOS'].includes(imported))
+              errors.push(
+                `${normalize(file)}:${location}: use a custom app dialog, not ${imported}`,
+              );
+          }
+        }
+        if (
           ['domain', 'application', 'utility'].includes(from) &&
           (!local || !allowed.includes(layer(target)))
         ) {

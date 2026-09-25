@@ -1,5 +1,5 @@
 import {
-  productStock,
+  productStockIndex,
   storeAmount,
   storeBalance,
   storeReportData,
@@ -24,6 +24,14 @@ function amount(value: number, currency: string, language: string) {
 
 function dateLabel(value: string, language: string) {
   return new Date(value).toLocaleDateString(language);
+}
+
+function clientNameIndex(state: StoreReportSource) {
+  const names = new Map<string, string>();
+  state.store.clients.forEach((client) => {
+    if (!names.has(client.id)) names.set(client.id, client.name);
+  });
+  return names;
 }
 
 function localDayTimestamp(value: string) {
@@ -106,6 +114,8 @@ function sheetsFor(
   range?: StoreReportRange,
 ): Sheet[] {
   const report = storeReportData(state);
+  const clientNames = clientNameIndex(state);
+  const stockByProductId = productStockIndex(state);
   const movements = state.store.cashMovements
     .slice()
     .sort((left, right) => right.date.localeCompare(left.date));
@@ -128,8 +138,8 @@ function sheetsFor(
         product.key,
         product.name,
         product.type,
-        productStock(state, product.id),
-        Math.max(0, productStock(state, product.id) - product.reservedQuantity),
+        stockByProductId.get(product.id) ?? 0,
+        Math.max(0, (stockByProductId.get(product.id) ?? 0) - product.reservedQuantity),
         storeAmount(state, product.salePrice, product.currency),
       ] as (string | number)[],
   );
@@ -155,7 +165,7 @@ function sheetsFor(
         [labels.date, labels.name, labels.quantity, labels.amount, labels.status],
         ...sales.map((sale) => [
           dateLabel(sale.date, language),
-          state.store.clients.find((client) => client.id === sale.clientId)?.name ?? '',
+          clientNames.get(sale.clientId ?? '') ?? '',
           sale.items.map((item) => `${item.name} × ${item.quantity}`).join('; '),
           storeAmount(state, sale.total, sale.currency),
           sale.status === 'completed' ? labels.active : labels.inactive,
@@ -174,7 +184,7 @@ function sheetsFor(
       rows: [
         [labels.name, labels.transactions, labels.amount],
         ...report.topClients.map(([id, value]) => [
-          state.store.clients.find((client) => client.id === id)?.name ?? id,
+          clientNames.get(id) ?? id,
           value.count,
           value.total,
         ]),
@@ -445,6 +455,8 @@ function pdfLines(
   range?: StoreReportRange,
 ): PdfLine[] {
   const report = storeReportData(state);
+  const clientNames = clientNameIndex(state);
+  const stockByProductId = productStockIndex(state);
   const lines: PdfLine[] = [
     { text: `${labels.title}: ${state.store.name}`, kind: 'title' },
     { text: `${labels.generated}: ${dateLabel(new Date().toISOString(), language)}`, kind: 'meta' },
@@ -459,7 +471,7 @@ function pdfLines(
   ];
   report.sales.forEach((sale) =>
     lines.push({
-      text: `${dateLabel(sale.date, language)} | ${state.store.clients.find((client) => client.id === sale.clientId)?.name ?? '-'} | ${sale.items.map((item) => `${item.name} x${item.quantity}`).join(', ')} | ${amount(storeAmount(state, sale.total, sale.currency), currency, language)}`,
+      text: `${dateLabel(sale.date, language)} | ${clientNames.get(sale.clientId ?? '') ?? '-'} | ${sale.items.map((item) => `${item.name} x${item.quantity}`).join(', ')} | ${amount(storeAmount(state, sale.total, sale.currency), currency, language)}`,
       kind: 'body',
     }),
   );
@@ -473,7 +485,7 @@ function pdfLines(
   lines.push({ text: labels.topClients, kind: 'section' });
   report.topClients.forEach(([id, value]) =>
     lines.push({
-      text: `${state.store.clients.find((client) => client.id === id)?.name ?? id} | ${value.count} ${labels.transactions} | ${amount(value.total, currency, language)}`,
+      text: `${clientNames.get(id) ?? id} | ${value.count} ${labels.transactions} | ${amount(value.total, currency, language)}`,
       kind: 'body',
     }),
   );
@@ -490,7 +502,7 @@ function pdfLines(
   lines.push({ text: labels.inventory, kind: 'section' });
   state.store.products.forEach((product) =>
     lines.push({
-      text: `${product.key} | ${product.name} | ${labels.stock}: ${productStock(state, product.id)} | ${labels.available}: ${Math.max(0, productStock(state, product.id) - product.reservedQuantity)}`,
+      text: `${product.key} | ${product.name} | ${labels.stock}: ${stockByProductId.get(product.id) ?? 0} | ${labels.available}: ${Math.max(0, (stockByProductId.get(product.id) ?? 0) - product.reservedQuantity)}`,
       kind: 'body',
     }),
   );

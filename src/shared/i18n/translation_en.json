@@ -681,6 +681,10 @@
     "release": {
       "noAccounts": "No accounts",
       "noAccountsCopy": "Create your first account to begin.",
+      "accountsOrderHint": "Hold the grip and drag an account to reorder it. The first account appears on the home screen.",
+      "dragAccount": "Reorder {{name}}",
+      "moveAccountUp": "Move account up",
+      "moveAccountDown": "Move account down",
       "addAccount": "ADD ACCOUNT",
       "archivedAccounts": "ARCHIVED ACCOUNTS",
       "restore": "RESTORE",
@@ -786,7 +790,8 @@
       "previousMonth": "previous month",
       "previousYear": "previous year",
       "previous": "Previous",
-      "noPreviousData": "No previous data"
+      "noPreviousData": "No previous data",
+      "percentagePoints": "pp"
     },
     "operationForm": {
       "activeAccount": "Active account",
@@ -956,7 +961,7 @@
         "linkedOperationTitle": "Linked operation",
         "linkedOperationCopy": "Manage this movement from its debt, savings or transfer record.",
         "missingRatesWarning": "Some totals are hidden because an exchange rate is missing. Open Settings to configure it.",
-        "accountCurrencyLocked": "The currency cannot be changed after an account has movements.",
+        "accountCurrencyLocked": "The currency cannot be changed while the account has operations, budgets, recurring payments, debts or savings goals linked to it.",
         "paymentExceedsDebt": "The payment cannot exceed the remaining debt.",
         "contributionExceedsGoal": "The contribution cannot exceed the amount remaining in the goal.",
         "interestReference": "Interest rate (%) · reference only",

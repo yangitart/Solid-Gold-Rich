@@ -810,7 +810,9 @@ export function normalizeFinanceState(value: Partial<FinanceState>): FinanceStat
     Record<string, number>
   >(
     (all, [currency, rate]) => {
-      if (Number.isFinite(rate) && rate > 0) all[currency.toUpperCase()] = rate;
+      const code = currency.trim().toUpperCase();
+      if (/^[A-Z]{3}$/.test(code) && code !== 'USD' && Number.isFinite(rate) && rate > 0)
+        all[code] = rate;
       return all;
     },
     { USD: 1 },

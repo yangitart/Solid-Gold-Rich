@@ -1,6 +1,8 @@
+import { useAppDialog } from '@/shared/ui/AppDialog';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { StatusBar } from 'expo-status-bar';
 import { useTranslation } from 'react-i18next';
-import { Alert, AppState, Pressable, StyleSheet, Text, View } from 'react-native';
+import { AppState, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
   FadeIn,
@@ -8,7 +10,10 @@ import Animated, {
   SlideInRight,
   useReducedMotion,
 } from 'react-native-reanimated';
-import { useFinance } from '@/features/app-state/presentation/components/AppStateContext';
+import {
+  useFinance,
+  useFinancePersistence,
+} from '@/features/app-state/presentation/components/AppStateContext';
 import type { AppPreferences } from '@/features/onboarding/application/ports/AppPreferences';
 import type { BackupRepository } from '@/features/backup/application/ports/BackupRepository';
 import type { EmergencyBackup } from '@/features/backup/application/ports/EmergencyBackup';
@@ -29,6 +34,49 @@ import PinScreen from '@/components/PinScreen';
 import RichScreen from '@/features/finance/presentation/screens/RichScreen';
 import StoreScreen from '@/features/store/presentation/screens/StoreScreen';
 
+function PersistenceFeedback({ onExportEmergencyBackup }: { onExportEmergencyBackup: () => void }) {
+  const { t } = useTranslation();
+  const { persistenceStatus, persistenceErrorPhase, retryPersistence } = useFinancePersistence();
+
+  if (persistenceStatus === 'error' && persistenceErrorPhase === 'load') {
+    return (
+      <View style={[styles.errorState, styles.errorStateOverlay, StyleSheet.absoluteFill]}>
+        <View style={styles.errorCard}>
+          <Text style={styles.errorTitle}>{t('finance.releaseErrors.loadError')}</Text>
+          <Text style={styles.errorCopy}>{t('finance.releaseErrors.loadErrorCopy')}</Text>
+          <Pressable style={styles.retryButton} onPress={retryPersistence}>
+            <Text style={styles.retryText}>{t('finance.releaseErrors.retry')}</Text>
+          </Pressable>
+        </View>
+      </View>
+    );
+  }
+
+  if (persistenceStatus !== 'error' || persistenceErrorPhase !== 'save') return null;
+  return (
+    <View style={styles.saveBanner} accessibilityRole="alert">
+      <View style={styles.saveBannerCopy}>
+        <Text style={styles.saveBannerTitle}>{t('finance.releaseErrors.saveError')}</Text>
+        <Text style={styles.saveBannerText}>{t('finance.releaseErrors.saveErrorCopy')}</Text>
+      </View>
+      <Pressable
+        style={styles.bannerRetry}
+        onPress={retryPersistence}
+        accessibilityLabel={t('finance.releaseErrors.retry')}
+      >
+        <Text style={styles.bannerRetryText}>{t('finance.releaseErrors.retry')}</Text>
+      </Pressable>
+      <Pressable
+        style={styles.bannerExport}
+        onPress={onExportEmergencyBackup}
+        accessibilityLabel={t('finance.releaseExtra.exportJson')}
+      >
+        <Text style={styles.bannerExportText}>{t('finance.releaseExtra.exportJson')}</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export function AppContent({
   preferences,
   emergencyBackup,
@@ -47,9 +95,9 @@ export function AppContent({
   reportRepository: ReportRepository;
 }) {
   const { t } = useTranslation();
+  const showDialog = useAppDialog();
   const reduceMotion = useReducedMotion();
-  const { state, loaded, persistenceStatus, persistenceErrorPhase, retryPersistence } =
-    useFinance();
+  const { state, loaded } = useFinance();
   const [booted, setBooted] = useState(false);
   const [onboardingReady, setOnboardingReady] = useState(false);
   const [onboardingComplete, setOnboardingComplete] = useState(false);
@@ -75,12 +123,12 @@ export function AppContent({
     try {
       await emergencyBackup.share(state);
     } catch {
-      Alert.alert(
+      showDialog(
         t('finance.releaseImport.exportFailed'),
         t('finance.releaseImport.exportFailedCopy'),
       );
     }
-  }, [emergencyBackup, state, t]);
+  }, [emergencyBackup, showDialog, state, t]);
 
   useEffect(() => {
     let active = true;
@@ -155,19 +203,10 @@ export function AppContent({
 
   return (
     <View style={styles.root}>
+      <StatusBar style={state.settings.theme === 'light' ? 'dark' : 'light'} />
       <AuroraBackground />
       {!booted ? (
         <BootScreen ready={loaded && onboardingReady} onDone={onDone} />
-      ) : persistenceStatus === 'error' && persistenceErrorPhase === 'load' ? (
-        <View style={styles.errorState}>
-          <View style={styles.errorCard}>
-            <Text style={styles.errorTitle}>{t('finance.releaseErrors.loadError')}</Text>
-            <Text style={styles.errorCopy}>{t('finance.releaseErrors.loadErrorCopy')}</Text>
-            <Pressable style={styles.retryButton} onPress={retryPersistence}>
-              <Text style={styles.retryText}>{t('finance.releaseErrors.retry')}</Text>
-            </Pressable>
-          </View>
-        </View>
       ) : !loaded || !onboardingReady ? null : !onboardingComplete ? (
         <OnboardingScreen onComplete={finishOnboarding} />
       ) : hasPin && !unlocked ? (
@@ -228,32 +267,9 @@ export function AppContent({
               )}
             </Animated.View>
           )}
-          {persistenceStatus === 'error' && persistenceErrorPhase === 'save' && (
-            <View style={styles.saveBanner} accessibilityRole="alert">
-              <View style={styles.saveBannerCopy}>
-                <Text style={styles.saveBannerTitle}>{t('finance.releaseErrors.saveError')}</Text>
-                <Text style={styles.saveBannerText}>
-                  {t('finance.releaseErrors.saveErrorCopy')}
-                </Text>
-              </View>
-              <Pressable
-                style={styles.bannerRetry}
-                onPress={retryPersistence}
-                accessibilityLabel={t('finance.releaseErrors.retry')}
-              >
-                <Text style={styles.bannerRetryText}>{t('finance.releaseErrors.retry')}</Text>
-              </Pressable>
-              <Pressable
-                style={styles.bannerExport}
-                onPress={() => void exportEmergencyBackup()}
-                accessibilityLabel={t('finance.releaseExtra.exportJson')}
-              >
-                <Text style={styles.bannerExportText}>{t('finance.releaseExtra.exportJson')}</Text>
-              </Pressable>
-            </View>
-          )}
         </>
       )}
+      <PersistenceFeedback onExportEmergencyBackup={() => void exportEmergencyBackup()} />
     </View>
   );
 }
@@ -273,6 +289,7 @@ const styles = createThemeStyles((C) =>
       justifyContent: 'center',
       padding: 24,
     },
+    errorStateOverlay: { backgroundColor: C.background },
     errorCard: {
       width: '100%',
       maxWidth: 430,
@@ -304,7 +321,7 @@ const styles = createThemeStyles((C) =>
       marginTop: 18,
     },
     retryText: {
-      color: C.void,
+      color: C.onAccent,
       fontSize: 12,
       fontWeight: '700',
       letterSpacing: 1,

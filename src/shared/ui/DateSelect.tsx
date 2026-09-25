@@ -216,7 +216,7 @@ const styles = createThemeStyles((C) =>
     daySelected: { backgroundColor: C.gold },
     dayText: { color: C.goldLight, fontFamily: SANS, fontSize: 14 },
     dayMuted: { opacity: 0 },
-    daySelectedText: { color: C.void, fontWeight: '700' },
+    daySelectedText: { color: C.onAccent, fontWeight: '700' },
     cancel: { minHeight: 46, alignItems: 'center', justifyContent: 'center', marginTop: 8 },
     cancelText: {
       color: C.goldLight,

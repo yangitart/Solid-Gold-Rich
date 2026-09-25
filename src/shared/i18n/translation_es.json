@@ -5,7 +5,7 @@
       "title": "Lleva tu tienda en el mismo lugar",
       "body": "Cambia al espacio Tienda para organizar productos, unidades, categorías, stock, ventas, clientes, empleados y reportes sin mezclarlo con tus finanzas personales."
     },
-    "vault": "TU B\u00d3VEDA PERSONAL",
+    "vault": "TU BÓVEDA PERSONAL",
     "title": "MI PATRIMONIO",
     "enterNetWorth": "INTRODUCE TU PATRIMONIO",
     "currentNetWorth": "TU PATRIMONIO ACTUAL",
@@ -18,22 +18,22 @@
       "red": "DIAMANTE ROJO",
       "black": "DIAMANTE NEGRO",
       "imperial": "DIAMANTE IMPERIAL",
-      "emerald": "TIT\u00c1N ESMERALDA",
-      "cosmic": "DIAMANTE C\u00d3SMICO",
+      "emerald": "TITÁN ESMERALDA",
+      "cosmic": "DIAMANTE CÓSMICO",
       "infinity": "DIAMANTE INFINITO"
     },
     "descriptions": {
       "rough": "Diamante en bruto. Toda fortuna empieza con una faceta.",
       "spark": "El primer destello de grandeza. Sigue avanzando.",
       "white": "Un diamante blanco. Limpio, brillante y pulido.",
-      "blue": "Un diamante azul. Extraordinariamente poco com\u00fan.",
+      "blue": "Un diamante azul. Extraordinariamente poco común.",
       "pink": "Un diamante rosa. Excepcional e inconfundible.",
-      "red": "Un diamante rojo poco com\u00fan. La b\u00f3veda es tuya.",
+      "red": "Un diamante rojo poco común. La bóveda es tuya.",
       "black": "Un diamante negro colosal. Hasta la luz paga alquiler.",
-      "imperial": "Clase imperial. Esta gema necesita su propia econom\u00eda.",
-      "emerald": "Un tit\u00e1n esmeralda. La discreci\u00f3n ya no es una opci\u00f3n.",
-      "cosmic": "Un diamante c\u00f3smico con su propio campo gravitatorio.",
-      "infinity": "Clase infinita. Tu patrimonio abandon\u00f3 el universo conocido."
+      "imperial": "Clase imperial. Esta gema necesita su propia economía.",
+      "emerald": "Un titán esmeralda. La discreción ya no es una opción.",
+      "cosmic": "Un diamante cósmico con su propio campo gravitatorio.",
+      "infinity": "Clase infinita. Tu patrimonio abandonó el universo conocido."
     },
     "onboarding": {
       "skip": "Omitir",
@@ -78,12 +78,12 @@
       }
     },
     "loading": {
-      "kicker": "COLECCI\u00d3N PRIVADA",
+      "kicker": "COLECCIÓN PRIVADA",
       "subtitle": "EL OBJETO DE PATRIMONIO PERSONAL",
       "security": "CIFRADO - PRIVADO",
-      "initialization": "INICIALIZANDO B\u00d3VEDA",
+      "initialization": "INICIALIZANDO BÓVEDA",
       "stages": {
-        "line": "ESTABLECIENDO L\u00cdNEA SEGURA",
+        "line": "ESTABLECIENDO LÍNEA SEGURA",
         "funds": "VERIFICANDO FONDOS DISPONIBLES",
         "stone": "TASANDO LA PIEDRA",
         "access": "ACCESO CONCEDIDO"
@@ -92,7 +92,7 @@
     "certificate": {
       "title": "CERTIFICADO DE PATRIMONIO",
       "serial": "Serie",
-      "edition": "Edici\u00f3n",
+      "edition": "Edición",
       "utility": "Utilidad",
       "oneOfOne": "1 de 1",
       "infinite": "Infinita",
@@ -227,7 +227,7 @@
       "operationQuantity": "Cantidad",
       "noOperations": "Sin operaciones predeterminadas",
       "services": "Servicios",
-      "employeesCopy": "Agrega miembros de tu equipo con cargo y tel\u00e9fono opcionales.",
+      "employeesCopy": "Agrega miembros de tu equipo con cargo y teléfono opcionales.",
       "clientsCopy": "Guarda un directorio sencillo de clientes con sus datos de contacto.",
       "providersCopy": "Guarda un directorio sencillo de proveedores con sus datos de contacto.",
       "directorySearch": "Buscar por nombre o contacto",
@@ -239,24 +239,24 @@
       "employeeRolePlaceholder": "ej. Ventas",
       "employeeRoleEmpty": "Sin cargo",
       "clientContactEmpty": "Sin datos de contacto",
-      "phone": "Tel\u00e9fono",
-      "email": "Correo electr\u00f3nico",
+      "phone": "Teléfono",
+      "email": "Correo electrónico",
       "note": "Nota",
-      "noEmployees": "A\u00fan no hay empleados",
-      "noClients": "A\u00fan no hay clientes",
-      "noProviders": "A\u00fan no hay proveedores",
+      "noEmployees": "Aún no hay empleados",
+      "noClients": "Aún no hay clientes",
+      "noProviders": "Aún no hay proveedores",
       "directoryNoResults": "Sin resultados",
-      "directoryNoResultsCopy": "Prueba otra b\u00fasqueda.",
+      "directoryNoResultsCopy": "Prueba otra búsqueda.",
       "employeesNameRequired": "Escribe el nombre del empleado.",
       "clientsNameRequired": "Escribe el nombre del cliente.",
       "reports": "Reportes",
       "reportsCopy": "Elige un reporte para revisar la actividad de tu tienda.",
-      "reportTransactionsPerDay": "Operaciones por d\u00eda",
-      "reportTransactionsPerDayCopy": "Ventas completadas agrupadas por d\u00eda.",
+      "reportTransactionsPerDay": "Operaciones por día",
+      "reportTransactionsPerDayCopy": "Ventas completadas agrupadas por día.",
       "reportTotalTransactions": "Total de operaciones",
       "reportTotalTransactionsCopy": "Ventas completadas y su importe total.",
       "reportTopProductsServices": "Productos y servicios principales",
-      "reportTopProductsServicesCopy": "Art\u00edculos m\u00e1s vendidos por unidades.",
+      "reportTopProductsServicesCopy": "Artículos más vendidos por unidades.",
       "reportTopClients": "Clientes principales",
       "reportTopClientsCopy": "Ventas ordenadas por cliente.",
       "reportTopProviders": "Proveedores principales",
@@ -264,10 +264,10 @@
       "reportBack": "Volver a reportes",
       "reportTransactions": "operaciones",
       "reportUnits": "unidades",
-      "reportNoData": "A\u00fan no hay datos",
+      "reportNoData": "Aún no hay datos",
       "reportNoDataCopy": "Completa ventas para ver este reporte.",
-      "reportClientsEmpty": "El seguimiento de clientes todav\u00eda no est\u00e1 vinculado a las ventas.",
-      "reportProvidersEmpty": "El seguimiento de proveedores todav\u00eda no est\u00e1 disponible.",
+      "reportClientsEmpty": "El seguimiento de clientes todavía no está vinculado a las ventas.",
+      "reportProvidersEmpty": "El seguimiento de proveedores todavía no está disponible.",
       "reportExportTitle": "Exportar reportes",
       "reportExportCopy": "Descarga el reporte seleccionado en PDF o Excel.",
       "reportExportPdf": "Exportar PDF",
@@ -321,7 +321,11 @@
       "payAnyway": "Pagar de todas formas",
       "insufficientTitle": "Saldo insuficiente del negocio",
       "insufficientBody": "La cuenta del negocio no tiene saldo suficiente. ¿Continuar de todas formas?",
-      "frequency": { "weekly": "Semanal", "biweekly": "Quincenal", "monthly": "Mensual" }
+      "frequency": {
+        "weekly": "Semanal",
+        "biweekly": "Quincenal",
+        "monthly": "Mensual"
+      }
     },
     "personalVault": "BÓVEDA PERSONAL",
     "totalBalance": "BALANCE TOTAL",
@@ -339,7 +343,20 @@
     "seeAll": "VER TODO",
     "budgetSnapshot": "RESUMEN DEL PRESUPUESTO",
     "monthlyBudget": "PRESUPUESTO MENSUAL",
-    "activity": "ACTIVIDAD",
+    "activity": {
+      "eyebrow": "FILTROS DE ACTIVIDAD",
+      "filterTitle": "Filtrar actividad",
+      "filterA11y": "Filtrar actividad. {{count}} filtros activos",
+      "closeFilters": "Cerrar filtros",
+      "clearFilters": "Limpiar filtros",
+      "operationType": "Tipo de operación",
+      "categorySearch": "Buscar categorías",
+      "allCategories": "Todas las categorías",
+      "today": "Hoy",
+      "yesterday": "Ayer",
+      "emptyTitle": "Aún no hay actividad",
+      "emptyBody": "Tus ingresos y gastos completados aparecerán aquí."
+    },
     "budget": "PRESUPUESTO",
     "more": "MÁS",
     "monthlyPlan": "PLAN MENSUAL",
@@ -423,7 +440,11 @@
       "budget": "PRESUPUESTO",
       "more": "MÁS"
     },
-    "filters": { "all": "Todo", "expense": "Gastos", "income": "Ingresos" },
+    "filters": {
+      "all": "Todo",
+      "expense": "Gastos",
+      "income": "Ingresos"
+    },
     "categories": {
       "food": "Alimentación",
       "housing": "Vivienda",
@@ -487,7 +508,6 @@
     "added": "AÑADIDO",
     "spent": "GASTADO",
     "thisBudget": "ESTA CUENTA",
-    "operations": "Operaciones",
     "budgetLimit": "LÍMITE DE GASTOS",
     "budgetNotSet": "NO FIJADO",
     "totalAcrossBudgets": "TOTAL ENTRE CUENTAS",
@@ -500,8 +520,8 @@
     "budgetAccounts": "cuentas de presupuesto",
     "dashboard": "Panel principal",
     "yourBudgets": "TUS CUENTAS",
-    "negativeBalanceTitle": "El saldo quedar\u00e1 por debajo de cero",
-    "negativeBalanceMessage": "Esta operaci\u00f3n dejar\u00e1 {{account}} en {{amount}}. \u00bfDeseas continuar?",
+    "negativeBalanceTitle": "El saldo quedará por debajo de cero",
+    "negativeBalanceMessage": "Esta operación dejará {{account}} en {{amount}}. ¿Deseas continuar?",
     "continueAction": "Continuar",
     "cancel": "Cancelar",
     "done": "Listo",
@@ -640,20 +660,62 @@
       "app": "APP",
       "quickCopy": "Acceso rápido a las vistas que más utilizas.",
       "items": {
-        "accounts": { "title": "Cuentas", "subtitle": "Saldos y monedas" },
-        "activity": { "title": "Actividad", "subtitle": "Busca todos los movimientos" },
-        "charts": { "title": "Gráficos", "subtitle": "Desglose mensual por categoría" },
-        "calendar": { "title": "Calendario", "subtitle": "Ingresos y gastos por día" },
-        "budget": { "title": "Presupuestos", "subtitle": "Límites de gasto por categoría" },
-        "recurring": { "title": "Recurrentes", "subtitle": "Operaciones programadas" },
-        "debt": { "title": "Deudas", "subtitle": "Saldos y pagos" },
-        "savings": { "title": "Ahorros", "subtitle": "Metas y aportes" },
-        "reminders": { "title": "Recordatorios", "subtitle": "Fechas financieras importantes" },
-        "categories": { "title": "Categorías", "subtitle": "Personaliza tu organización" },
-        "notes": { "title": "Notas", "subtitle": "Planes y contexto financiero" },
-        "tools": { "title": "Herramientas", "subtitle": "Calculadoras y conversiones" },
-        "settings": { "title": "Ajustes", "subtitle": "Idioma, moneda, PIN y datos" },
-        "about": { "title": "Acerca de", "subtitle": "Privacidad e información" }
+        "accounts": {
+          "title": "Cuentas",
+          "subtitle": "Saldos y monedas"
+        },
+        "activity": {
+          "title": "Actividad",
+          "subtitle": "Busca todos los movimientos"
+        },
+        "charts": {
+          "title": "Gráficos",
+          "subtitle": "Desglose mensual por categoría"
+        },
+        "calendar": {
+          "title": "Calendario",
+          "subtitle": "Ingresos y gastos por día"
+        },
+        "budget": {
+          "title": "Presupuestos",
+          "subtitle": "Límites de gasto por categoría"
+        },
+        "recurring": {
+          "title": "Recurrentes",
+          "subtitle": "Operaciones programadas"
+        },
+        "debt": {
+          "title": "Deudas",
+          "subtitle": "Saldos y pagos"
+        },
+        "savings": {
+          "title": "Ahorros",
+          "subtitle": "Metas y aportes"
+        },
+        "reminders": {
+          "title": "Recordatorios",
+          "subtitle": "Fechas financieras importantes"
+        },
+        "categories": {
+          "title": "Categorías",
+          "subtitle": "Personaliza tu organización"
+        },
+        "notes": {
+          "title": "Notas",
+          "subtitle": "Planes y contexto financiero"
+        },
+        "tools": {
+          "title": "Herramientas",
+          "subtitle": "Calculadoras y conversiones"
+        },
+        "settings": {
+          "title": "Ajustes",
+          "subtitle": "Idioma, moneda, PIN y datos"
+        },
+        "about": {
+          "title": "Acerca de",
+          "subtitle": "Privacidad e información"
+        }
       }
     },
     "notesSearch": "Buscar notas",
@@ -686,6 +748,10 @@
     "release": {
       "noAccounts": "No hay cuentas",
       "noAccountsCopy": "Crea tu primera cuenta para comenzar.",
+      "accountsOrderHint": "Mantén pulsado el icono y arrastra la cuenta para cambiar su orden. La primera aparece en la pantalla principal.",
+      "dragAccount": "Cambiar el orden de {{name}}",
+      "moveAccountUp": "Mover cuenta hacia arriba",
+      "moveAccountDown": "Mover cuenta hacia abajo",
       "addAccount": "AGREGAR CUENTA",
       "archivedAccounts": "CUENTAS ARCHIVADAS",
       "restore": "RESTAURAR",
@@ -767,7 +833,10 @@
       "archived": "Archivados",
       "clear": "Limpiar filtros"
     },
-    "storeDrawer": { "totalInvested": "Total invertido", "inventoryValue": "Valor del inventario" },
+    "storeDrawer": {
+      "totalInvested": "Total invertido",
+      "inventoryValue": "Valor del inventario"
+    },
     "storeUnits": {
       "custom": "Otra unidad",
       "customLabel": "Unidad personalizada",
@@ -791,7 +860,8 @@
       "previousMonth": "el mes anterior",
       "previousYear": "el año anterior",
       "previous": "Anterior",
-      "noPreviousData": "Sin datos anteriores"
+      "noPreviousData": "Sin datos anteriores",
+      "percentagePoints": "p. p."
     },
     "operationForm": {
       "activeAccount": "Cuenta activa",
@@ -841,7 +911,9 @@
       "backupImportedCopy": "Los datos de la tienda se restauraron correctamente.",
       "backupInvalid": "El archivo no es un respaldo válido de la tienda."
     },
-    "storeAccount": { "name": "Negocio" },
+    "storeAccount": {
+      "name": "Negocio"
+    },
     "storePurchase": {
       "purchaseFrom": "Compra pagada desde",
       "none": "Sin cuenta",
@@ -864,20 +936,6 @@
       "insufficient": "La cuenta seleccionada no tiene saldo suficiente.",
       "missingRate": "Configura una tasa de cambio válida para estas monedas.",
       "invalid": "Introduce una cantidad válida."
-    },
-    "activity": {
-      "eyebrow": "FILTROS DE ACTIVIDAD",
-      "filterTitle": "Filtrar actividad",
-      "filterA11y": "Filtrar actividad. {{count}} filtros activos",
-      "closeFilters": "Cerrar filtros",
-      "clearFilters": "Limpiar filtros",
-      "operationType": "Tipo de operación",
-      "categorySearch": "Buscar categorías",
-      "allCategories": "Todas las categorías",
-      "today": "Hoy",
-      "yesterday": "Ayer",
-      "emptyTitle": "Aún no hay actividad",
-      "emptyBody": "Tus ingresos y gastos completados aparecerán aquí."
     },
     "storeCompletion": {
       "common": {
@@ -907,7 +965,12 @@
         "viewMovements": "Ver movimientos de dinero",
         "noneSelected": "No seleccionado",
         "searchSales": "Buscar ventas, productos o clientes",
-        "salePeriod": { "all": "Todo", "today": "Hoy", "week": "Semana", "month": "Mes" },
+        "salePeriod": {
+          "all": "Todo",
+          "today": "Hoy",
+          "week": "Semana",
+          "month": "Mes"
+        },
         "inactiveClient": "Cliente inactivo",
         "sectionIdentity": "Identidad",
         "sectionPrices": "Precios",
@@ -925,7 +988,11 @@
         "newQuantity": "Stock después",
         "stockReason": "Motivo",
         "stockHistory": "Historial de stock",
-        "stockAction": { "entry": "Entrada", "exit": "Salida", "adjustment": "Corrección" },
+        "stockAction": {
+          "entry": "Entrada",
+          "exit": "Salida",
+          "adjustment": "Corrección"
+        },
         "client": "Cliente",
         "employee": "Empleado",
         "saleNote": "Nota de la venta (opcional)",
@@ -961,7 +1028,7 @@
         "linkedOperationTitle": "Operación vinculada",
         "linkedOperationCopy": "Gestiona este movimiento desde su deuda, ahorro o transferencia.",
         "missingRatesWarning": "Algunos totales están ocultos porque falta una tasa de cambio. Configúrala en Ajustes.",
-        "accountCurrencyLocked": "No se puede cambiar la moneda después de que la cuenta tenga movimientos.",
+        "accountCurrencyLocked": "No se puede cambiar la moneda mientras la cuenta tenga operaciones, presupuestos, pagos recurrentes, deudas o metas de ahorro vinculadas.",
         "paymentExceedsDebt": "El pago no puede superar el saldo pendiente de la deuda.",
         "contributionExceedsGoal": "El aporte no puede superar lo que falta para completar la meta.",
         "interestReference": "Interés (%) · solo como referencia",
@@ -979,7 +1046,10 @@
         "renameFolder": "Renombrar carpeta",
         "rootFolder": "Notas principales"
       },
-      "pin": { "backspace": "Borrar último dígito", "submit": "Desbloquear" },
+      "pin": {
+        "backspace": "Borrar último dígito",
+        "submit": "Desbloquear"
+      },
       "releaseImport": {
         "exportFailed": "No se pudo exportar",
         "exportFailedCopy": "No se pudo crear el archivo de respaldo.",
@@ -1003,7 +1073,13 @@
       "net": "Movimiento neto",
       "summaryCopy": "Totales de los movimientos visibles, separados por moneda.",
       "results": "{{count}} movimientos",
-      "period": { "all": "Todo", "today": "Hoy", "week": "Semana", "month": "Mes", "year": "A?o" }
+      "period": {
+        "all": "Todo",
+        "today": "Hoy",
+        "week": "Semana",
+        "month": "Mes",
+        "year": "A?o"
+      }
     },
     "storeReportsUx": {
       "currentBalance": "Saldo actual",

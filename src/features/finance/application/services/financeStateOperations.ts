@@ -12,6 +12,14 @@ export function resolveImportedFinanceState(
   return preserveStore
     ? {
         ...imported,
+        settings: {
+          ...imported.settings,
+          exchangeRates: {
+            ...current.settings.exchangeRates,
+            ...imported.settings.exchangeRates,
+            USD: 1,
+          },
+        },
         store: {
           ...current.store,
           stockMovements: current.store.stockMovements.map(
@@ -141,6 +149,7 @@ export function recordDebtPayment(
     !Number.isFinite(input.accountAmount) ||
     input.amount <= 0 ||
     input.accountAmount <= 0 ||
+    (account.currency === debt.currency && input.amount !== input.accountAmount) ||
     input.amount > debt.balance
   )
     return state;
@@ -225,10 +234,15 @@ export function recordSavingsContribution(
     source.type === 'debt' ||
     destination.type === 'debt' ||
     source.id === destination.id ||
+    goal.currency !== destination.currency ||
+    (goal.accountId !== undefined && goal.accountId !== destination.id) ||
     !Number.isFinite(input.amount) ||
     !Number.isFinite(input.sourceAmount) ||
     input.amount <= 0 ||
     input.sourceAmount <= 0 ||
+    !Number.isFinite(input.amount / input.sourceAmount) ||
+    input.amount / input.sourceAmount <= 0 ||
+    (source.currency === destination.currency && input.amount !== input.sourceAmount) ||
     input.amount > goal.targetAmount - goal.balance
   )
     return state;

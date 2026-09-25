@@ -3,6 +3,7 @@ import { test } from 'vitest';
 import { storage, fileContents } from './setup';
 import {
   accountBalance,
+  accountBalanceIndex,
   advanceRecurringDate,
   budgetSpent,
   filterActivityTransactions,
@@ -347,6 +348,8 @@ test('finance, inventory, backups and persisted schema migrations remain compati
     },
   ];
   assert.equal(accountBalance(balances, 'a'), 125);
+  assert.equal(accountBalanceIndex(balances).get('a'), accountBalance(balances, 'a'));
+  assert.equal(accountBalanceIndex(balances).has('missing-account'), false);
   const activityItems = [
     {
       ...balances.transactions[0],

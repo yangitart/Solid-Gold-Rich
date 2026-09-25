@@ -4,6 +4,7 @@ export type ThemeMode = 'dark' | 'light';
 
 export type ThemeColors = {
   void: string;
+  onAccent: string;
   background: string;
   ink: string;
   goldLight: string;
@@ -22,6 +23,7 @@ export type ThemeColors = {
 
 const DARK_C: ThemeColors = {
   void: '#04050A', // fondo, casi negro
+  onAccent: '#04050A',
   background: '#04050A',
   ink: '#0A0C14', // superficies elevadas
   goldLight: '#FFF4D0', // brillo especular
@@ -40,11 +42,12 @@ const DARK_C: ThemeColors = {
 
 export const LIGHT_C: ThemeColors = {
   void: '#241F16',
+  onAccent: '#FFFDF8',
   background: '#F7F3EA',
   ink: '#FFFDF8',
   goldLight: '#5D4511',
-  gold: '#9B741C',
-  goldMid: '#B58A2F',
+  gold: '#8A651A',
+  goldMid: '#926E22',
   goldDeep: '#765611',
   goldDark: '#E3C77F',
   green: '#467A5B',

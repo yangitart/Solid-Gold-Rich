@@ -24,14 +24,14 @@ import {
 } from '@/features/notes/domain/services/noteText';
 import { C, SANS, SERIF, createThemeStyles } from '@/shared/ui/theme/luxury';
 import { ConfirmDialog } from '@/shared/ui/FormKit';
+import {
+  normalizeEntitySearchParts,
+  normalizeEntitySearchText,
+  normalizeSearchText,
+} from '@/shared/domain/search/normalizedSearch';
 
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-const normalizedSearch = (value: string) =>
-  value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLocaleLowerCase()
-    .trim();
+const normalizedSearch = normalizeSearchText;
 
 function BackButton({ onPress }: { onPress: () => void }) {
   const { t } = useTranslation();
@@ -285,7 +285,9 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
           selectedFolderId ? folder.parentFolderId === selectedFolderId : !folder.parentFolderId,
         )
         .filter(
-          (folder) => !normalizedQuery || normalizedSearch(folder.name).includes(normalizedQuery),
+          (folder) =>
+            !normalizedQuery ||
+            normalizeEntitySearchText(folder, folder.name).includes(normalizedQuery),
         )
         .sort((a, b) => a.name.localeCompare(b.name)),
     [normalizedQuery, selectedFolderId, state.noteFolders],
@@ -296,7 +298,7 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
         .filter(
           (item) =>
             !normalizedQuery ||
-            normalizedSearch(`${item.title} ${item.body}`).includes(normalizedQuery),
+            normalizeEntitySearchParts(item, item.title, item.body).includes(normalizedQuery),
         )
         .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt)),
     [folderNotes, normalizedQuery],
@@ -643,7 +645,7 @@ export default function NotesFoldersScreen({ onBack }: { onBack: () => void }) {
           <Text style={styles.toolbarText}>{t('finance.newFolder')}</Text>
         </Pressable>
         <Pressable style={styles.composeButton} onPress={openNewNote}>
-          <Ionicons name="create-outline" size={22} color={C.void} />
+          <Ionicons name="create-outline" size={22} color={C.onAccent} />
         </Pressable>
       </View>
 
@@ -1011,7 +1013,7 @@ const styles = createThemeStyles((C) =>
       marginTop: 14,
     },
     primaryText: {
-      color: C.void,
+      color: C.onAccent,
       fontFamily: SANS,
       fontSize: 10,
       fontWeight: '700',

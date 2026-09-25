@@ -1,7 +1,7 @@
+import { useAppDialog } from '@/shared/ui/AppDialog';
 import React from 'react';
 import {
   KeyboardAvoidingView,
-  Alert,
   BackHandler,
   FlatList,
   Modal,
@@ -46,6 +46,7 @@ import {
   periodBounds,
   previousPeriodBounds,
 } from '@/features/finance/domain/services/financeDomain';
+import { elapsedCalendarDays, elapsedComparisonBounds } from '@/shared/domain/dates/dateRange';
 
 type TransactionKind = 'expense' | 'income' | 'transfer';
 type ScreenMode = 'budget' | 'allActivity';
@@ -128,22 +129,22 @@ function sanitizeAmount(value: string) {
   return decimals.length ? `${whole}.${decimals.join('')}` : cleaned;
 }
 
-function balanceFor(budget: BudgetAccount) {
-  const totals = budget.transactions.reduce(
-    (result, item) => {
-      if (item.kind === 'income') result.income += item.amount;
-      if (item.kind === 'expense') result.expenses += item.amount;
-      if (item.kind === 'transfer') result.transfers += item.amount;
-      return result;
-    },
-    { income: 0, expenses: 0, transfers: 0 },
-  );
-  return budget.openingBalance + totals.income - totals.expenses - totals.transfers;
-}
-
 function balanceImpact(kind: TransactionKind | 'adjustment', amount: number) {
   if (kind === 'adjustment') return amount;
   return kind === 'income' ? Math.abs(amount) : -Math.abs(amount);
+}
+
+function balanceIndex(budgets: BudgetAccount[]) {
+  const balances = new Map<string, number>();
+  budgets.forEach((budget) => {
+    let balance = budget.openingBalance;
+    budget.transactions.forEach((item) => {
+      if (item.kind === 'income') balance += item.amount;
+      else if (item.kind === 'expense' || item.kind === 'transfer') balance -= item.amount;
+    });
+    balances.set(budget.id, balance);
+  });
+  return balances;
 }
 
 function formatMoney(value: number, language: string, currency = 'USD') {
@@ -233,8 +234,11 @@ export default function RichScreen({
   moduleCloseSignal?: number;
 }) {
   const { t, i18n } = useTranslation();
+  const showDialog = useAppDialog();
   const finance = useFinance();
   const { state: financeState, loaded: financeLoaded, updateState: updateFinanceState } = finance;
+  const financeAccounts = financeState.accounts;
+  const financeTransactions = financeState.transactions;
   const language = i18n.resolvedLanguage ?? i18n.language ?? 'en';
   const lightMode = getThemeColors().void === LIGHT_C.void;
   const screenWidth = useWindowDimensions().width;
@@ -250,7 +254,7 @@ export default function RichScreen({
   }, [financeState.budgets]);
   const accountTransactionsByAccountId = React.useMemo(() => {
     const transactionsByAccount = new Map<string, Transaction[]>();
-    financeState.transactions.forEach((transaction) => {
+    financeTransactions.forEach((transaction) => {
       if (transaction.status === 'void') return;
       const accountTransactions = transactionsByAccount.get(transaction.accountId) ?? [];
       accountTransactions.push({
@@ -282,10 +286,10 @@ export default function RichScreen({
       ),
     );
     return transactionsByAccount;
-  }, [financeState.transactions, t]);
+  }, [financeTransactions, t]);
   const accountViews = React.useMemo<BudgetAccount[]>(
     () =>
-      financeState.accounts.map((account, index) => {
+      financeAccounts.map((account, index) => {
         const accountBudget = accountBudgetByAccountId.get(account.id);
         return {
           id: account.id,
@@ -301,11 +305,16 @@ export default function RichScreen({
           archived: account.archived,
         };
       }),
-    [accountBudgetByAccountId, accountTransactionsByAccountId, financeState.accounts],
+    [accountBudgetByAccountId, accountTransactionsByAccountId, financeAccounts],
   );
   const budgets = React.useMemo(
     () => accountViews.filter((account) => !account.archived),
     [accountViews],
+  );
+  const balancesByAccountId = React.useMemo(() => balanceIndex(accountViews), [accountViews]);
+  const balanceForAccount = React.useCallback(
+    (budget: BudgetAccount) => balancesByAccountId.get(budget.id) ?? budget.openingBalance,
+    [balancesByAccountId],
   );
   const storeTransferOption = React.useMemo<BudgetAccount>(
     () => ({
@@ -350,6 +359,15 @@ export default function RichScreen({
   const [entryOpen, setEntryOpen] = React.useState(false);
   const [entryKind, setEntryKind] = React.useState<TransactionKind>('expense');
   const [entryTitle, setEntryTitle] = React.useState('');
+  const descriptionHistory = React.useMemo(
+    () =>
+      financeState.transactions
+        .filter((item) => item.status !== 'void')
+        .slice()
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .map((item) => item.description || item.payee),
+    [financeState.transactions],
+  );
   const [entryAmount, setEntryAmount] = React.useState('');
   const [entryDate, setEntryDate] = React.useState(() => new Date().toISOString());
   const [entryAccountId, setEntryAccountId] = React.useState('');
@@ -535,8 +553,8 @@ export default function RichScreen({
     [activeBudget, activeLimitRange],
   );
   const balance = React.useMemo(
-    () => (activeBudget ? balanceFor(activeBudget) : 0),
-    [activeBudget],
+    () => (activeBudget ? balanceForAccount(activeBudget) : 0),
+    [activeBudget, balanceForAccount],
   );
   const positiveBalance = Math.max(0, balance);
   const budgetProgress = activeBudgetHasLimit ? expenses / activeBudget.limit : 0;
@@ -606,9 +624,11 @@ export default function RichScreen({
       ),
     [baseCurrency, budgets, rateForBudget],
   );
+  const portfolioHasMissingRates = missingRateCurrencies.length > 0;
   const portfolioBalance = React.useMemo(
-    () => budgets.reduce((sum, budget) => sum + toBaseCurrency(budget, balanceFor(budget)), 0),
-    [budgets, toBaseCurrency],
+    () =>
+      budgets.reduce((sum, budget) => sum + toBaseCurrency(budget, balanceForAccount(budget)), 0),
+    [budgets, balanceForAccount, toBaseCurrency],
   );
   const portfolioPositiveBalance = Math.max(0, portfolioBalance);
   const allTransactions = React.useMemo<PortfolioTransaction[]>(
@@ -765,8 +785,13 @@ export default function RichScreen({
     [accountViewsById, screenMode, transactionToBaseCurrency],
   );
   const statsPreviousRange = React.useMemo(
-    () => previousPeriodBounds(statsRange, statsRangeBounds),
-    [statsRange, statsRangeBounds],
+    () =>
+      elapsedComparisonBounds(
+        statsRangeBounds,
+        previousPeriodBounds(statsRange, statsRangeBounds),
+        referenceNow,
+      ),
+    [referenceNow, statsRange, statsRangeBounds],
   );
   const statsPreviousTransactions = React.useMemo(
     () =>
@@ -837,12 +862,7 @@ export default function RichScreen({
       }
     });
     const peak = Array.from(dailyExpenses.entries()).sort((left, right) => right[1] - left[1])[0];
-    const days = Math.max(
-      1,
-      Math.ceil(
-        (statsTransactionRange.end.getTime() - statsTransactionRange.start.getTime()) / 86400000,
-      ),
-    );
+    const days = Math.max(1, elapsedCalendarDays(statsTransactionRange, referenceNow));
     return {
       averageDailyExpense: expenses / days,
       averageOperation: statsTransactions.length
@@ -858,7 +878,7 @@ export default function RichScreen({
           })
         : '-',
     };
-  }, [language, statsAmountOf, statsTransactionRange, statsTransactions]);
+  }, [language, referenceNow, statsAmountOf, statsTransactionRange, statsTransactions]);
   const statsFlowBuckets = React.useMemo(() => {
     if (!statsOpen || statsView !== 'charts') return [];
     const buckets: {
@@ -1017,7 +1037,7 @@ export default function RichScreen({
     ? financeState.transactions.find((item) => item.id === editingTransaction.transaction.id)
     : undefined;
   const entryBalancePreview = previewAccount
-    ? balanceFor(previewAccount) -
+    ? balanceForAccount(previewAccount) -
       (originalEntry && originalEntry.accountId === previewAccount.id
         ? balanceImpact(originalEntry.kind, originalEntry.amount)
         : 0) +
@@ -1140,7 +1160,7 @@ export default function RichScreen({
   const openTransactionEditor = React.useCallback(
     (budgetId: string, transaction: Transaction) => {
       if (transaction.transferId || transaction.debtId || transaction.savingsGoalId) {
-        Alert.alert(t('finance.linkedOperationTitle'), t('finance.linkedOperationCopy'));
+        showDialog(t('finance.linkedOperationTitle'), t('finance.linkedOperationCopy'));
         return;
       }
       setRestoreEntryAfterModule(false);
@@ -1153,12 +1173,12 @@ export default function RichScreen({
       setEntryCategory(transaction.category);
       setEntryOpen(true);
     },
-    [t],
+    [showDialog, t],
   );
 
   const removeTransaction = React.useCallback(
     (budgetId: string, transaction: Transaction) => {
-      Alert.alert(
+      showDialog(
         t('finance.deleteEntry', { defaultValue: 'Delete operation' }),
         t('finance.deleteEntryConfirm', { defaultValue: 'Delete this operation?' }),
         [
@@ -1174,7 +1194,7 @@ export default function RichScreen({
         ],
       );
     },
-    [finance, t],
+    [finance, showDialog, t],
   );
 
   const openTransactionDetails = React.useCallback((budgetId: string, transaction: Transaction) => {
@@ -1197,7 +1217,7 @@ export default function RichScreen({
       const budget = entryBudget ?? originalBudget;
       if (!original || !originalBudget || !budget) return;
       projectedBalance =
-        balanceFor(budget) -
+        balanceForAccount(budget) -
         (budget.id === originalBudget.id ? balanceImpact(original.kind, original.amount) : 0) +
         balanceImpact(entryKind, amount);
       projectedAccountName = budget.name;
@@ -1205,12 +1225,12 @@ export default function RichScreen({
     } else if (entryKind === 'transfer') {
       const source = transferOptions.find((budget) => budget.id === transferSourceId);
       if (source) {
-        projectedBalance = balanceFor(source) - amount;
+        projectedBalance = balanceForAccount(source) - amount;
         projectedAccountName = source.name;
         projectedCurrency = source.currency;
       }
     } else if (entryBudget) {
-      projectedBalance = balanceFor(entryBudget) + balanceImpact(entryKind, amount);
+      projectedBalance = balanceForAccount(entryBudget) + balanceImpact(entryKind, amount);
       projectedAccountName = entryBudget.name;
       projectedCurrency = entryBudget.currency;
     }
@@ -1244,7 +1264,15 @@ export default function RichScreen({
         const rate =
           source && target && source.currency === target.currency ? 1 : parseAmount(transferRate);
         const received = amount * rate;
-        if (!source || !target || source.id === target.id || rate <= 0 || received <= 0) {
+        if (
+          !source ||
+          !target ||
+          source.id === target.id ||
+          !Number.isFinite(rate) ||
+          !Number.isFinite(received) ||
+          rate <= 0 ||
+          received <= 0
+        ) {
           setTransferError(t('finance.releaseErrors.missingRate'));
           return;
         }
@@ -1307,6 +1335,7 @@ export default function RichScreen({
     entryTitle,
     finance,
     financeState.transactions,
+    balanceForAccount,
     language,
     t,
     transferOptions,
@@ -1324,8 +1353,11 @@ export default function RichScreen({
         ? 1
         : (rateBetweenCurrencies(newBudgetCurrency, baseCurrency) ??
           (displayedRate > 0 ? 1 / displayedRate : 0));
-    if (newBudgetCurrency !== baseCurrency && exchangeRate <= 0) {
-      Alert.alert(
+    if (
+      newBudgetCurrency !== baseCurrency &&
+      (!Number.isFinite(exchangeRate) || exchangeRate <= 0)
+    ) {
+      showDialog(
         t('finance.exchangeRate'),
         t('finance.exchangeRateRequired', {
           defaultValue: `Enter the exchange rate from ${newBudgetCurrency} to ${baseCurrency}.`,
@@ -1334,6 +1366,16 @@ export default function RichScreen({
       return;
     }
 
+    const baseUsdRate = currencyRates[baseCurrency] ?? (baseCurrency === 'USD' ? 1 : undefined);
+    const currencyUsdRate =
+      newBudgetCurrency === 'USD' ? 1 : baseUsdRate ? exchangeRate * baseUsdRate : undefined;
+    if (
+      currencyUsdRate !== undefined &&
+      (!Number.isFinite(currencyUsdRate) || currencyUsdRate <= 0)
+    ) {
+      showDialog(t('finance.exchangeRate'), t('finance.releaseErrors.missingRate'));
+      return;
+    }
     const accountId = `account-${Date.now()}`;
     finance.addAccount({
       id: accountId,
@@ -1345,9 +1387,6 @@ export default function RichScreen({
       color: newBudgetColor,
       archived: false,
     });
-    const baseUsdRate = currencyRates[baseCurrency] ?? (baseCurrency === 'USD' ? 1 : undefined);
-    const currencyUsdRate =
-      newBudgetCurrency === 'USD' ? 1 : baseUsdRate ? exchangeRate * baseUsdRate : undefined;
     if (currencyUsdRate)
       updateFinanceState((current) => ({
         ...current,
@@ -1395,6 +1434,7 @@ export default function RichScreen({
     newBudgetLimit,
     newBudgetName,
     rateBetweenCurrencies,
+    showDialog,
     t,
     updateFinanceState,
   ]);
@@ -1422,8 +1462,11 @@ export default function RichScreen({
         : (rateBetweenCurrencies(editingBudget.currency, baseCurrency) ??
           editingBudget.exchangeRate ??
           0);
-    if (editingBudget.currency !== baseCurrency && exchangeRate <= 0) {
-      Alert.alert(
+    if (
+      editingBudget.currency !== baseCurrency &&
+      (!Number.isFinite(exchangeRate) || exchangeRate <= 0)
+    ) {
+      showDialog(
         t('finance.exchangeRate'),
         t('finance.exchangeRateRequired', {
           defaultValue: `Enter the exchange rate from ${editingBudget.currency} to ${baseCurrency}.`,
@@ -1437,7 +1480,17 @@ export default function RichScreen({
       account.currency !== editingBudget.currency &&
       accountHasHistory(financeState, account.id)
     ) {
-      Alert.alert(t('finance.currency'), t('finance.accountCurrencyLocked'));
+      showDialog(t('finance.currency'), t('finance.accountCurrencyLocked'));
+      return;
+    }
+    const baseUsdRate = currencyRates[baseCurrency] ?? (baseCurrency === 'USD' ? 1 : undefined);
+    const currencyUsdRate =
+      editingBudget.currency === 'USD' ? 1 : baseUsdRate ? exchangeRate * baseUsdRate : undefined;
+    if (
+      currencyUsdRate !== undefined &&
+      (!Number.isFinite(currencyUsdRate) || currencyUsdRate <= 0)
+    ) {
+      showDialog(t('finance.exchangeRate'), t('finance.releaseErrors.missingRate'));
       return;
     }
     finance.updateAccount({
@@ -1450,9 +1503,6 @@ export default function RichScreen({
       color: editingBudget.color,
       exchangeRate,
     });
-    const baseUsdRate = currencyRates[baseCurrency] ?? (baseCurrency === 'USD' ? 1 : undefined);
-    const currencyUsdRate =
-      editingBudget.currency === 'USD' ? 1 : baseUsdRate ? exchangeRate * baseUsdRate : undefined;
     if (currencyUsdRate)
       updateFinanceState((current) => ({
         ...current,
@@ -1490,6 +1540,7 @@ export default function RichScreen({
     finance,
     financeState,
     rateBetweenCurrencies,
+    showDialog,
     t,
     updateFinanceState,
   ]);
@@ -1751,7 +1802,9 @@ export default function RichScreen({
               adjustsFontSizeToFit
               minimumFontScale={0.58}
             >
-              {formatMoney(portfolioBalance, language, baseCurrency)}
+              {portfolioHasMissingRates
+                ? '—'
+                : formatMoney(portfolioBalance, language, baseCurrency)}
             </Text>
           </View>
         </View>
@@ -2025,7 +2078,9 @@ export default function RichScreen({
                   adjustsFontSizeToFit
                   minimumFontScale={0.65}
                 >
-                  {formatMoney(portfolioBalance, language, baseCurrency)}
+                  {portfolioHasMissingRates
+                    ? '—'
+                    : formatMoney(portfolioBalance, language, baseCurrency)}
                 </Text>
                 <Text style={styles.drawerBudgetCount}>
                   {budgets.length} {t('finance.budgetAccounts')}
@@ -2131,7 +2186,7 @@ export default function RichScreen({
                   })}
                 </View>
               )}
-              {missingRateCurrencies.length ? (
+              {screenMode === 'allActivity' && missingRateCurrencies.length ? (
                 <Pressable
                   style={styles.rateWarning}
                   onPress={() => {
@@ -2149,7 +2204,16 @@ export default function RichScreen({
                   <Ionicons name="chevron-forward" size={16} color={C.gold} />
                 </Pressable>
               ) : null}
-              {statsView === 'charts' ? (
+              {screenMode === 'allActivity' && portfolioHasMissingRates ? (
+                <View style={styles.rateWarning}>
+                  <Ionicons name="alert-circle-outline" size={18} color={C.gold} />
+                  <Text style={styles.rateWarningText}>
+                    {t('finance.missingRatesWarning', {
+                      currencies: missingRateCurrencies.join(', '),
+                    })}
+                  </Text>
+                </View>
+              ) : statsView === 'charts' ? (
                 <>
                   <View style={styles.statsSummary}>
                     <View style={styles.statsSummaryTop}>
@@ -2300,7 +2364,7 @@ export default function RichScreen({
                           >
                             {statsComparison.savings === null
                               ? '—'
-                              : `${statsComparison.savings >= 0 ? '+' : ''}${Math.round(statsComparison.savings)}%`}
+                              : `${statsComparison.savings >= 0 ? '+' : ''}${Math.round(statsComparison.savings)} ${t('finance.financeStats.percentagePoints')}`}
                           </Text>
                           <Text
                             style={styles.statsComparisonMeta}
@@ -2846,7 +2910,7 @@ export default function RichScreen({
                             </View>
                             <View style={styles.managerAccountRight}>
                               <Text style={styles.managerAccountBalance}>
-                                {formatMoney(balanceFor(budget), language, budget.currency)}
+                                {formatMoney(balanceForAccount(budget), language, budget.currency)}
                               </Text>
                               <Text
                                 style={[
@@ -3503,6 +3567,7 @@ export default function RichScreen({
                     <FormField
                       label={t('finance.description')}
                       value={entryTitle}
+                      suggestions={descriptionHistory}
                       onChangeText={setEntryTitle}
                       placeholder={t('finance.descriptionPlaceholder')}
                     />
@@ -3535,6 +3600,7 @@ export default function RichScreen({
                     <FormField
                       label={t('finance.description')}
                       value={entryTitle}
+                      suggestions={descriptionHistory}
                       onChangeText={setEntryTitle}
                       placeholder={t('finance.descriptionPlaceholder')}
                     />
@@ -4521,7 +4587,7 @@ const styles = createThemeStyles((C) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    exitConfirmText: { color: C.void, fontFamily: SANS, fontSize: 11, fontWeight: '800' },
+    exitConfirmText: { color: C.onAccent, fontFamily: SANS, fontSize: 11, fontWeight: '800' },
     negativeBackdrop: {
       flex: 1,
       alignItems: 'center',
@@ -4598,7 +4664,7 @@ const styles = createThemeStyles((C) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    negativeConfirmText: { color: C.void, fontFamily: SANS, fontSize: 10, fontWeight: '800' },
+    negativeConfirmText: { color: C.onAccent, fontFamily: SANS, fontSize: 10, fontWeight: '800' },
     drawer: {
       width: '84%',
       maxWidth: 420,
@@ -4922,7 +4988,7 @@ const styles = createThemeStyles((C) =>
     },
     statsCalendarCellSelected: { backgroundColor: C.gold },
     statsCalendarDay: { color: C.goldLight, fontFamily: SANS, fontSize: 13 },
-    statsCalendarDaySelected: { color: C.void, fontWeight: '800' },
+    statsCalendarDaySelected: { color: C.onAccent, fontWeight: '800' },
     statsCalendarDots: { height: 6, flexDirection: 'row', gap: 3, marginTop: 3 },
     statsCalendarDot: { width: 5, height: 5, borderRadius: 3 },
     statsCalendarIncomeDot: { backgroundColor: C.goldLight },
@@ -5053,7 +5119,7 @@ const styles = createThemeStyles((C) =>
       marginTop: 22,
     },
     createButtonText: {
-      color: C.void,
+      color: C.onAccent,
       fontFamily: SANS,
       fontSize: 10,
       fontWeight: '700',
@@ -5478,7 +5544,7 @@ const styles = createThemeStyles((C) =>
       justifyContent: 'center',
     },
     saveButtonText: {
-      color: C.void,
+      color: C.onAccent,
       fontFamily: SANS,
       fontSize: 10,
       fontWeight: '700',

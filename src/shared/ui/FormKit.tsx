@@ -1,5 +1,6 @@
 import React from 'react';
 import ActionPressable from './ActionPressable';
+import { prepareDescriptionSuggestions } from '@/shared/domain/finance/descriptionSuggestions';
 import {
   KeyboardAvoidingView,
   Modal,
@@ -34,7 +35,7 @@ export function ConfirmDialog({
   visible: boolean;
   title: string;
   message: string;
-  cancelLabel: string;
+  cancelLabel?: string;
   confirmLabel: string;
   onCancel: () => void;
   onConfirm: () => void;
@@ -48,8 +49,9 @@ export function ConfirmDialog({
       animationType="fade"
       onRequestClose={onCancel}
       statusBarTranslucent
+      navigationBarTranslucent
     >
-      <View style={styles.confirmBackdrop}>
+      <SafeAreaView style={styles.confirmBackdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onCancel} accessibilityRole="button" />
         <View style={styles.confirmCard}>
           <View style={[styles.confirmIcon, destructive && styles.confirmIconDanger]}>
@@ -58,27 +60,25 @@ export function ConfirmDialog({
           <Text style={styles.confirmTitle} numberOfLines={3}>
             {title}
           </Text>
-          <Text style={styles.confirmMessage} numberOfLines={5}>
-            {message}
-          </Text>
+          <ScrollView style={styles.confirmMessageScroll}>
+            <Text style={styles.confirmMessage}>{message}</Text>
+          </ScrollView>
           <View style={styles.confirmActions}>
-            <Pressable style={styles.confirmCancel} onPress={onCancel} accessibilityRole="button">
-              <Text style={styles.confirmCancelText} numberOfLines={1}>
-                {cancelLabel}
-              </Text>
-            </Pressable>
+            {cancelLabel && (
+              <Pressable style={styles.confirmCancel} onPress={onCancel} accessibilityRole="button">
+                <Text style={styles.confirmCancelText}>{cancelLabel}</Text>
+              </Pressable>
+            )}
             <Pressable
               style={[styles.confirmConfirm, destructive && styles.confirmConfirmDanger]}
               onPress={onConfirm}
               accessibilityRole="button"
             >
-              <Text style={styles.confirmConfirmText} numberOfLines={1}>
-                {confirmLabel}
-              </Text>
+              <Text style={styles.confirmConfirmText}>{confirmLabel}</Text>
             </Pressable>
           </View>
         </View>
-      </View>
+      </SafeAreaView>
     </Modal>
   );
 }
@@ -163,6 +163,7 @@ export function FormField({
   multiline,
   editable = true,
   maxLength,
+  suggestions,
 }: {
   label: string;
   value: string;
@@ -174,8 +175,17 @@ export function FormField({
   multiline?: boolean;
   editable?: boolean;
   maxLength?: number;
+  suggestions?: readonly string[];
 }) {
   const [focused, setFocused] = React.useState(false);
+  const suggest = React.useMemo(
+    () => (suggestions ? prepareDescriptionSuggestions(suggestions) : undefined),
+    [suggestions],
+  );
+  const matches = React.useMemo(
+    () => (focused ? (suggest?.(value) ?? []) : []),
+    [focused, suggest, value],
+  );
   const handleChange = (raw: string) => {
     if (!numeric) {
       onChangeText(raw);
@@ -212,6 +222,23 @@ export function FormField({
           Boolean(error) && styles.inputError,
         ]}
       />
+      {matches.length > 0 && (
+        <View style={styles.suggestions}>
+          {matches.map((suggestion) => (
+            <Pressable
+              key={suggestion}
+              style={styles.suggestion}
+              onPress={() => onChangeText(suggestion)}
+              accessibilityRole="button"
+            >
+              <Ionicons name="time-outline" size={16} color={C.gold} />
+              <Text style={styles.suggestionText} numberOfLines={2}>
+                {suggestion}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+      )}
       {error ? (
         <Text style={styles.error} accessibilityLiveRegion="polite">
           {error}
@@ -252,7 +279,7 @@ export function SegmentedControl({
               accessibilityLabel={option.label}
             >
               {option.icon ? (
-                <Ionicons name={option.icon} size={17} color={selected ? C.void : C.gold} />
+                <Ionicons name={option.icon} size={17} color={selected ? C.onAccent : C.gold} />
               ) : null}
               <Text
                 style={[styles.segmentText, selected && styles.segmentTextSelected]}
@@ -302,16 +329,20 @@ export function SearchableSelect({
     [options, value],
   );
   const normalizedQuery = query.trim().toLocaleLowerCase();
+  const searchableOptions = React.useMemo(
+    () =>
+      options.map((option) => ({
+        option,
+        searchable: `${option.label} ${option.description ?? ''}`.toLocaleLowerCase(),
+      })),
+    [options],
+  );
   const visible = React.useMemo(
     () =>
-      options.filter(
-        (option) =>
-          !normalizedQuery ||
-          `${option.label} ${option.description ?? ''}`
-            .toLocaleLowerCase()
-            .includes(normalizedQuery),
-      ),
-    [normalizedQuery, options],
+      searchableOptions
+        .filter(({ searchable }) => !normalizedQuery || searchable.includes(normalizedQuery))
+        .map(({ option }) => option),
+    [normalizedQuery, searchableOptions],
   );
   const emptyActionLabel = emptyAction
     ? typeof emptyAction.label === 'function'
@@ -395,7 +426,7 @@ export function SearchableSelect({
                   ) : null}
                 </View>
                 <View style={[styles.check, active && styles.checkActive]}>
-                  {active ? <Ionicons name="checkmark" size={14} color={C.void} /> : null}
+                  {active ? <Ionicons name="checkmark" size={14} color={C.onAccent} /> : null}
                 </View>
               </Pressable>
             );
@@ -517,6 +548,7 @@ const styles = createThemeStyles((C) =>
     confirmCard: {
       width: '100%',
       maxWidth: 370,
+      maxHeight: '90%',
       borderRadius: 22,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: C.line,
@@ -535,6 +567,7 @@ const styles = createThemeStyles((C) =>
     },
     confirmIconDanger: { backgroundColor: 'rgba(240,139,136,0.12)' },
     confirmTitle: { color: C.goldLight, fontFamily: SERIF, fontSize: 23, textAlign: 'center' },
+    confirmMessageScroll: { flexShrink: 1 },
     confirmMessage: {
       color: 'rgba(255,244,208,0.58)',
       fontFamily: SANS,
@@ -546,6 +579,7 @@ const styles = createThemeStyles((C) =>
     confirmActions: { flexDirection: 'row', gap: 9, marginTop: 19 },
     confirmCancel: {
       flex: 1,
+      padding: 10,
       minHeight: 46,
       borderRadius: 13,
       borderWidth: StyleSheet.hairlineWidth,
@@ -553,9 +587,16 @@ const styles = createThemeStyles((C) =>
       alignItems: 'center',
       justifyContent: 'center',
     },
-    confirmCancelText: { color: C.gold, fontFamily: SANS, fontSize: 11, fontWeight: '700' },
+    confirmCancelText: {
+      color: C.gold,
+      fontFamily: SANS,
+      fontSize: 11,
+      fontWeight: '700',
+      textAlign: 'center',
+    },
     confirmConfirm: {
       flex: 1,
+      padding: 10,
       minHeight: 46,
       borderRadius: 13,
       backgroundColor: C.gold,
@@ -563,7 +604,13 @@ const styles = createThemeStyles((C) =>
       justifyContent: 'center',
     },
     confirmConfirmDanger: { backgroundColor: C.red },
-    confirmConfirmText: { color: C.void, fontFamily: SANS, fontSize: 11, fontWeight: '800' },
+    confirmConfirmText: {
+      color: C.onAccent,
+      fontFamily: SANS,
+      fontSize: 11,
+      fontWeight: '800',
+      textAlign: 'center',
+    },
     backdrop: {
       flex: 1,
       justifyContent: 'flex-end',
@@ -611,6 +658,22 @@ const styles = createThemeStyles((C) =>
     content: { paddingHorizontal: 18, paddingTop: 4, paddingBottom: 26 },
     footer: { paddingHorizontal: 18, paddingTop: 9, paddingBottom: 12, backgroundColor: '#0A0C14' },
     field: { marginTop: 12 },
+    suggestions: {
+      marginTop: 6,
+      borderRadius: 12,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: C.line,
+      backgroundColor: C.ink,
+    },
+    suggestion: {
+      minHeight: 44,
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 9,
+      gap: 9,
+    },
+    suggestionText: { flex: 1, color: C.text, fontFamily: SANS, fontSize: 13 },
     label: {
       color: 'rgba(233,200,119,0.54)',
       fontFamily: SANS,
@@ -656,7 +719,7 @@ const styles = createThemeStyles((C) =>
       fontFamily: SANS,
       fontSize: FORM_TYPOGRAPHY.option,
     },
-    segmentTextSelected: { color: C.void, fontWeight: '700' },
+    segmentTextSelected: { color: C.onAccent, fontWeight: '700' },
     select: {
       minHeight: 48,
       borderWidth: 1,
@@ -777,7 +840,7 @@ const styles = createThemeStyles((C) =>
     },
     saveFull: { flex: 1 },
     saveDisabled: { opacity: 0.38 },
-    saveText: { color: C.void, fontFamily: SANS, fontSize: 11, fontWeight: '800' },
+    saveText: { color: C.onAccent, fontFamily: SANS, fontSize: 11, fontWeight: '800' },
     destructive: { minHeight: 44, alignItems: 'center', justifyContent: 'center' },
     destructiveText: { color: '#F08B88', fontFamily: SANS, fontSize: 10, fontWeight: '700' },
   }),

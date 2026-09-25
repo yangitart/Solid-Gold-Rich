@@ -1,8 +1,10 @@
+import { useAppDialog } from '@/shared/ui/AppDialog';
+import { reconcileCurrencySettings } from '@/features/app-state/application/useCases/reconcileCurrencySettings';
 import React from 'react';
 import {
   ActivityIndicator,
-  Alert,
   BackHandler,
+  PanResponder,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -45,7 +47,10 @@ import {
   currencyRate as resolveCurrencyRate,
 } from '@/shared/domain/finance/currency';
 import {
+  accountBalance as balanceInCurrentState,
+  accountBalanceIndex,
   accountHasHistory,
+  expensesByAccountIndex,
   budgetSpent,
   isCashFlowTransaction,
   isTransferTransaction,
@@ -59,6 +64,7 @@ import {
   recordDebtPayment,
   recordSavingsContribution,
 } from '@/features/finance/application/services/financeStateOperations';
+import { reorderAccounts } from '@/features/finance/application/commands/financeCommands';
 import { removeCategory as removeFinanceCategory } from '@/features/finance/application/useCases/removeCategory';
 import type { FileService } from '@/shared/application/ports/FileService';
 import type { BackupRepository } from '@/features/backup/application/ports/BackupRepository';
@@ -102,6 +108,98 @@ type ConfirmPrompt = {
 };
 type PendingFinanceImport =
   { kind: 'app'; backup: AppBackup } | { kind: 'full-json' | 'finance'; json: string };
+
+function AccountReorderHandle({
+  id,
+  index,
+  count,
+  getRowStride,
+  onMove,
+  onDraggingChange,
+  label,
+  hint,
+  moveUpLabel,
+  moveDownLabel,
+}: {
+  id: string;
+  index: number;
+  count: number;
+  getRowStride: () => number;
+  onMove: (id: string, targetIndex: number) => void;
+  onDraggingChange: (id: string | null) => void;
+  label: string;
+  hint: string;
+  moveUpLabel: string;
+  moveDownLabel: string;
+}) {
+  const latest = React.useRef({
+    id,
+    index,
+    count,
+    getRowStride,
+    onMove,
+    onDraggingChange,
+  });
+  latest.current = { id, index, count, getRowStride, onMove, onDraggingChange };
+  const startIndex = React.useRef(index);
+  const lastTarget = React.useRef(index);
+  const rowStride = React.useRef(72);
+  const responder = React.useMemo(
+    () =>
+      PanResponder.create({
+        onMoveShouldSetPanResponder: (_, gesture) =>
+          Math.abs(gesture.dy) > 7 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+        onMoveShouldSetPanResponderCapture: (_, gesture) =>
+          Math.abs(gesture.dy) > 7 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
+        onPanResponderGrant: () => {
+          const props = latest.current;
+          startIndex.current = props.index;
+          lastTarget.current = props.index;
+          rowStride.current = Math.max(64, props.getRowStride());
+          props.onDraggingChange(props.id);
+        },
+        onPanResponderMove: (_, gesture) => {
+          const props = latest.current;
+          const target = Math.max(
+            0,
+            Math.min(
+              props.count - 1,
+              startIndex.current + Math.round(gesture.dy / rowStride.current),
+            ),
+          );
+          if (target === lastTarget.current) return;
+          lastTarget.current = target;
+          props.onMove(props.id, target);
+        },
+        onPanResponderRelease: () => latest.current.onDraggingChange(null),
+        onPanResponderTerminate: () => latest.current.onDraggingChange(null),
+        onPanResponderTerminationRequest: () => false,
+      }),
+    [],
+  );
+
+  return (
+    <Pressable
+      {...responder.panHandlers}
+      style={styles.accountReorderHandle}
+      onPress={(event) => event.stopPropagation()}
+      accessibilityRole="adjustable"
+      accessibilityLabel={label}
+      accessibilityHint={hint}
+      accessibilityValue={{ min: 0, max: Math.max(0, count - 1), now: index }}
+      accessibilityActions={[
+        { name: 'decrement', label: moveUpLabel },
+        { name: 'increment', label: moveDownLabel },
+      ]}
+      onAccessibilityAction={(event) => {
+        if (event.nativeEvent.actionName === 'decrement') latest.current.onMove(id, index - 1);
+        if (event.nativeEvent.actionName === 'increment') latest.current.onMove(id, index + 1);
+      }}
+    >
+      <Ionicons name="reorder-three-outline" size={21} color={C.gold} />
+    </Pressable>
+  );
+}
 
 const localDayKey = (value: string | Date) => {
   const date = value instanceof Date ? value : new Date(value);
@@ -455,12 +553,15 @@ export default function FinanceModulesScreen({
   fileService: FileService;
 }) {
   const { t, i18n: translationI18n } = useTranslation();
+  const showDialog = useAppDialog();
   const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const isTablet = windowWidth >= 700;
   const finance = useFinance();
   const { state } = finance;
   const [module, setModule] = React.useState<FinanceModuleName>(initialModule);
   const [accountOpen, setAccountOpen] = React.useState(false);
+  const [draggingAccountId, setDraggingAccountId] = React.useState<string | null>(null);
+  const accountRowHeights = React.useRef(new Map<string, number>());
   const [currencyPickerOpen, setCurrencyPickerOpen] = React.useState(false);
   const [currencyPickerMode, setCurrencyPickerMode] = React.useState<
     'account' | 'debt' | 'primary' | 'rate'
@@ -657,6 +758,17 @@ export default function FinanceModulesScreen({
     () => state.accounts.filter((item) => !item.archived),
     [state.accounts],
   );
+  const getAccountRowStride = React.useCallback(() => {
+    const heights = [...accountRowHeights.current.values()];
+    return heights.length
+      ? heights.reduce((total, height) => total + height, 0) / heights.length
+      : 72;
+  }, []);
+  const moveAccountRow = React.useCallback(
+    (id: string, targetIndex: number) =>
+      finance.updateState((current) => reorderAccounts(current, id, targetIndex)),
+    [finance],
+  );
   const operationalAccounts = React.useMemo(
     () => accounts.filter((item) => item.type !== 'debt'),
     [accounts],
@@ -709,23 +821,10 @@ export default function FinanceModulesScreen({
     setCurrencyRate(display.value);
     setCurrencyRateError('');
   }, [comparisonRateCurrency, configuredRateCurrency, friendlyRate]);
-  const accountBalancesById = React.useMemo(() => {
-    const balances = new Map<string, number>();
-    state.accounts.forEach((account) => {
-      if (!balances.has(account.id)) balances.set(account.id, account.openingBalance);
-    });
-    state.transactions.forEach((transaction) => {
-      if (transaction.status === 'void' || !balances.has(transaction.accountId)) return;
-      const current = balances.get(transaction.accountId) as number;
-      balances.set(
-        transaction.accountId,
-        transaction.kind === 'income' || transaction.kind === 'adjustment'
-          ? current + transaction.amount
-          : current - transaction.amount,
-      );
-    });
-    return balances;
-  }, [state.accounts, state.transactions]);
+  const accountBalancesById = React.useMemo(
+    () => accountBalanceIndex({ accounts: state.accounts, transactions: state.transactions }),
+    [state.accounts, state.transactions],
+  );
   const accountBalance = React.useCallback(
     (item: Account) => accountBalancesById.get(item.id) ?? 0,
     [accountBalancesById],
@@ -854,6 +953,10 @@ export default function FinanceModulesScreen({
   };
   const saveAccount = () => {
     if (!account.name.trim()) return;
+    if (!Number.isFinite(Number(account.opening))) {
+      setAccountError(t('finance.storeFunding.invalid'));
+      return;
+    }
     const currency = account.currency.toUpperCase() || baseCurrency;
     if (
       editingAccount &&
@@ -891,6 +994,13 @@ export default function FinanceModulesScreen({
     const baseUsdRate = currencyRates[baseCurrency] ?? (baseCurrency === 'USD' ? 1 : undefined);
     const currencyUsdRate =
       currency === 'USD' ? 1 : baseUsdRate ? exchangeRate * baseUsdRate : undefined;
+    if (
+      currencyUsdRate !== undefined &&
+      (!Number.isFinite(currencyUsdRate) || currencyUsdRate <= 0)
+    ) {
+      setAccountError(t('finance.releaseErrors.missingRate'));
+      return;
+    }
     finance.updateState((current) => ({
       ...current,
       accounts: editingAccount
@@ -922,6 +1032,7 @@ export default function FinanceModulesScreen({
     setCurrencyRateError('');
   };
   const saveCurrencyRate = () => {
+    let conversionFailed = false;
     const value = Number(currencyRate);
     if (!Number.isFinite(value) || value <= 0) {
       setCurrencyRateError(
@@ -954,7 +1065,7 @@ export default function FinanceModulesScreen({
         USD: 1,
         [configuredRateCurrency]: configuredRateCurrency === 'USD' ? 1 : nextReferenceRate,
       };
-      return {
+      const next = reconcileCurrencySettings(current, {
         ...current,
         transactions: current.transactions.map((transaction) =>
           Number.isFinite(transaction.baseAmount) && transaction.baseCurrency
@@ -970,9 +1081,14 @@ export default function FinanceModulesScreen({
               },
         ),
         settings: { ...current.settings, preferredCurrency: currencyBaseDraft, exchangeRates },
-      };
+      });
+      if (!Number.isFinite(next.store.businessAccount.balance)) {
+        conversionFailed = true;
+        return current;
+      }
+      return next;
     });
-    setCurrencyRateError('');
+    setCurrencyRateError(conversionFailed ? t('finance.releaseErrors.missingRate') : '');
   };
   const addRecurring = () => {
     const selected =
@@ -1099,7 +1215,7 @@ export default function FinanceModulesScreen({
       icon: 'trash-outline',
     });
   const confirmArchive = (item: Account) =>
-    Alert.alert(t('finance.release.archiveAccount'), t('finance.releaseArchive.archiveCopy'), [
+    showDialog(t('finance.release.archiveAccount'), t('finance.releaseArchive.archiveCopy'), [
       { text: t('finance.cancel'), style: 'cancel' },
       {
         text: t('finance.release.archiveAccount'),
@@ -1114,45 +1230,73 @@ export default function FinanceModulesScreen({
     const sourceAccount = operationalAccounts.find((item) => item.id === debtPaymentAccountId);
     const amount = Number(debtPaymentAmount);
     if (!sourceAccount || !Number.isFinite(amount) || amount <= 0) return;
-    if (amount > debtPaymentTarget.balance) {
-      setLinkedActionError(t('finance.paymentExceedsDebt'));
-      return;
-    }
-    const applied = amount;
-    const conversionRate = rateBetweenCurrencies(
-      debtPaymentTarget.currency,
-      sourceAccount.currency,
-    );
-    if (!conversionRate) {
-      setLinkedActionError(t('finance.releaseErrors.missingRate'));
-      return;
-    }
-    const accountAmount = applied * conversionRate;
-    const commit = () => {
+    const commit = (allowNegative: boolean) => {
       const transactionId = uid('debt-payment');
       const date = new Date().toISOString();
       const paymentId = uid('payment');
-      finance.updateState((current) =>
-        recordDebtPayment(current, {
-          debtId: debtPaymentTarget.id,
-          accountId: sourceAccount.id,
-          amount: applied,
+      let validationError = '';
+      finance.updateState((current) => {
+        const debt = current.debts.find((item) => item.id === debtPaymentTarget.id);
+        const source = current.accounts.find(
+          (item) => item.id === debtPaymentAccountId && !item.archived,
+        );
+        if (!debt || !source || source.type === 'debt') {
+          validationError = t('finance.releaseErrors.missingRate');
+          return current;
+        }
+        if (amount > debt.balance) {
+          validationError = t('finance.paymentExceedsDebt');
+          return current;
+        }
+        const conversionRate = resolveCurrencyRate(
+          debt.currency,
+          source.currency,
+          current.settings.exchangeRates ?? { USD: 1 },
+        );
+        const accountAmount = conversionRate === undefined ? NaN : amount * conversionRate;
+        if (!Number.isFinite(accountAmount) || accountAmount <= 0) {
+          validationError = t('finance.releaseErrors.missingRate');
+          return current;
+        }
+        if (!allowNegative && balanceInCurrentState(current, source.id) < accountAmount) {
+          validationError = t('finance.negativeBalance.body');
+          return current;
+        }
+        const next = recordDebtPayment(current, {
+          debtId: debt.id,
+          accountId: source.id,
+          amount,
           accountAmount,
           date,
           transactionId,
           paymentId,
-        }),
-      );
+        });
+        if (next === current) validationError = t('finance.releaseErrors.missingRate');
+        return next;
+      });
+      if (validationError) {
+        setLinkedActionError(validationError);
+        return;
+      }
       setDebtPaymentTarget(null);
       setDebtPaymentAmount('');
       setLinkedActionError('');
     };
-    if (accountBalance(sourceAccount) - accountAmount < 0) {
-      Alert.alert(t('finance.negativeBalance.title'), t('finance.negativeBalance.body'), [
+    const initialRate = resolveCurrencyRate(
+      debtPaymentTarget.currency,
+      sourceAccount.currency,
+      currencyRates,
+    );
+    if (initialRate === undefined || !Number.isFinite(amount * initialRate)) {
+      setLinkedActionError(t('finance.releaseErrors.missingRate'));
+      return;
+    }
+    if (accountBalance(sourceAccount) - amount * initialRate < 0) {
+      showDialog(t('finance.negativeBalance.title'), t('finance.negativeBalance.body'), [
         { text: t('finance.cancel'), style: 'cancel' },
-        { text: t('finance.negativeBalance.confirm'), onPress: commit },
+        { text: t('finance.negativeBalance.confirm'), onPress: () => commit(true) },
       ]);
-    } else commit();
+    } else commit(false);
   };
   const registerSavingsContribution = () => {
     if (!savingsTarget) return;
@@ -1179,32 +1323,72 @@ export default function FinanceModulesScreen({
       return;
     }
     const fromAmount = amount * conversionRate;
-    const commit = () => {
+    if (!Number.isFinite(fromAmount) || fromAmount <= 0) {
+      setLinkedActionError(t('finance.releaseErrors.missingRate'));
+      return;
+    }
+    const commit = (allowNegative: boolean) => {
       const transferId = uid('savings-transfer');
       const contributionId = uid('contribution');
       const date = new Date().toISOString();
-      finance.updateState((current) =>
-        recordSavingsContribution(current, {
-          goalId: savingsTarget.id,
-          sourceAccountId: source.id,
-          destinationAccountId: destination.id,
+      let validationError = '';
+      finance.updateState((current) => {
+        const goal = current.savingsGoals.find((item) => item.id === savingsTarget.id);
+        const currentSource = current.accounts.find(
+          (item) => item.id === source.id && !item.archived,
+        );
+        const currentDestination = current.accounts.find(
+          (item) => item.id === destination.id && !item.archived,
+        );
+        if (!goal || !currentSource || !currentDestination) {
+          validationError = t('finance.releaseErrors.missingRate');
+          return current;
+        }
+        if (amount > goal.targetAmount - goal.balance) {
+          validationError = t('finance.contributionExceedsGoal');
+          return current;
+        }
+        const rate = resolveCurrencyRate(
+          currentDestination.currency,
+          currentSource.currency,
+          current.settings.exchangeRates ?? { USD: 1 },
+        );
+        const sourceAmount = rate === undefined ? NaN : amount * rate;
+        if (!Number.isFinite(sourceAmount) || sourceAmount <= 0) {
+          validationError = t('finance.releaseErrors.missingRate');
+          return current;
+        }
+        if (!allowNegative && balanceInCurrentState(current, currentSource.id) < sourceAmount) {
+          validationError = t('finance.negativeBalance.body');
+          return current;
+        }
+        const next = recordSavingsContribution(current, {
+          goalId: goal.id,
+          sourceAccountId: currentSource.id,
+          destinationAccountId: currentDestination.id,
           amount,
-          sourceAmount: fromAmount,
+          sourceAmount,
           date,
           transferId,
           contributionId,
-        }),
-      );
+        });
+        if (next === current) validationError = t('finance.releaseErrors.missingRate');
+        return next;
+      });
+      if (validationError) {
+        setLinkedActionError(validationError);
+        return;
+      }
       setSavingsTarget(null);
       setSavingsAmount('');
       setLinkedActionError('');
     };
     if (accountBalance(source) - fromAmount < 0)
-      Alert.alert(t('finance.negativeBalance.title'), t('finance.negativeBalance.body'), [
+      showDialog(t('finance.negativeBalance.title'), t('finance.negativeBalance.body'), [
         { text: t('finance.cancel'), style: 'cancel' },
-        { text: t('finance.negativeBalance.confirm'), onPress: commit },
+        { text: t('finance.negativeBalance.confirm'), onPress: () => commit(true) },
       ]);
-    else commit();
+    else commit(false);
   };
   const addBudget = () => {
     const accountId = budgetDraft.accountId || accounts[0]?.id;
@@ -1374,7 +1558,7 @@ export default function FinanceModulesScreen({
             );
       await fileService.share(uri, mimeType, t('finance.releaseExtra.dataBackups'));
     } catch {
-      Alert.alert(
+      showDialog(
         t('finance.releaseImport.exportFailed'),
         t('finance.releaseImport.exportFailedCopy'),
       );
@@ -1431,13 +1615,10 @@ export default function FinanceModulesScreen({
             accounts[0].id,
         );
         if (errors.length)
-          Alert.alert(t('finance.releaseImport.csvWarnings'), errors.map(csvErrorText).join('\n'));
+          showDialog(t('finance.releaseImport.csvWarnings'), errors.map(csvErrorText).join('\n'));
       } else throw new Error('invalid-backup');
     } catch {
-      Alert.alert(
-        t('finance.releaseImport.importFailed'),
-        t('finance.releaseImport.invalidBackup'),
-      );
+      showDialog(t('finance.releaseImport.importFailed'), t('finance.releaseImport.invalidBackup'));
     } finally {
       fileOperationInFlight.current = false;
       setImportBusy(false);
@@ -1457,15 +1638,12 @@ export default function FinanceModulesScreen({
         if (!finance.importJson(JSON.stringify(restored))) throw new Error('invalid-backup');
       } else if (!finance.importJson(pending.json, { preserveStore: pending.kind === 'finance' }))
         throw new Error('invalid-backup');
-      Alert.alert(
+      showDialog(
         t('finance.releaseImport.importComplete'),
         t('finance.releaseImport.importCompleteCopy'),
       );
     } catch {
-      Alert.alert(
-        t('finance.releaseImport.importFailed'),
-        t('finance.releaseImport.invalidBackup'),
-      );
+      showDialog(t('finance.releaseImport.importFailed'), t('finance.releaseImport.invalidBackup'));
     } finally {
       fileOperationInFlight.current = false;
       setImportBusy(false);
@@ -1550,6 +1728,10 @@ export default function FinanceModulesScreen({
     () => new Map(state.accounts.map((item) => [item.id, item])),
     [state.accounts],
   );
+  const expensesByAccount = React.useMemo(
+    () => expensesByAccountIndex(state.transactions),
+    [state.transactions],
+  );
   const budgetSummaries = React.useMemo(
     () =>
       visibleBudgets.map((item) => {
@@ -1562,7 +1744,7 @@ export default function FinanceModulesScreen({
         );
         const spent = budgetSpent(
           item,
-          state.transactions,
+          expensesByAccount.get(item.accountId) ?? [],
           budgetCurrency,
           bounds,
           rateBetweenCurrencies,
@@ -1584,11 +1766,11 @@ export default function FinanceModulesScreen({
     [
       accountsById,
       baseCurrency,
+      expensesByAccount,
       moduleReferenceNow,
       rateBetweenCurrencies,
       state.categories.expense,
       state.settings.firstDayOfWeek,
-      state.transactions,
       t,
       visibleBudgets,
     ],
@@ -1760,7 +1942,7 @@ export default function FinanceModulesScreen({
             <Ionicons
               name="options-outline"
               size={19}
-              color={filterCount > 0 ? C.void : C.goldLight}
+              color={filterCount > 0 ? C.onAccent : C.goldLight}
             />
             {filterCount > 0 && (
               <View style={styles.activityFilterBadge}>
@@ -2070,14 +2252,28 @@ export default function FinanceModulesScreen({
   };
   const renderAccounts = () => (
     <View style={styles.panel}>
-      {accounts.map((item) => {
+      {accounts.length > 1 ? (
+        <Text style={styles.accountOrderHint}>{t('finance.release.accountsOrderHint')}</Text>
+      ) : null}
+      {accounts.map((item, index) => {
         const balance = accountBalance(item);
         const equivalentRate =
           item.currency === baseCurrency
             ? undefined
             : rateBetweenCurrencies(item.currency, baseCurrency);
         return (
-          <Pressable key={item.id} style={styles.row} onPress={() => openAccountEditor(item)}>
+          <Pressable
+            key={item.id}
+            style={[
+              styles.row,
+              styles.accountRow,
+              draggingAccountId === item.id && styles.accountRowDragging,
+            ]}
+            onLayout={(event) =>
+              accountRowHeights.current.set(item.id, event.nativeEvent.layout.height)
+            }
+            onPress={() => openAccountEditor(item)}
+          >
             <View style={[styles.accountStripe, { backgroundColor: item.color }]} />
             <View style={styles.rowMain}>
               <Text style={styles.cardTitle}>{item.name}</Text>
@@ -2104,6 +2300,20 @@ export default function FinanceModulesScreen({
               )}
             </View>
             <Ionicons name="chevron-forward-outline" size={17} color="rgba(255,244,208,0.35)" />
+            {accounts.length > 1 ? (
+              <AccountReorderHandle
+                id={item.id}
+                index={index}
+                count={accounts.length}
+                getRowStride={getAccountRowStride}
+                onMove={moveAccountRow}
+                onDraggingChange={setDraggingAccountId}
+                label={t('finance.release.dragAccount', { name: item.name })}
+                hint={t('finance.release.accountsOrderHint')}
+                moveUpLabel={t('finance.release.moveAccountUp')}
+                moveDownLabel={t('finance.release.moveAccountDown')}
+              />
+            ) : null}
           </Pressable>
         );
       })}
@@ -2512,7 +2722,7 @@ export default function FinanceModulesScreen({
               <Ionicons
                 name={item.completed ? 'checkmark' : overdue ? 'alert' : 'notifications-outline'}
                 size={15}
-                color={item.completed ? C.void : overdue ? C.red : C.gold}
+                color={item.completed ? C.onAccent : overdue ? C.red : C.gold}
               />
             </Pressable>
             <View style={styles.rowMain}>
@@ -3456,7 +3666,7 @@ export default function FinanceModulesScreen({
                     selected && styles.activitySelectorIconSelected,
                   ]}
                 >
-                  <Ionicons name={icon} size={21} color={selected ? C.void : C.gold} />
+                  <Ionicons name={icon} size={21} color={selected ? C.onAccent : C.gold} />
                 </View>
                 <Text
                   style={[
@@ -3547,7 +3757,7 @@ export default function FinanceModulesScreen({
                           selected && styles.activitySelectorIconSelected,
                         ]}
                       >
-                        <Ionicons name={icon} size={20} color={selected ? C.void : C.gold} />
+                        <Ionicons name={icon} size={20} color={selected ? C.onAccent : C.gold} />
                       </View>
                       <Text
                         style={[
@@ -3715,7 +3925,7 @@ export default function FinanceModulesScreen({
                   <Ionicons
                     name={item.name}
                     size={22}
-                    color={categoryIcon === item.name ? C.void : C.goldLight}
+                    color={categoryIcon === item.name ? C.onAccent : C.goldLight}
                   />
                 </Pressable>
               ))}
@@ -3759,7 +3969,7 @@ export default function FinanceModulesScreen({
                     style={[styles.accountTypeChoice, selected && styles.accountTypeChoiceActive]}
                     onPress={() => setAccount((current) => ({ ...current, type: item.key }))}
                   >
-                    <Ionicons name={item.icon} size={18} color={selected ? C.void : C.gold} />
+                    <Ionicons name={item.icon} size={18} color={selected ? C.onAccent : C.gold} />
                     <Text
                       style={[styles.accountTypeText, selected && styles.accountTypeTextActive]}
                     >
@@ -3819,9 +4029,9 @@ export default function FinanceModulesScreen({
                   numeric
                   placeholder="1.00"
                 />
-                {Boolean(accountError) && <Text style={styles.pinError}>{accountError}</Text>}
               </>
             )}
+            {Boolean(accountError) && <Text style={styles.pinError}>{accountError}</Text>}
             <Pressable
               style={[
                 styles.primary,
@@ -4465,7 +4675,7 @@ const styles = createThemeStyles((C) =>
       fontSize: 9,
       fontWeight: '600',
     },
-    accountTypeTextActive: { color: C.void },
+    accountTypeTextActive: { color: C.onAccent },
     categoryListHeader: {
       minHeight: 47,
       flexDirection: 'row',
@@ -4774,7 +4984,12 @@ const styles = createThemeStyles((C) =>
       borderWidth: 1,
       borderColor: C.void,
     },
-    activityFilterBadgeText: { color: C.void, fontFamily: SANS, fontSize: 8, fontWeight: '800' },
+    activityFilterBadgeText: {
+      color: C.onAccent,
+      fontFamily: SANS,
+      fontSize: 8,
+      fontWeight: '800',
+    },
     activityList: { flex: 1, paddingTop: 3 },
     activityListContent: { flexGrow: 1, paddingBottom: 24 },
     activityEmptyState: {
@@ -5260,9 +5475,9 @@ const styles = createThemeStyles((C) =>
       textAlignVertical: 'center',
       textAlign: 'center',
     },
-    calculatorUtilityText: { color: C.void },
+    calculatorUtilityText: { color: C.onAccent },
     calculatorOperatorText: {
-      color: C.void,
+      color: C.onAccent,
       fontSize: 23,
       lineHeight: 27,
       includeFontPadding: false,
@@ -5530,7 +5745,7 @@ const styles = createThemeStyles((C) =>
       borderColor: 'rgba(233,200,119,0.11)',
       backgroundColor: '#0A0C14',
     },
-    formSheetContent: { paddingHorizontal: 18, paddingBottom: 22 },
+    formSheetContent: { paddingHorizontal: 18, paddingTop: 20, paddingBottom: 22 },
     formField: { marginTop: 8 },
     formFieldLabel: {
       color: 'rgba(233,200,119,0.54)',
@@ -5619,6 +5834,28 @@ const styles = createThemeStyles((C) =>
       borderBottomWidth: StyleSheet.hairlineWidth,
       borderBottomColor: 'rgba(233,200,119,0.1)',
     },
+    accountRow: { paddingLeft: 2 },
+    accountRowDragging: {
+      backgroundColor: C.glass,
+      borderRadius: 12,
+      paddingHorizontal: 8,
+    },
+    accountOrderHint: {
+      color: C.textMuted,
+      fontFamily: SANS,
+      fontSize: 11,
+      lineHeight: 17,
+      marginBottom: 6,
+    },
+    accountReorderHandle: {
+      width: 42,
+      minHeight: 52,
+      marginLeft: 2,
+      borderRadius: 13,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: C.glass,
+    },
     rowMain: { flex: 1, minWidth: 0 },
     accountStripe: { width: 5, height: 38, borderRadius: 3 },
     cardTitle: { color: C.goldLight, fontFamily: SANS, fontSize: 13 },
@@ -5634,7 +5871,7 @@ const styles = createThemeStyles((C) =>
       marginTop: 14,
     },
     primaryText: {
-      color: C.void,
+      color: C.onAccent,
       fontFamily: SANS,
       fontSize: 11,
       fontWeight: '700',
@@ -5692,7 +5929,7 @@ const styles = createThemeStyles((C) =>
       textAlign: 'center',
       textAlignVertical: 'center',
     },
-    checkDone: { backgroundColor: C.gold, borderColor: C.gold, color: C.void },
+    checkDone: { backgroundColor: C.gold, borderColor: C.gold, color: C.onAccent },
     strike: { textDecorationLine: 'line-through', opacity: 0.5 },
     toolResult: { color: C.goldLight, fontFamily: SERIF, fontSize: 29, marginBottom: 15 },
     toolChoices: { gap: 7, paddingBottom: 8 },
@@ -5709,7 +5946,7 @@ const styles = createThemeStyles((C) =>
     },
     toolChoiceActive: { backgroundColor: C.gold, borderColor: C.gold },
     toolChoiceText: { color: 'rgba(255,244,208,0.62)', fontFamily: SANS, fontSize: 11 },
-    toolChoiceTextActive: { color: C.void, fontWeight: '700' },
+    toolChoiceTextActive: { color: C.onAccent, fontWeight: '700' },
     menuLink: {
       paddingVertical: 14,
       borderBottomWidth: StyleSheet.hairlineWidth,

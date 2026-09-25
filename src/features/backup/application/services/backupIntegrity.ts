@@ -48,12 +48,16 @@ export function hasFinanceImportIntegrity(value: unknown) {
   )
     return false;
   const ids = new Set(accounts.map((item) => item.id));
+  const currencies = new Map(
+    accounts.map((item) => [item.id, String(item.currency ?? 'USD').toUpperCase()]),
+  );
   if (
     !(value.transactions as Record<string, unknown>[]).every(
       (item) =>
         ids.has(item.accountId) &&
         typeof item.currency === 'string' &&
         /^[A-Za-z]{3}$/.test(item.currency) &&
+        currencies.get(item.accountId) === item.currency.toUpperCase() &&
         typeof item.amount === 'number' &&
         Number.isFinite(item.amount) &&
         ['income', 'expense', 'transfer', 'adjustment'].includes(String(item.kind)) &&

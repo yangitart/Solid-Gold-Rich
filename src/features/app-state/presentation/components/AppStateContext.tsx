@@ -31,6 +31,7 @@ import {
   updateTransaction as updateTransactionState,
 } from '@/features/finance/application/commands/financeCommands';
 import { removeNoteFolder } from '@/features/notes/application/useCases/removeNoteFolder';
+import { reconcileCurrencySettings } from '@/features/app-state/application/useCases/reconcileCurrencySettings';
 
 export type PersistenceStatus = 'loading' | 'ready' | 'saving' | 'error';
 export type PersistenceErrorPhase = 'load' | 'save' | null;
@@ -38,11 +39,6 @@ export type PersistenceErrorPhase = 'load' | 'save' | null;
 type FinanceContextValue = {
   state: FinanceState;
   loaded: boolean;
-  persistenceStatus: PersistenceStatus;
-  persistenceError: string | null;
-  persistenceErrorPhase: PersistenceErrorPhase;
-  retryLoad: () => void;
-  retryPersistence: () => void;
   updateState: (updater: (state: FinanceState) => FinanceState) => void;
   addAccount: (account: Account) => void;
   updateAccount: (account: Account) => void;
@@ -76,6 +72,13 @@ type FinanceContextValue = {
 };
 
 const FinanceContext = React.createContext<FinanceContextValue | null>(null);
+type FinancePersistenceContextValue = {
+  persistenceStatus: PersistenceStatus;
+  persistenceError: string | null;
+  persistenceErrorPhase: PersistenceErrorPhase;
+  retryPersistence: () => void;
+};
+const FinancePersistenceContext = React.createContext<FinancePersistenceContextValue | null>(null);
 
 type FinanceStoreState = {
   state: FinanceState;
@@ -114,9 +117,11 @@ export function FinanceProvider({
     useStore(store);
   const setState = React.useCallback(
     (value: React.SetStateAction<FinanceState>) => {
-      store.setState((current) => ({
-        state: typeof value === 'function' ? value(current.state) : value,
-      }));
+      store.setState((current) => {
+        const next = typeof value === 'function' ? value(current.state) : value;
+        if (next === current.state) return current;
+        return { state: reconcileCurrencySettings(current.state, next) };
+      });
     },
     [store],
   );
@@ -359,7 +364,7 @@ export function FinanceProvider({
     setPersistenceErrorPhase(null);
     saveSequence.current = saveSequence.current
       .catch(() => undefined)
-      .then(() => repository.save(state))
+      .then(() => repository.save(store.getState().state))
       .then(() => {
         setPersistenceStatus('ready');
         setPersistenceErrorPhase(null);
@@ -375,7 +380,7 @@ export function FinanceProvider({
     setPersistenceError,
     setPersistenceErrorPhase,
     setPersistenceStatus,
-    state,
+    store,
   ]);
 
   const importJson = React.useCallback(
@@ -404,11 +409,6 @@ export function FinanceProvider({
     () => ({
       state,
       loaded,
-      persistenceStatus,
-      persistenceError,
-      persistenceErrorPhase,
-      retryLoad,
-      retryPersistence,
       updateState,
       addAccount,
       updateAccount,
@@ -443,11 +443,6 @@ export function FinanceProvider({
     [
       state,
       loaded,
-      persistenceStatus,
-      persistenceError,
-      persistenceErrorPhase,
-      retryLoad,
-      retryPersistence,
       updateState,
       addAccount,
       updateAccount,
@@ -481,11 +476,28 @@ export function FinanceProvider({
     ],
   );
 
-  return <FinanceContext.Provider value={value}>{children}</FinanceContext.Provider>;
+  const persistenceValue = React.useMemo(
+    () => ({ persistenceStatus, persistenceError, persistenceErrorPhase, retryPersistence }),
+    [persistenceError, persistenceErrorPhase, persistenceStatus, retryPersistence],
+  );
+
+  return (
+    <FinanceContext.Provider value={value}>
+      <FinancePersistenceContext.Provider value={persistenceValue}>
+        {children}
+      </FinancePersistenceContext.Provider>
+    </FinanceContext.Provider>
+  );
 }
 
 export function useFinance() {
   const context = React.useContext(FinanceContext);
   if (!context) throw new Error('useFinance must be used inside FinanceProvider');
+  return context;
+}
+
+export function useFinancePersistence() {
+  const context = React.useContext(FinancePersistenceContext);
+  if (!context) throw new Error('useFinancePersistence must be used inside FinanceProvider');
   return context;
 }

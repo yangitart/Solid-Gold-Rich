@@ -4,14 +4,16 @@ import type {
   Transaction,
   Transfer,
 } from '@/features/finance/domain/entities/financeTypes';
-import { captureCurrencySnapshot } from '@/shared/domain/finance/currency';
+import { captureCurrencySnapshot, currencyRate } from '@/shared/domain/finance/currency';
 import {
   removeTransaction,
   removeTransfer,
 } from '@/features/finance/application/services/financeStateOperations';
 import { withStoreBalance } from '@/features/store/domain/services/storeDomain';
+import { accountHasHistory } from '@/features/finance/domain/services/financeDomain';
 
 export function addAccount(state: FinanceState, account: Account): FinanceState {
+  if (!validAccount(account)) return state;
   if (state.accounts.some((item) => item.id === account.id)) return state;
   return {
     ...state,
@@ -21,11 +23,37 @@ export function addAccount(state: FinanceState, account: Account): FinanceState 
 }
 
 export function updateAccount(state: FinanceState, account: Account): FinanceState {
+  if (!validAccount(account)) return state;
+  const previous = state.accounts.find((item) => item.id === account.id);
+  if (previous && previous.currency !== account.currency && accountHasHistory(state, account.id))
+    return state;
   return {
     ...state,
     accounts: state.accounts.some((item) => item.id === account.id)
       ? state.accounts.map((item) => (item.id === account.id ? account : item))
       : [...state.accounts, account],
+  };
+}
+
+export function reorderAccounts(
+  state: FinanceState,
+  sourceId: string,
+  targetIndex: number,
+): FinanceState {
+  const visible = state.accounts.filter((item) => !item.archived);
+  const sourceIndex = visible.findIndex((item) => item.id === sourceId);
+  if (sourceIndex < 0 || !Number.isInteger(targetIndex)) return state;
+  const boundedTarget = Math.max(0, Math.min(visible.length - 1, targetIndex));
+  if (sourceIndex === boundedTarget) return state;
+  const reordered = [...visible];
+  const [moved] = reordered.splice(sourceIndex, 1);
+  reordered.splice(boundedTarget, 0, moved);
+  let index = 0;
+  const accounts = state.accounts.map((item) => (item.archived ? item : reordered[index++]));
+  return {
+    ...state,
+    accounts,
+    settings: { ...state.settings, activeAccountId: reordered[0]?.id },
   };
 }
 
@@ -56,6 +84,7 @@ export function restoreAccount(state: FinanceState, id: string): FinanceState {
 }
 
 export function addTransaction(state: FinanceState, transaction: Transaction): FinanceState {
+  if (!validTransaction(state, transaction)) return state;
   if (state.transactions.some((item) => item.id === transaction.id)) return state;
   return {
     ...state,
@@ -75,6 +104,7 @@ export function addTransaction(state: FinanceState, transaction: Transaction): F
 }
 
 export function updateTransaction(state: FinanceState, transaction: Transaction): FinanceState {
+  if (!validTransaction(state, transaction)) return state;
   const previous = state.transactions.find((item) => item.id === transaction.id);
   const previousHistoricalRate =
     previous &&
@@ -85,28 +115,59 @@ export function updateTransaction(state: FinanceState, transaction: Transaction)
       ? (previous.baseAmount as number) / previous.amount
       : undefined;
   const snapshot =
-    previousHistoricalRate !== undefined
-      ? {
-          baseAmount: transaction.amount * previousHistoricalRate,
-          baseCurrency: previous?.baseCurrency,
-        }
-      : captureCurrencySnapshot(
-          transaction.amount,
-          transaction.currency,
-          state.settings.preferredCurrency,
-          state.settings.exchangeRates ?? { USD: 1 },
-        );
+    previous &&
+    previous.currency === transaction.currency &&
+    previous.amount === transaction.amount &&
+    Number.isFinite(previous.baseAmount) &&
+    previous.baseCurrency
+      ? { baseAmount: previous.baseAmount, baseCurrency: previous.baseCurrency }
+      : previousHistoricalRate !== undefined &&
+          Number.isFinite(previousHistoricalRate) &&
+          previousHistoricalRate > 0
+        ? {
+            baseAmount: transaction.amount * previousHistoricalRate,
+            baseCurrency: previous?.baseCurrency,
+          }
+        : captureCurrencySnapshot(
+            transaction.amount,
+            transaction.currency,
+            state.settings.preferredCurrency,
+            state.settings.exchangeRates ?? { USD: 1 },
+          );
+  if (snapshot.baseAmount !== undefined && !Number.isFinite(snapshot.baseAmount)) return state;
+  // A new currency must never inherit the old currency's historical conversion.
+  const { baseAmount: _baseAmount, baseCurrency: _baseCurrency, ...updated } = transaction;
   return {
     ...state,
     transactions: state.transactions.some((item) => item.id === transaction.id)
       ? state.transactions.map((item) =>
-          item.id === transaction.id ? { ...transaction, ...snapshot } : item,
+          item.id === transaction.id ? { ...updated, ...snapshot } : item,
         )
-      : [...state.transactions, { ...transaction, ...snapshot }],
+      : [...state.transactions, { ...updated, ...snapshot }],
   };
 }
 
 export function addTransfer(state: FinanceState, transfer: Transfer): FinanceState {
+  const accountCurrency = (id: string) =>
+    id === 'store-business'
+      ? state.store.currency
+      : state.accounts.find((item) => item.id === id && !item.archived)?.currency;
+  const expected = transfer.fromAmount * transfer.rate;
+  if (
+    transfer.fromAccountId === transfer.toAccountId ||
+    accountCurrency(transfer.fromAccountId) !== transfer.fromCurrency ||
+    accountCurrency(transfer.toAccountId) !== transfer.toCurrency ||
+    ![transfer.fromAmount, transfer.toAmount, transfer.rate].every(
+      (value) => Number.isFinite(value) && value > 0,
+    ) ||
+    !Number.isFinite(transfer.fee) ||
+    transfer.fee < 0 ||
+    !Number.isFinite(transfer.fromAmount + transfer.fee) ||
+    !Number.isFinite(expected) ||
+    Math.abs(expected - transfer.toAmount) > Math.max(0.005, Math.abs(expected) * 1e-10) ||
+    (transfer.fromCurrency === transfer.toCurrency && transfer.rate !== 1)
+  )
+    return state;
   if (
     state.transfers.some((item) => item.id === transfer.id) ||
     state.transactions.some(
@@ -174,6 +235,7 @@ export function addTransfer(state: FinanceState, transfer: Transfer): FinanceSta
           id: `${transfer.id}-store-cash`,
           type: isStoreTarget ? ('funding' as const) : ('withdrawal' as const),
           amount: isStoreTarget ? transfer.toAmount : -(transfer.fromAmount + transfer.fee),
+          currency: isStoreTarget ? transfer.toCurrency : transfer.fromCurrency,
           date: transfer.date,
           note: transfer.note,
           transferId: transfer.id,
@@ -195,3 +257,22 @@ export function addTransfer(state: FinanceState, transfer: Transfer): FinanceSta
 }
 
 export { removeTransaction, removeTransfer };
+
+function validTransaction(state: FinanceState, transaction: Transaction) {
+  const account = state.accounts.find((item) => item.id === transaction.accountId);
+  return Boolean(
+    account &&
+    account.currency === transaction.currency &&
+    Number.isFinite(transaction.amount) &&
+    (transaction.kind === 'adjustment' || transaction.amount >= 0),
+  );
+}
+
+function validAccount(account: Account) {
+  return (
+    Number.isFinite(account.openingBalance) &&
+    currencyRate(account.currency, account.currency, {}) === 1 &&
+    (account.exchangeRate === undefined ||
+      (Number.isFinite(account.exchangeRate) && account.exchangeRate > 0))
+  );
+}

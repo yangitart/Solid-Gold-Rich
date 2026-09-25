@@ -316,7 +316,7 @@ export default function OnboardingScreen({ onComplete }: { onComplete: () => voi
           <Text style={styles.continueText}>
             {lastPage ? t('app.onboarding.start') : t('app.onboarding.next')}
           </Text>
-          <Ionicons name={lastPage ? 'checkmark' : 'arrow-forward'} size={18} color={C.void} />
+          <Ionicons name={lastPage ? 'checkmark' : 'arrow-forward'} size={18} color={C.onAccent} />
         </Pressable>
       </View>
       <Modal
@@ -686,7 +686,7 @@ const styles = createThemeStyles((C) =>
       gap: 9,
     },
     continueText: {
-      color: C.void,
+      color: C.onAccent,
       fontFamily: SANS,
       fontSize: 10,
       fontWeight: '800',

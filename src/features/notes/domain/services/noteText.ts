@@ -13,10 +13,9 @@ export function countNotesByFolderTree(folders: NoteFolder[], notes: Note[]): Ma
 
   folders.forEach((folder) => {
     if (!folder.parentFolderId) return;
-    childrenByParent.set(folder.parentFolderId, [
-      ...(childrenByParent.get(folder.parentFolderId) ?? []),
-      folder.id,
-    ]);
+    const children = childrenByParent.get(folder.parentFolderId);
+    if (children) children.push(folder.id);
+    else childrenByParent.set(folder.parentFolderId, [folder.id]);
   });
   notes.forEach((note) => {
     if (note.folderId) directCount.set(note.folderId, (directCount.get(note.folderId) ?? 0) + 1);

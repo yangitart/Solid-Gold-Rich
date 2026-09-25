@@ -683,6 +683,10 @@
     "release": {
       "noAccounts": "Nessun conto",
       "noAccountsCopy": "Crea il primo conto per iniziare.",
+      "accountsOrderHint": "Tieni premuta la maniglia e trascina per riordinare i conti. Il primo conto appare nella schermata principale.",
+      "dragAccount": "Riordina {{name}}",
+      "moveAccountUp": "Sposta il conto in alto",
+      "moveAccountDown": "Sposta il conto in basso",
       "addAccount": "AGGIUNGI CONTO",
       "archivedAccounts": "CONTI ARCHIVIATI",
       "restore": "RIPRISTINA",
@@ -791,7 +795,8 @@
       "previousMonth": "il mese precedente",
       "previousYear": "l’anno precedente",
       "previous": "Precedente",
-      "noPreviousData": "Nessun dato precedente"
+      "noPreviousData": "Nessun dato precedente",
+      "percentagePoints": "p.p."
     },
     "operationForm": {
       "activeAccount": "Conto attivo",
@@ -961,7 +966,7 @@
         "linkedOperationTitle": "Operazione collegata",
         "linkedOperationCopy": "Gestisci questo movimento dal debito, risparmio o trasferimento associato.",
         "missingRatesWarning": "Alcuni totali sono nascosti perché manca un tasso di cambio. Configuralo nelle Impostazioni.",
-        "accountCurrencyLocked": "La valuta non può essere modificata dopo i primi movimenti del conto.",
+        "accountCurrencyLocked": "Non è possibile cambiare la valuta finché il conto ha operazioni, budget, pagamenti ricorrenti, debiti o obiettivi di risparmio collegati.",
         "paymentExceedsDebt": "Il pagamento non può superare il debito residuo.",
         "contributionExceedsGoal": "Il versamento non può superare l’importo restante dell’obiettivo.",
         "interestReference": "Interesse (%) · solo come riferimento",

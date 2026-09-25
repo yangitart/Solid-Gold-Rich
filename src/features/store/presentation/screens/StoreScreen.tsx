@@ -1,7 +1,7 @@
+import { useAppDialog } from '@/shared/ui/AppDialog';
 import React from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Animated as NativeAnimated,
   BackHandler,
   FlatList,
@@ -44,22 +44,25 @@ import type {
   StoreStockMovementType,
 } from '@/features/store/domain/entities/Store';
 import { captureCurrencySnapshot, currencyRate } from '@/shared/domain/finance/currency';
+import { normalizeEntitySearchText } from '@/shared/domain/search/normalizedSearch';
 import {
   accountBalance,
+  accountBalanceIndex,
   periodBounds,
   previousPeriodBounds,
 } from '@/features/finance/domain/services/financeDomain';
+import { elapsedComparisonBounds } from '@/shared/domain/dates/dateRange';
 import {
   addTransfer as registerFundingTransfer,
   removeTransaction,
   removeTransfer,
 } from '@/features/finance/application/commands/financeCommands';
 import {
-  availableStock,
   changeStoreCurrency,
   completeSale as completeStoreSale,
   filterStoreProducts,
   productStock,
+  productStockIndex,
   storeAmount,
   storeReportData,
   storeReportHasMissingRates,
@@ -364,12 +367,37 @@ export default function StoreScreen({
   reportRepository: ReportRepository;
 }) {
   const { t, i18n } = useTranslation();
+  const showDialog = useAppDialog();
   const finance = useFinance();
   const { state } = finance;
   const store = state.store;
+  const storeStatsState = React.useMemo(
+    () => ({ store, settings: { exchangeRates: state.settings.exchangeRates } }),
+    [state.settings.exchangeRates, store],
+  );
+  const accountBalancesById = React.useMemo(
+    () => accountBalanceIndex({ accounts: state.accounts, transactions: state.transactions }),
+    [state.accounts, state.transactions],
+  );
+  const storeStatsMissingRates = React.useMemo(
+    () => storeReportHasMissingRates(storeStatsState),
+    [storeStatsState],
+  );
+  const statsMoney = (value: number) => (storeStatsMissingRates ? '—' : money(value, currency));
+  const descriptionHistory = React.useMemo(
+    () =>
+      [
+        ...store.sales.filter((sale) => sale.status !== 'void'),
+        ...store.stockMovements,
+        ...store.cashMovements,
+      ]
+        .sort((a, b) => b.date.localeCompare(a.date))
+        .map((item) => item.note),
+    [store.sales, store.stockMovements, store.cashMovements],
+  );
   const currency = store.currency || state.settings.preferredCurrency || 'USD';
   const reduceMotion = useReducedMotion();
-  const windowWidth = useWindowDimensions().width;
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
   const compactStoreStats = windowWidth < 360;
   const compactDirectoryForm = windowWidth < 460;
   const [view, setView] = React.useState<StoreView>('inventory');
@@ -592,9 +620,16 @@ export default function StoreScreen({
     },
     [store.categories, t],
   );
+  const stockByProductId = React.useMemo(
+    () =>
+      productStockIndex({
+        store: { products: store.products, stockMovements: store.stockMovements },
+      }),
+    [store.products, store.stockMovements],
+  );
   const stockFor = React.useCallback(
-    (productId: string) => productStock(state, productId),
-    [state],
+    (productId: string) => stockByProductId.get(productId) ?? 0,
+    [stockByProductId],
   );
   const inventoryValue = React.useMemo(
     () =>
@@ -602,15 +637,16 @@ export default function StoreScreen({
         (total, product) =>
           total +
           (product.type === 'product'
-            ? stockFor(product.id) * storeAmount(state, product.purchasePrice, product.currency)
+            ? stockFor(product.id) *
+              storeAmount(storeStatsState, product.purchasePrice, product.currency)
             : 0),
         0,
       ),
-    [state, store.products, stockFor],
+    [store.products, stockFor, storeStatsState],
   );
   const availableFor = React.useCallback(
-    (product: StoreProduct) => availableStock(state, product),
-    [state],
+    (product: StoreProduct) => Math.max(0, stockFor(product.id) - product.reservedQuantity),
+    [stockFor],
   );
   const selectedSale = React.useMemo(
     () => store.sales.find((sale) => sale.id === selectedSaleId) ?? null,
@@ -622,34 +658,29 @@ export default function StoreScreen({
     return { start: bounds.start, end: new Date(statsReference.getTime() + 1) };
   }, [state.settings.firstDayOfWeek, statsReference, storeStatsRange]);
   const storeStatsData = React.useMemo(
-    () => storeStatistics(state, storeStatsBounds),
-    [state, storeStatsBounds],
+    () => storeStatistics(storeStatsState, storeStatsBounds),
+    [storeStatsState, storeStatsBounds],
   );
   const storeStatsPreviousBounds = React.useMemo(() => {
-    const fullCurrentBounds = periodBounds(
-      storeStatsRange,
+    const current = periodBounds(storeStatsRange, statsReference, state.settings.firstDayOfWeek);
+    return elapsedComparisonBounds(
+      current,
+      previousPeriodBounds(storeStatsRange, current),
       statsReference,
-      state.settings.firstDayOfWeek,
     );
-    const previous = previousPeriodBounds(storeStatsRange, fullCurrentBounds);
-    const elapsed = statsReference.getTime() - fullCurrentBounds.start.getTime();
-    return {
-      start: previous.start,
-      end: new Date(Math.min(previous.end.getTime(), previous.start.getTime() + elapsed)),
-    };
   }, [state.settings.firstDayOfWeek, statsReference, storeStatsRange]);
   const storePreviousStatsData = React.useMemo(
-    () => storeStatistics(state, storeStatsPreviousBounds),
-    [state, storeStatsPreviousBounds],
+    () => storeStatistics(storeStatsState, storeStatsPreviousBounds),
+    [storeStatsState, storeStatsPreviousBounds],
   );
   const storeStatsSalesChange =
-    storePreviousStatsData.salesRevenue > 0
+    !storeStatsMissingRates && storePreviousStatsData.salesRevenue > 0
       ? ((storeStatsData.salesRevenue - storePreviousStatsData.salesRevenue) /
           storePreviousStatsData.salesRevenue) *
         100
       : null;
   const storeStatsNetChange =
-    storePreviousStatsData.netFlow !== 0
+    !storeStatsMissingRates && storePreviousStatsData.netFlow !== 0
       ? ((storeStatsData.netFlow - storePreviousStatsData.netFlow) /
           Math.abs(storePreviousStatsData.netFlow)) *
         100
@@ -676,11 +707,11 @@ export default function StoreScreen({
         label,
         sales: storeStatsData.sales
           .filter((sale) => includes(sale.date))
-          .reduce((sum, sale) => sum + storeAmount(state, sale.total, sale.currency), 0),
+          .reduce((sum, sale) => sum + storeAmount(storeStatsState, sale.total, sale.currency), 0),
         outflow: storeStatsData.movements
           .filter((movement) => includes(movement.date))
           .reduce((sum, movement) => {
-            const amount = storeAmount(state, movement.amount, movement.currency);
+            const amount = storeAmount(storeStatsState, movement.amount, movement.currency);
             return sum + (amount < 0 ? -amount : 0);
           }, 0),
       });
@@ -722,12 +753,13 @@ export default function StoreScreen({
     }
     return buckets;
   }, [
-    state,
+    state.settings.language,
     statsReference,
     storeStatsBounds,
     storeStatsData.movements,
     storeStatsData.sales,
     storeStatsRange,
+    storeStatsState,
     today,
   ]);
   const storeStatsFlowMax = Math.max(
@@ -873,11 +905,11 @@ export default function StoreScreen({
         .map((item) => ({
           value: item.id,
           label: item.name,
-          description: money(accountBalance(state, item.id), item.currency),
+          description: money(accountBalancesById.get(item.id) ?? 0, item.currency),
           icon: 'wallet-outline' as const,
         })),
     ],
-    [currency, state, store.businessAccount.balance, t],
+    [accountBalancesById, currency, state.accounts, store.businessAccount.balance, t],
   );
   const productUnitOptions = React.useMemo<SelectOption[]>(
     () => [
@@ -944,22 +976,27 @@ export default function StoreScreen({
             : [];
     const query = normalizedSearch(directoryQuery);
     return all.filter((item) =>
-      normalizedSearch(
+      normalizeEntitySearchText(
+        item,
         `${item.name} ${item.phone ?? ''} ${'role' in item ? (item.role ?? '') : ''} ${'email' in item ? (item.email ?? '') : ''} ${'note' in item ? (item.note ?? '') : ''}`,
       ).includes(query),
     );
   }, [directoryQuery, store.clients, store.employees, store.providers, view]);
   const visibleProducts = React.useMemo(
     () =>
-      filterStoreProducts(state, {
-        type: view === 'services' ? 'service' : 'product',
-        query: productQuery,
-        categoryId: categoryFilter,
-        status: 'active',
-        stock: view === 'inventory' ? stockFilter : '',
-        today,
-      }),
-    [categoryFilter, productQuery, state, stockFilter, today, view],
+      filterStoreProducts(
+        storeStatsState,
+        {
+          type: view === 'services' ? 'service' : 'product',
+          query: productQuery,
+          categoryId: categoryFilter,
+          status: 'active',
+          stock: view === 'inventory' ? stockFilter : '',
+          today,
+        },
+        stockByProductId,
+      ),
+    [categoryFilter, productQuery, stockByProductId, stockFilter, storeStatsState, today, view],
   );
   const visibleArchivedProducts = React.useMemo(() => {
     const query = normalizedSearch(productQuery);
@@ -968,7 +1005,8 @@ export default function StoreScreen({
         (product) =>
           !product.active &&
           (!query ||
-            normalizedSearch(
+            normalizeEntitySearchText(
+              product,
               `${product.name} ${product.key} ${product.sku ?? ''} ${categoryNameFor(product.categoryId)}`,
             ).includes(query)),
       )
@@ -981,7 +1019,8 @@ export default function StoreScreen({
         (product) =>
           product.active &&
           (!normalizedSaleQuery ||
-            normalizedSearch(
+            normalizeEntitySearchText(
+              product,
               `${product.name} ${product.key} ${product.sku ?? ''} ${categoryNameFor(product.categoryId)}`,
             ).includes(normalizedSaleQuery)),
       ),
@@ -1290,7 +1329,7 @@ export default function StoreScreen({
         : Infinity;
     const required = sourceAccount ? sourceAmount : purchaseTotal;
     if (!allowNegative && purchaseAccountId !== 'none' && sourceBalance < required) {
-      Alert.alert(t('finance.negativeBalance.title'), t('finance.negativeBalance.body'), [
+      showDialog(t('finance.negativeBalance.title'), t('finance.negativeBalance.body'), [
         { text: t('finance.cancel'), style: 'cancel' },
         { text: t('finance.negativeBalance.confirm'), onPress: () => commitProduct(true) },
       ]);
@@ -1476,7 +1515,7 @@ export default function StoreScreen({
 
   const deleteCategory = (category: StoreCategory) => {
     if (category.builtIn || category.id === 'general') return;
-    Alert.alert(t('finance.store.deleteCategory'), t('finance.store.deleteCategoryConfirm'), [
+    showDialog(t('finance.store.deleteCategory'), t('finance.store.deleteCategoryConfirm'), [
       { text: t('finance.cancel'), style: 'cancel' },
       {
         text: t('finance.deleteAction'),
@@ -1644,7 +1683,7 @@ export default function StoreScreen({
   };
 
   const confirmVoidSale = (saleId: string) =>
-    Alert.alert(t('finance.store.voidSale'), t('finance.store.voidSaleConfirm'), [
+    showDialog(t('finance.store.voidSale'), t('finance.store.voidSaleConfirm'), [
       { text: t('finance.cancel'), style: 'cancel' },
       {
         text: t('finance.deleteAction'),
@@ -2095,7 +2134,7 @@ export default function StoreScreen({
   };
 
   const reportLanguage = i18n.resolvedLanguage ?? i18n.language;
-  const reportMissingRates = React.useMemo(() => storeReportHasMissingRates(state), [state]);
+  const reportMissingRates = storeStatsMissingRates;
   const reportRangeError =
     reportRangeMode === 'custom' &&
     localDay(validReportDate(reportEndDate)).getTime() <
@@ -2150,9 +2189,9 @@ export default function StoreScreen({
   const reportState = React.useMemo(
     () =>
       reportRangeError
-        ? { ...state, store: { ...state.store, sales: [], cashMovements: [] } }
-        : reportRepository.filterState(state, reportRange),
-    [reportRange, reportRangeError, reportRepository, state],
+        ? { ...storeStatsState, store: { ...storeStatsState.store, sales: [], cashMovements: [] } }
+        : reportRepository.filterState(storeStatsState, reportRange),
+    [reportRange, reportRangeError, reportRepository, storeStatsState],
   );
   const reportData = React.useMemo(() => storeReportData(reportState), [reportState]);
   const reportExportLabels = React.useMemo<ReportExportLabels>(
@@ -2243,7 +2282,7 @@ export default function StoreScreen({
           : t('finance.store.reportExportExcel'),
       );
     } catch {
-      Alert.alert(t('finance.store.reportExportFailed'), t('finance.store.reportExportFailedCopy'));
+      showDialog(t('finance.store.reportExportFailed'), t('finance.store.reportExportFailedCopy'));
     } finally {
       backupInFlight.current = false;
       setBackupBusy(false);
@@ -2255,14 +2294,14 @@ export default function StoreScreen({
     backupInFlight.current = true;
     setBackupBusy(true);
     try {
-      const backup = await backupRepository.createStoreJson(store);
+      const backup = await backupRepository.createStoreJson(store, state.settings.exchangeRates);
       const uri = await fileService.writeText(
         `solid-gold-rich-store-${new Date().toISOString().slice(0, 10)}.json`,
         JSON.stringify(backup, null, 2),
       );
       await fileService.share(uri, 'application/json', t('finance.storeBackup.exportStore'));
     } catch {
-      Alert.alert(t('finance.storeBackup.backupFailed'), t('finance.storeBackup.backupFailedCopy'));
+      showDialog(t('finance.storeBackup.backupFailed'), t('finance.storeBackup.backupFailedCopy'));
     } finally {
       backupInFlight.current = false;
       setBackupBusy(false);
@@ -2287,7 +2326,7 @@ export default function StoreScreen({
         backupRepository.parseStoreJson(await fileService.readText(result.uri)),
       );
     } catch {
-      Alert.alert(t('finance.storeBackup.backupFailed'), t('finance.storeBackup.backupInvalid'));
+      showDialog(t('finance.storeBackup.backupFailed'), t('finance.storeBackup.backupInvalid'));
     } finally {
       backupInFlight.current = false;
       setBackupBusy(false);
@@ -2307,18 +2346,38 @@ export default function StoreScreen({
       const restoredStore = backupRepository.isolateStore(
         await backupRepository.restoreStore(backup),
       );
-      finance.updateState((current) => ({
-        ...current,
-        store: appStateRepository.normalize({ ...current, store: restoredStore }).store,
-      }));
+      finance.updateState((current) => {
+        const settings = {
+          ...current.settings,
+          exchangeRates: { ...backup.exchangeRates, ...current.settings.exchangeRates, USD: 1 },
+        };
+        const imported = appStateRepository.normalize({
+          ...current,
+          settings,
+          store: restoredStore,
+        });
+        if (
+          storeReportHasMissingRates(imported) ||
+          !Number.isFinite(imported.store.businessAccount.balance)
+        )
+          throw new Error('missing-store-rate');
+        return { ...current, settings, store: imported.store };
+      });
       setSelectedSaleId(null);
       switchView('inventory');
-      Alert.alert(
+      showDialog(
         t('finance.storeBackup.backupImported'),
         t('finance.storeBackup.backupImportedCopy'),
       );
-    } catch {
-      Alert.alert(t('finance.storeBackup.backupFailed'), t('finance.storeBackup.backupInvalid'));
+    } catch (error) {
+      showDialog(
+        t('finance.storeBackup.backupFailed'),
+        t(
+          error instanceof Error && error.message === 'missing-store-rate'
+            ? 'finance.releaseErrors.missingRate'
+            : 'finance.storeBackup.backupInvalid',
+        ),
+      );
     } finally {
       backupInFlight.current = false;
       setBackupBusy(false);
@@ -2453,7 +2512,11 @@ export default function StoreScreen({
             accessibilityRole="button"
             accessibilityLabel={t('finance.storeFilters.filters')}
           >
-            <Ionicons name="options-outline" size={19} color={filtersActive ? C.void : C.gold} />
+            <Ionicons
+              name="options-outline"
+              size={19}
+              color={filtersActive ? C.onAccent : C.gold}
+            />
           </Pressable>
           {view === 'inventory' ? (
             <Pressable
@@ -2568,7 +2631,7 @@ export default function StoreScreen({
                   accessibilityRole="button"
                   accessibilityLabel={t('finance.store.restoreProduct')}
                 >
-                  <Ionicons name="refresh-outline" size={16} color={C.void} />
+                  <Ionicons name="refresh-outline" size={16} color={C.onAccent} />
                   <Text style={styles.archiveRestoreText} numberOfLines={1}>
                     {t('finance.store.restoreProduct')}
                   </Text>
@@ -2861,7 +2924,7 @@ export default function StoreScreen({
           onPress={() => executeDefaultOperations('providers', provider.id)}
           disabled={!provider.active || !operations.length}
         >
-          <Ionicons name="play-outline" size={17} color={C.void} />
+          <Ionicons name="play-outline" size={17} color={C.onAccent} />
           <Text style={styles.primaryButtonText}>{t('finance.store.executeOperations')}</Text>
         </Pressable>
       </ScrollView>
@@ -2963,13 +3026,13 @@ export default function StoreScreen({
                   style={styles.operationButton}
                   onPress={() => executeDefaultOperations(kind, item.id)}
                 >
-                  <Ionicons name="play-outline" size={15} color={C.void} />
+                  <Ionicons name="play-outline" size={15} color={C.onAccent} />
                   <Text style={styles.payButtonText}>{t('finance.store.executeOperations')}</Text>
                 </Pressable>
               ) : null}
               {kind === 'employees' && item.active && 'salary' in item && item.salary > 0 ? (
                 <Pressable style={styles.payButton} onPress={() => payEmployee(item.id)}>
-                  <Ionicons name="cash-outline" size={15} color={C.void} />
+                  <Ionicons name="cash-outline" size={15} color={C.onAccent} />
                   <Text style={styles.payButtonText}>{t('finance.payroll.pay')}</Text>
                 </Pressable>
               ) : null}
@@ -3104,7 +3167,7 @@ export default function StoreScreen({
                 onPress={() => void exportReport('pdf')}
                 disabled={backupBusy || Boolean(reportRangeError) || reportMissingRates}
               >
-                <Ionicons name="document-text-outline" size={17} color={C.void} />
+                <Ionicons name="document-text-outline" size={17} color={C.onAccent} />
                 <Text style={styles.exportButtonText}>{t('finance.store.reportExportPdf')}</Text>
               </Pressable>
               <Pressable
@@ -3213,6 +3276,9 @@ export default function StoreScreen({
         })}
       </View>
       <Text style={styles.storeStatsRangeLabel}>{storeStatsRangeLabel}</Text>
+      {storeStatsMissingRates ? (
+        <Text style={styles.error}>{t('finance.missingRatesWarning')}</Text>
+      ) : null}
 
       <LinearGradient
         colors={['rgba(233,200,119,0.15)', 'rgba(10,12,20,0.78)']}
@@ -3232,7 +3298,7 @@ export default function StoreScreen({
               adjustsFontSizeToFit
               minimumFontScale={0.55}
             >
-              {money(storeStatsData.netFlow, currency)}
+              {statsMoney(storeStatsData.netFlow)}
             </Text>
           </View>
           <View style={styles.storeStatsBadge}>
@@ -3320,7 +3386,7 @@ export default function StoreScreen({
               adjustsFontSizeToFit
               minimumFontScale={0.58}
             >
-              {money(storeStatsData.salesRevenue, currency)}
+              {statsMoney(storeStatsData.salesRevenue)}
             </Text>
           </View>
           <View style={styles.movementMetricDivider} />
@@ -3332,7 +3398,7 @@ export default function StoreScreen({
               adjustsFontSizeToFit
               minimumFontScale={0.58}
             >
-              {money(storeStatsData.cashOutflow, currency)}
+              {statsMoney(storeStatsData.cashOutflow)}
             </Text>
           </View>
         </View>
@@ -3355,7 +3421,7 @@ export default function StoreScreen({
             adjustsFontSizeToFit
             minimumFontScale={0.58}
           >
-            {money(storeStatsData.averageSale, currency)}
+            {statsMoney(storeStatsData.averageSale)}
           </Text>
         </View>
         <View
@@ -3386,7 +3452,7 @@ export default function StoreScreen({
             adjustsFontSizeToFit
             minimumFontScale={0.58}
           >
-            {money(storeStatsData.inventoryValue, currency)}
+            {statsMoney(storeStatsData.inventoryValue)}
           </Text>
         </View>
         <View
@@ -3413,7 +3479,8 @@ export default function StoreScreen({
 
       <Text style={styles.sectionTitle}>{t('finance.storeStats.salesFlow')}</Text>
       <View style={styles.storeStatsChartCard}>
-        {storeStatsFlowBuckets.some((bucket) => bucket.sales > 0 || bucket.outflow > 0) ? (
+        {!storeStatsMissingRates &&
+        storeStatsFlowBuckets.some((bucket) => bucket.sales > 0 || bucket.outflow > 0) ? (
           <>
             <View style={styles.storeStatsChart}>
               {storeStatsFlowBuckets.map((bucket) => (
@@ -3464,61 +3531,70 @@ export default function StoreScreen({
         ) : (
           <View style={styles.storeStatsEmpty}>
             <Ionicons name="stats-chart-outline" size={22} color={C.textSubtle} />
-            <Text style={styles.rowMeta}>{t('finance.storeStats.noData')}</Text>
+            <Text style={styles.rowMeta}>
+              {storeStatsMissingRates
+                ? t('finance.missingRatesWarning')
+                : t('finance.storeStats.noData')}
+            </Text>
           </View>
         )}
       </View>
 
       <Text style={styles.sectionTitle}>{t('finance.storeStats.topProducts')}</Text>
       <View style={styles.storeStatsChartCard}>
-        {storeStatsData.topProducts.map((product, index) => (
-          <View
-            key={product.productId}
-            style={[styles.storeStatsProductRow, index === 0 && styles.storeStatsProductRowTop]}
-          >
-            <View style={[styles.storeStatsRank, index === 0 && styles.storeStatsRankTop]}>
-              <Text
-                style={[styles.storeStatsRankText, index === 0 && styles.storeStatsRankTextTop]}
-              >
-                {index + 1}
-              </Text>
-            </View>
-            <View style={styles.rowMain}>
-              <Text
-                style={[styles.rowTitle, index === 0 && styles.storeStatsProductNameTop]}
-                numberOfLines={2}
-              >
-                {product.name}
-              </Text>
-              <Text style={styles.rowMeta}>
-                {product.quantity} {t('finance.store.reportUnits')}
-              </Text>
-              <View style={styles.storeStatsProductTrack}>
-                <LinearGradient
-                  colors={[C.gold, C.goldMid]}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={[
-                    styles.storeStatsProductFill,
-                    { width: `${(product.total / storeStatsTopMax) * 100}%` },
-                  ]}
-                />
-              </View>
-            </View>
-            <Text
-              style={styles.amount}
-              numberOfLines={1}
-              adjustsFontSizeToFit
-              minimumFontScale={0.6}
+        {!storeStatsMissingRates &&
+          storeStatsData.topProducts.map((product, index) => (
+            <View
+              key={product.productId}
+              style={[styles.storeStatsProductRow, index === 0 && styles.storeStatsProductRowTop]}
             >
-              {money(product.total, currency)}
-            </Text>
-          </View>
-        ))}
-        {!storeStatsData.topProducts.length ? (
+              <View style={[styles.storeStatsRank, index === 0 && styles.storeStatsRankTop]}>
+                <Text
+                  style={[styles.storeStatsRankText, index === 0 && styles.storeStatsRankTextTop]}
+                >
+                  {index + 1}
+                </Text>
+              </View>
+              <View style={styles.rowMain}>
+                <Text
+                  style={[styles.rowTitle, index === 0 && styles.storeStatsProductNameTop]}
+                  numberOfLines={2}
+                >
+                  {product.name}
+                </Text>
+                <Text style={styles.rowMeta}>
+                  {product.quantity} {t('finance.store.reportUnits')}
+                </Text>
+                <View style={styles.storeStatsProductTrack}>
+                  <LinearGradient
+                    colors={[C.gold, C.goldMid]}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 0 }}
+                    style={[
+                      styles.storeStatsProductFill,
+                      { width: `${(product.total / storeStatsTopMax) * 100}%` },
+                    ]}
+                  />
+                </View>
+              </View>
+              <Text
+                style={styles.amount}
+                numberOfLines={1}
+                adjustsFontSizeToFit
+                minimumFontScale={0.6}
+              >
+                {money(product.total, currency)}
+              </Text>
+            </View>
+          ))}
+        {storeStatsMissingRates || !storeStatsData.topProducts.length ? (
           <View style={styles.storeStatsEmpty}>
             <Ionicons name="podium-outline" size={22} color={C.textSubtle} />
-            <Text style={styles.rowMeta}>{t('finance.storeStats.noData')}</Text>
+            <Text style={styles.rowMeta}>
+              {storeStatsMissingRates
+                ? t('finance.missingRatesWarning')
+                : t('finance.storeStats.noData')}
+            </Text>
           </View>
         ) : null}
       </View>
@@ -3858,10 +3934,12 @@ export default function StoreScreen({
         <Modal
           visible={drawerOpen}
           transparent
+          statusBarTranslucent
+          navigationBarTranslucent
           animationType="fade"
           onRequestClose={() => setDrawerOpen(false)}
         >
-          <View style={styles.drawerBackdrop}>
+          <View style={[styles.drawerBackdrop, { minHeight: windowHeight }]}>
             <Pressable style={StyleSheet.absoluteFill} onPress={() => setDrawerOpen(false)} />
             <Animated.View
               style={styles.drawerPanel}
@@ -4165,6 +4243,7 @@ export default function StoreScreen({
           <FormField
             label={t('finance.storeFunding.note')}
             value={fundingNote}
+            suggestions={descriptionHistory}
             onChangeText={setFundingNote}
           />
         </ResponsiveSheet>
@@ -4351,10 +4430,10 @@ export default function StoreScreen({
                     accessibilityState={{ selected }}
                     accessibilityLabel={t('finance.chooseIcon')}
                   >
-                    <Ionicons name={icon} size={20} color={selected ? C.void : C.gold} />
+                    <Ionicons name={icon} size={20} color={selected ? C.onAccent : C.gold} />
                     {selected ? (
                       <View style={styles.categoryIconSelectedMark}>
-                        <Ionicons name="checkmark" size={10} color={C.void} />
+                        <Ionicons name="checkmark" size={10} color={C.onAccent} />
                       </View>
                     ) : null}
                   </Pressable>
@@ -4474,6 +4553,7 @@ export default function StoreScreen({
           <FormField
             label={t('finance.store.stockReason')}
             value={stockNote}
+            suggestions={descriptionHistory}
             onChangeText={(value) => {
               setStockNote(value);
               setStockError('');
@@ -4617,6 +4697,7 @@ export default function StoreScreen({
           <FormField
             label={t('finance.store.saleNote')}
             value={saleNote}
+            suggestions={descriptionHistory}
             onChangeText={setSaleNote}
             multiline
           />
@@ -4721,7 +4802,7 @@ export default function StoreScreen({
                         : 'people-outline'
                   }
                   size={10}
-                  color={C.void}
+                  color={C.onAccent}
                 />
               </View>
             </View>
@@ -5314,7 +5395,7 @@ const styles = createThemeStyles((C) =>
       gap: 4,
       backgroundColor: C.gold,
     },
-    payButtonText: { color: C.void, fontFamily: SANS, fontSize: 9, fontWeight: '700' },
+    payButtonText: { color: C.onAccent, fontFamily: SANS, fontSize: 9, fontWeight: '700' },
     avatar: {
       width: 40,
       height: 40,
@@ -5350,7 +5431,7 @@ const styles = createThemeStyles((C) =>
       gap: 7,
       marginTop: 16,
     },
-    primaryButtonText: { color: C.void, fontFamily: SANS, fontSize: 11, fontWeight: '800' },
+    primaryButtonText: { color: C.onAccent, fontFamily: SANS, fontSize: 11, fontWeight: '800' },
     storeOperationRow: {
       minHeight: 76,
       flexDirection: 'row',
@@ -5547,8 +5628,8 @@ const styles = createThemeStyles((C) =>
     drawerPanel: {
       width: '84%',
       maxWidth: 420,
-      height: '100%',
-      backgroundColor: '#090B12',
+      flex: 1,
+      backgroundColor: C.ink,
       borderRightWidth: StyleSheet.hairlineWidth,
       borderRightColor: C.line,
       paddingHorizontal: 18,
@@ -5868,7 +5949,7 @@ const styles = createThemeStyles((C) =>
       justifyContent: 'center',
       gap: 6,
     },
-    exportButtonText: { color: C.void, fontFamily: SANS, fontSize: 10, fontWeight: '800' },
+    exportButtonText: { color: C.onAccent, fontFamily: SANS, fontSize: 10, fontWeight: '800' },
     exportButtonSecondary: {
       flex: 1,
       minHeight: 44,
@@ -6097,7 +6178,7 @@ const styles = createThemeStyles((C) =>
     },
     storeStatsRankTop: { backgroundColor: C.gold },
     storeStatsRankText: { color: C.gold, fontFamily: SERIF, fontSize: 13 },
-    storeStatsRankTextTop: { color: C.void, fontWeight: '800' },
+    storeStatsRankTextTop: { color: C.onAccent, fontWeight: '800' },
     storeStatsProductNameTop: { color: C.goldLight, fontFamily: SERIF, fontSize: 15 },
     storeStatsProductTrack: {
       height: 4,
@@ -6287,7 +6368,7 @@ const styles = createThemeStyles((C) =>
       fontWeight: '600',
       textAlign: 'center',
     },
-    reportRangeOptionTextActive: { color: C.void, fontWeight: '800' },
+    reportRangeOptionTextActive: { color: C.onAccent, fontWeight: '800' },
     importBackdrop: {
       flex: 1,
       alignItems: 'center',
@@ -6374,7 +6455,7 @@ const styles = createThemeStyles((C) =>
     },
     archiveRestoreText: {
       flexShrink: 1,
-      color: C.void,
+      color: C.onAccent,
       fontFamily: SANS,
       fontSize: 8.5,
       fontWeight: '800',

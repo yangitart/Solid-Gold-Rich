@@ -683,6 +683,10 @@
     "release": {
       "noAccounts": "Aucun compte",
       "noAccountsCopy": "Creez votre premier compte pour commencer.",
+      "accountsOrderHint": "Maintenez la poignée et faites glisser un compte pour le réordonner. Le premier compte apparaît sur l’écran d’accueil.",
+      "dragAccount": "Réordonner {{name}}",
+      "moveAccountUp": "Déplacer le compte vers le haut",
+      "moveAccountDown": "Déplacer le compte vers le bas",
       "addAccount": "AJOUTER UN COMPTE",
       "archivedAccounts": "COMPTES ARCHIVES",
       "restore": "RESTAURER",
@@ -788,7 +792,8 @@
       "previousMonth": "le mois précédent",
       "previousYear": "l’année précédente",
       "previous": "Précédent",
-      "noPreviousData": "Aucune donnée précédente"
+      "noPreviousData": "Aucune donnée précédente",
+      "percentagePoints": "pt"
     },
     "operationForm": {
       "activeAccount": "Compte actif",
@@ -958,7 +963,7 @@
         "linkedOperationTitle": "Opération liée",
         "linkedOperationCopy": "Gérez ce mouvement depuis la dette, l’épargne ou le virement associé.",
         "missingRatesWarning": "Certains totaux sont masqués car un taux de change manque. Configurez-le dans Réglages.",
-        "accountCurrencyLocked": "La devise ne peut plus être modifiée après les premiers mouvements du compte.",
+        "accountCurrencyLocked": "La devise ne peut pas être modifiée tant que le compte est lié à des opérations, des budgets, des paiements récurrents, des dettes ou des objectifs d’épargne.",
         "paymentExceedsDebt": "Le paiement ne peut pas dépasser le solde restant de la dette.",
         "contributionExceedsGoal": "Le versement ne peut pas dépasser le montant restant de l’objectif.",
         "interestReference": "Intérêt (%) · à titre indicatif",

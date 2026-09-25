@@ -31,7 +31,17 @@ test('reports preserve currencies, ranges, PDF offsets and pagination', () => {
       salePrice: 3,
     },
   ];
-  state.store.stockMovements = [];
+  let stockReads = 0;
+  state.store.stockMovements = [
+    {
+      productId: 'p',
+      type: 'initial',
+      get quantity() {
+        stockReads += 1;
+        return 20;
+      },
+    },
+  ];
   state.store.clients = [{ id: 'client', name: 'Ana García', active: true }];
   state.store.providers = [];
   state.store.employees = [
@@ -143,6 +153,7 @@ test('reports preserve currencies, ranges, PDF offsets and pagination', () => {
     /missing-report-rate/,
   );
   const pdf = Buffer.from(createStoreReportPdf(state, 'USD', 'es', labels, range));
+  assert.equal(stockReads, 1); // One stock scan for the entire report.
   const text = pdf.toString('ascii');
   assert.ok(text.includes('FINDELANOTA'));
   assert.ok(text.includes('Caf\\351'));
@@ -152,6 +163,7 @@ test('reports preserve currencies, ranges, PDF offsets and pagination', () => {
     assert.match(text.slice(Number(match[1])), /^\d+ 0 obj/);
   }
   const xlsx = Buffer.from(createStoreReportXlsx(state, 'USD', 'es', labels, range));
+  assert.equal(stockReads, 2); // The XLSX export also builds just one stock snapshot.
   const xml = xlsx.toString('utf8');
   assert.ok(xml.includes('FINDELANOTA'));
   assert.ok(xml.includes('<v>112</v>')); // Current balance includes the earlier opening.

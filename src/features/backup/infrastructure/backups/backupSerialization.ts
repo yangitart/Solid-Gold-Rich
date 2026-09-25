@@ -270,6 +270,19 @@ function isStoreBackup(value: unknown): value is StoreBackup {
   )
     return false;
   const store = value.store;
+  if (
+    value.exchangeRates !== undefined &&
+    (!isRecord(value.exchangeRates) ||
+      Object.entries(value.exchangeRates).some(
+        ([code, rate]) =>
+          !/^[A-Z]{3}$/.test(code) ||
+          typeof rate !== 'number' ||
+          !Number.isFinite(rate) ||
+          rate <= 0 ||
+          (code === 'USD' && rate !== 1),
+      ))
+  )
+    return false;
   return (
     hasStoreImportIntegrity(store) &&
     Array.isArray(store.categories) &&
@@ -289,7 +302,10 @@ function isStoreBackup(value: unknown): value is StoreBackup {
   );
 }
 
-export async function createStoreBackup(store: StoreState): Promise<StoreBackup> {
+export async function createStoreBackup(
+  store: StoreState,
+  exchangeRates?: StoreBackup['exchangeRates'],
+): Promise<StoreBackup> {
   const products = await Promise.all(
     store.products.map(async (product): Promise<StoreProductBackup> => {
       const { picture, ...productWithoutPicture } = product;
@@ -312,6 +328,7 @@ export async function createStoreBackup(store: StoreState): Promise<StoreBackup>
     version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
     store: { ...store, products },
+    ...(exchangeRates ? { exchangeRates: { ...exchangeRates, USD: 1 } } : {}),
   };
 }
 

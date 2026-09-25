@@ -1,14 +1,8 @@
 import type { StoreCashMovement } from '@/features/store/domain/entities/Store';
 import { inDateRange, type DateRange } from '@/shared/domain/dates/dateRange';
+import { normalizeSearchText } from '@/shared/domain/search/normalizedSearch';
 
 export type CashFlowFilter = 'all' | 'income' | 'expense';
-
-const normalize = (value: string) =>
-  value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLocaleLowerCase()
-    .trim();
 
 export function filterCashMovements(
   movements: StoreCashMovement[],
@@ -21,7 +15,7 @@ export function filterCashMovements(
     context?: Record<string, string>;
   },
 ) {
-  const normalizedQuery = normalize(options.query);
+  const normalizedQuery = normalizeSearchText(options.query);
   const query = /^-?\d+(?:[.,]\d+)?$/.test(normalizedQuery)
     ? String(Number(normalizedQuery.replace(',', '.')))
     : normalizedQuery;
@@ -31,7 +25,7 @@ export function filterCashMovements(
       if (options.flow === 'income' && movement.amount <= 0) return false;
       if (options.flow === 'expense' && movement.amount >= 0) return false;
       const text = `${movement.note} ${options.labels[movement.type] ?? movement.type} ${movement.amount} ${movement.currency ?? options.currency} ${options.context?.[movement.id] ?? ''}`;
-      return !query || normalize(text).includes(query);
+      return !query || normalizeSearchText(text).includes(query);
     })
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }

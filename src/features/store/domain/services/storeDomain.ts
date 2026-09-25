@@ -7,6 +7,10 @@ import type {
   StoreStockMovement,
 } from '@/features/store/domain/entities/Store';
 import { currencyRate, type CurrencyRates } from '@/shared/domain/finance/currency';
+import {
+  normalizeEntitySearchText,
+  normalizeSearchText,
+} from '@/shared/domain/search/normalizedSearch';
 
 export type StoreStateContainer = {
   store: StoreState;
@@ -27,11 +31,7 @@ export type StoreStockFilter = '' | 'low' | 'out' | 'expired' | 'expiring';
 export type StoreSalePeriod = 'all' | 'today' | 'week' | 'month';
 
 function normalizedSearch(value: string) {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLocaleLowerCase()
-    .trim();
+  return normalizeSearchText(value);
 }
 
 function localDate(value: string | Date) {
@@ -47,7 +47,10 @@ function firstById<T extends { id: string }>(items: readonly T[]) {
   return index;
 }
 
-function productStockIndex(state: StoreStateContainer) {
+// Reuse one derived snapshot when reading stock for multiple products.
+export function productStockIndex(state: {
+  store: Pick<StoreState, 'products' | 'stockMovements'>;
+}): ReadonlyMap<string, number> {
   const productsById = firstById(state.store.products);
   const movementTotals = new Map<string, { total: number; hasInitial: boolean }>();
   state.store.stockMovements.forEach((movement) => {
@@ -194,10 +197,10 @@ export function changeStoreCurrency<T extends StoreStateContainer>(
       })),
     },
   } as T;
-  return {
-    rate,
-    state: withStoreBalance(nextState),
-  };
+  const balanced = withStoreBalance(nextState);
+  if (!Number.isFinite(balanced.store.businessAccount.balance))
+    return { state, error: 'missing-rate' };
+  return { rate, state: balanced };
 }
 
 export function productStock(state: StoreStateContainer, productId: string) {
@@ -262,7 +265,8 @@ export function storeReportHasMissingRates(state: StoreStateContainer) {
   return (
     state.store.sales.some((sale) => sale.status === 'completed' && missing(sale.currency)) ||
     state.store.cashMovements.some((movement) => missing(movement.currency)) ||
-    state.store.products.some((product) => missing(product.currency))
+    state.store.products.some((product) => missing(product.currency)) ||
+    state.store.employees.some((employee) => missing(employee.salaryCurrency))
   );
 }
 
@@ -359,31 +363,39 @@ export function filterStoreProducts(
     stock: StoreStockFilter;
     today?: Date;
   },
+  stockIndex?: ReadonlyMap<string, number>,
 ) {
   const query = normalizedSearch(filters.query);
   const today = localDate(filters.today ?? new Date());
   const expiringLimit = new Date(today);
   expiringLimit.setDate(expiringLimit.getDate() + 30);
-  const stockByProductId = productStockIndex(state);
+  const stockByProductId =
+    filters.stock === 'low' || filters.stock === 'out'
+      ? (stockIndex ?? productStockIndex(state))
+      : undefined;
   const categoriesById = firstById(state.store.categories);
   return state.store.products.filter((product) => {
     if (product.type !== filters.type) return false;
     const category = categoriesById.get(product.categoryId)?.name ?? '';
     const matchesQuery =
       !query ||
-      normalizedSearch(`${product.name} ${product.key} ${product.sku ?? ''} ${category}`).includes(
-        query,
-      );
+      normalizeEntitySearchText(
+        product,
+        `${product.name} ${product.key} ${product.sku ?? ''} ${category}`,
+      ).includes(query);
     const matchesCategory = !filters.categoryId || product.categoryId === filters.categoryId;
     const matchesStatus =
       !filters.status || (filters.status === 'active' ? product.active : !product.active);
     if (!matchesQuery || !matchesCategory || !matchesStatus) return false;
     if (!filters.stock) return true;
     if (product.type === 'service') return false;
-    const available = availableStockFromIndex(stockByProductId, product);
+    if (stockByProductId) {
+      const available = availableStockFromIndex(stockByProductId, product);
+      return filters.stock === 'low'
+        ? available > 0 && available <= product.stockMinimum
+        : available <= 0;
+    }
     const expiration = product.expirationDate ? localDate(product.expirationDate) : null;
-    if (filters.stock === 'low') return available > 0 && available <= product.stockMinimum;
-    if (filters.stock === 'out') return available <= 0;
     if (filters.stock === 'expired') return Boolean(expiration && expiration < today);
     return Boolean(expiration && expiration >= today && expiration <= expiringLimit);
   });
@@ -406,7 +418,8 @@ export function filterStoreSales(
     const client = sale.clientId === undefined ? '' : (clientsById.get(sale.clientId)?.name ?? '');
     const employee =
       sale.employeeId === undefined ? '' : (employeesById.get(sale.employeeId)?.name ?? '');
-    const searchable = normalizedSearch(
+    const searchable = normalizeEntitySearchText(
+      sale,
       `${client} ${employee} ${sale.note} ${sale.paymentMethod ?? ''} ${sale.status} ${sale.items
         .map((item) => {
           const product = productsById.get(item.productId);
@@ -445,6 +458,14 @@ export function validateSale(
   sale: StoreSale,
 ): StoreActionResult['error'] {
   if (state.store.sales.some((item) => item.id === sale.id)) return 'duplicate';
+  if (
+    currencyRate(
+      sale.currency ?? state.store.currency,
+      state.store.currency,
+      state.settings?.exchangeRates ?? { USD: 1 },
+    ) === undefined
+  )
+    return 'invalid-sale';
   if (!sale.items.length || !Number.isFinite(sale.total) || sale.total < 0) return 'invalid-sale';
   const productsById = firstById(state.store.products.filter((product) => product.active));
   const stockByProductId = productStockIndex(state);
@@ -508,7 +529,7 @@ export function completeSale<T extends StoreStateContainer>(
       ...state,
       store: {
         ...state.store,
-        sales: [sale, ...state.store.sales],
+        sales: [{ ...sale, currency: sale.currency ?? state.store.currency }, ...state.store.sales],
         stockMovements: [...state.store.stockMovements, ...stockMovements],
         cashMovements: [...state.store.cashMovements, cashMovement],
       },

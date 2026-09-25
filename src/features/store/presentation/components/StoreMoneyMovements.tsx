@@ -355,7 +355,7 @@ const styles = createThemeStyles((C) =>
     },
     periodSelected: { backgroundColor: C.gold },
     periodText: { color: C.textSubtle, fontFamily: SANS, fontSize: 11 },
-    periodTextSelected: { color: C.void, fontWeight: '600' },
+    periodTextSelected: { color: C.onAccent, fontWeight: '600' },
     search: {
       flexDirection: 'row',
       alignItems: 'center',

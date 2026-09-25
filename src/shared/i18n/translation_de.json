@@ -688,6 +688,10 @@
     "release": {
       "noAccounts": "Keine Konten",
       "noAccountsCopy": "Erstelle dein erstes Konto.",
+      "accountsOrderHint": "Halte den Griff gedrückt und ziehe ein Konto an die gewünschte Position. Das erste Konto erscheint auf der Startseite.",
+      "dragAccount": "{{name}} neu anordnen",
+      "moveAccountUp": "Konto nach oben verschieben",
+      "moveAccountDown": "Konto nach unten verschieben",
       "addAccount": "KONTO HINZUFUEGEN",
       "archivedAccounts": "ARCHIVIERTE KONTEN",
       "restore": "WIEDERHERSTELLEN",
@@ -793,7 +797,8 @@
       "previousMonth": "dem vorherigen Monat",
       "previousYear": "dem vorherigen Jahr",
       "previous": "Vorher",
-      "noPreviousData": "Keine vorherigen Daten"
+      "noPreviousData": "Keine vorherigen Daten",
+      "percentagePoints": "Pkt."
     },
     "operationForm": {
       "activeAccount": "Aktives Konto",
@@ -963,7 +968,7 @@
         "linkedOperationTitle": "Verknüpfte Buchung",
         "linkedOperationCopy": "Verwalte diese Bewegung in der zugehörigen Schuld, Sparposition oder Überweisung.",
         "missingRatesWarning": "Einige Summen sind ausgeblendet, weil ein Wechselkurs fehlt. Lege ihn in den Einstellungen fest.",
-        "accountCurrencyLocked": "Die Währung kann nach der ersten Kontobewegung nicht mehr geändert werden.",
+        "accountCurrencyLocked": "Die Währung kann nicht geändert werden, solange das Konto mit Buchungen, Budgets, wiederkehrenden Zahlungen, Schulden oder Sparzielen verknüpft ist.",
         "paymentExceedsDebt": "Die Zahlung darf den verbleibenden Schuldbetrag nicht überschreiten.",
         "contributionExceedsGoal": "Der Beitrag darf den noch offenen Zielbetrag nicht überschreiten.",
         "interestReference": "Zinssatz (%) · nur als Referenz",

@@ -390,10 +390,10 @@ export default function StoreProductForm({
                     accessibilityState={{ selected }}
                     accessibilityLabel={t('finance.chooseIcon')}
                   >
-                    <Ionicons name={icon} size={20} color={selected ? C.void : C.gold} />
+                    <Ionicons name={icon} size={20} color={selected ? C.onAccent : C.gold} />
                     {selected ? (
                       <View style={styles.iconSelectedMark}>
-                        <Ionicons name="checkmark" size={10} color={C.void} />
+                        <Ionicons name="checkmark" size={10} color={C.onAccent} />
                       </View>
                     ) : null}
                   </Pressable>

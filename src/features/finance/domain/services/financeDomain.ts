@@ -7,17 +7,17 @@ import type {
   Transfer,
 } from '@/features/finance/domain/entities/financeTypes';
 import { captureCurrencySnapshot, type CurrencyRates } from '@/shared/domain/finance/currency';
+import {
+  normalizeEntitySearchParts,
+  normalizeSearchText,
+} from '@/shared/domain/search/normalizedSearch';
 
 import { inDateRange, type DateRange } from '@/shared/domain/dates/dateRange';
 export { inDateRange, type DateRange } from '@/shared/domain/dates/dateRange';
 export type FinanceActivityFilter = 'all' | 'expense' | 'income' | 'transfer';
 
 function normalizedSearch(value: string) {
-  return value
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .toLocaleLowerCase()
-    .trim();
+  return normalizeSearchText(value);
 }
 
 export function accountBalance(
@@ -37,14 +37,61 @@ export function accountBalance(
     );
 }
 
+export function accountBalanceIndex(state: {
+  accounts: readonly Account[];
+  transactions: readonly Transaction[];
+}) {
+  const balances = new Map<string, number>();
+  state.accounts.forEach((account) => {
+    if (!balances.has(account.id)) balances.set(account.id, account.openingBalance);
+  });
+  state.transactions.forEach((transaction) => {
+    if (transaction.status === 'void' || !balances.has(transaction.accountId)) return;
+    const current = balances.get(transaction.accountId) as number;
+    balances.set(
+      transaction.accountId,
+      transaction.kind === 'income' || transaction.kind === 'adjustment'
+        ? current + transaction.amount
+        : current - transaction.amount,
+    );
+  });
+  return balances;
+}
+
+export function expensesByAccountIndex(transactions: readonly Transaction[]) {
+  const expenses = new Map<string, Transaction[]>();
+  transactions.forEach((transaction) => {
+    if (
+      transaction.status === 'void' ||
+      transaction.kind !== 'expense' ||
+      isTransferTransaction(transaction)
+    )
+      return;
+    const list = expenses.get(transaction.accountId);
+    if (list) list.push(transaction);
+    else expenses.set(transaction.accountId, [transaction]);
+  });
+  return expenses;
+}
+
 export function accountHasHistory(
-  state: { transactions: Transaction[]; transfers: Transfer[] },
+  state: {
+    transactions: Transaction[];
+    transfers: Transfer[];
+    recurring?: { accountId: string }[];
+    budgets?: { accountId: string }[];
+    savingsGoals?: { accountId?: string }[];
+    debts?: { accountId?: string }[];
+  },
   accountId: string,
 ) {
   return (
     state.transactions.some((item) => item.accountId === accountId) ||
     state.transfers.some(
       (item) => item.fromAccountId === accountId || item.toAccountId === accountId,
+    ) ||
+    [state.recurring, state.budgets, state.savingsGoals, state.debts].some((items) =>
+      items?.some((item) => item.accountId === accountId),
     )
   );
 }
@@ -123,8 +170,18 @@ export function filterActivityTransactions(
     )
       return false;
     if (!query) return true;
-    const searchable = normalizedSearch(
-      `${item.payee} ${item.description} ${item.category} ${options.categoryLabels?.[item.category] ?? ''} ${options.accountNames?.[item.accountId] ?? ''} ${item.amount} ${item.currency} ${item.paymentMethod} ${item.reference} ${item.date}`,
+    const searchable = normalizeEntitySearchParts(
+      item,
+      item.payee,
+      item.description,
+      item.category,
+      options.categoryLabels?.[item.category] ?? '',
+      options.accountNames?.[item.accountId] ?? '',
+      String(item.amount),
+      item.currency,
+      item.paymentMethod,
+      item.reference,
+      item.date,
     );
     return searchable.includes(query);
   });
