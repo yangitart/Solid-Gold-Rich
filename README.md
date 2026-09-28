@@ -60,6 +60,19 @@ npx expo export --platform android
 The native `android/` directory is generated locally and excluded from Git and
 EAS uploads. Preserve local native edits before regenerating it.
 
+Production Android builds apply `plugins/withAndroidReleaseOptimization.js`
+during Expo prebuild. It enables R8 full mode, obfuscation, code shrinking and
+resource shrinking, and selects `proguard-android-optimize.txt` while preserving
+native module keep rules. Debug builds keep their existing configuration.
+
+These settings require a new native build; refreshing JavaScript does not apply
+them to an installed app. Build the production AAB with
+`eas build --platform android --profile production`. Test the optimized release
+on Android before publishing, and retain its matching `mapping.txt` for crash
+deobfuscation. Check the resulting AAB's
+`BUNDLE-METADATA/com.android.tools/r8.json` for the measured optimization scores;
+enabling R8 alone does not guarantee a particular percentage.
+
 CI runs source checks and Android export on pushes to `master` and pull requests.
 It does not sign binaries or publish releases.
 

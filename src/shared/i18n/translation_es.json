@@ -748,7 +748,7 @@
     "release": {
       "noAccounts": "No hay cuentas",
       "noAccountsCopy": "Crea tu primera cuenta para comenzar.",
-      "accountsOrderHint": "Mantén pulsado el icono y arrastra la cuenta para cambiar su orden. La primera aparece en la pantalla principal.",
+      "accountsOrderHint": "Mantén pulsado el borde derecho de la fila y arrastra la cuenta para cambiar su orden. La primera aparece en la pantalla principal.",
       "dragAccount": "Cambiar el orden de {{name}}",
       "moveAccountUp": "Mover cuenta hacia arriba",
       "moveAccountDown": "Mover cuenta hacia abajo",

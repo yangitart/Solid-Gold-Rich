@@ -147,6 +147,7 @@ function AccountReorderHandle({
   const responder = React.useMemo(
     () =>
       PanResponder.create({
+        onStartShouldSetPanResponderCapture: () => true,
         onMoveShouldSetPanResponder: (_, gesture) =>
           Math.abs(gesture.dy) > 7 && Math.abs(gesture.dy) > Math.abs(gesture.dx),
         onMoveShouldSetPanResponderCapture: (_, gesture) =>
@@ -195,9 +196,7 @@ function AccountReorderHandle({
         if (event.nativeEvent.actionName === 'decrement') latest.current.onMove(id, index - 1);
         if (event.nativeEvent.actionName === 'increment') latest.current.onMove(id, index + 1);
       }}
-    >
-      <Ionicons name="reorder-three-outline" size={21} color={C.gold} />
-    </Pressable>
+    />
   );
 }
 
@@ -2252,9 +2251,6 @@ export default function FinanceModulesScreen({
   };
   const renderAccounts = () => (
     <View style={styles.panel}>
-      {accounts.length > 1 ? (
-        <Text style={styles.accountOrderHint}>{t('finance.release.accountsOrderHint')}</Text>
-      ) : null}
       {accounts.map((item, index) => {
         const balance = accountBalance(item);
         const equivalentRate =
@@ -2284,6 +2280,20 @@ export default function FinanceModulesScreen({
                   : ''}
               </Text>
             </View>
+            {accounts.length > 1 ? (
+              <AccountReorderHandle
+                id={item.id}
+                index={index}
+                count={accounts.length}
+                getRowStride={getAccountRowStride}
+                onMove={moveAccountRow}
+                onDraggingChange={setDraggingAccountId}
+                label={t('finance.release.dragAccount', { name: item.name })}
+                hint={t('finance.release.accountsOrderHint')}
+                moveUpLabel={t('finance.release.moveAccountUp')}
+                moveDownLabel={t('finance.release.moveAccountDown')}
+              />
+            ) : null}
             <View style={styles.accountAmount}>
               <Text
                 style={styles.positive}
@@ -2300,20 +2310,6 @@ export default function FinanceModulesScreen({
               )}
             </View>
             <Ionicons name="chevron-forward-outline" size={17} color="rgba(255,244,208,0.35)" />
-            {accounts.length > 1 ? (
-              <AccountReorderHandle
-                id={item.id}
-                index={index}
-                count={accounts.length}
-                getRowStride={getAccountRowStride}
-                onMove={moveAccountRow}
-                onDraggingChange={setDraggingAccountId}
-                label={t('finance.release.dragAccount', { name: item.name })}
-                hint={t('finance.release.accountsOrderHint')}
-                moveUpLabel={t('finance.release.moveAccountUp')}
-                moveDownLabel={t('finance.release.moveAccountDown')}
-              />
-            ) : null}
           </Pressable>
         );
       })}
@@ -5740,6 +5736,7 @@ const styles = createThemeStyles((C) =>
       width: '100%',
       maxWidth: 620,
       maxHeight: '90%',
+      flexGrow: 0,
       borderRadius: 24,
       borderWidth: StyleSheet.hairlineWidth,
       borderColor: 'rgba(233,200,119,0.11)',
@@ -5840,13 +5837,6 @@ const styles = createThemeStyles((C) =>
       borderRadius: 12,
       paddingHorizontal: 8,
     },
-    accountOrderHint: {
-      color: C.textMuted,
-      fontFamily: SANS,
-      fontSize: 11,
-      lineHeight: 17,
-      marginBottom: 6,
-    },
     accountReorderHandle: {
       width: 42,
       minHeight: 52,
@@ -5854,7 +5844,6 @@ const styles = createThemeStyles((C) =>
       borderRadius: 13,
       alignItems: 'center',
       justifyContent: 'center',
-      backgroundColor: C.glass,
     },
     rowMain: { flex: 1, minWidth: 0 },
     accountStripe: { width: 5, height: 38, borderRadius: 3 },

@@ -2,7 +2,7 @@
   "expo": {
     "name": "Solid Gold Rich",
     "slug": "solid-gold-rich",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "default",
     "icon": "./assets/images/iconapp.png",
     "scheme": "imrich",
@@ -44,7 +44,8 @@
           "backgroundColor": "#04050A"
         }
       ],
-      "expo-localization"
+      "expo-localization",
+      "./plugins/withAndroidReleaseOptimization"
     ],
     "extra": {
       "eas": {

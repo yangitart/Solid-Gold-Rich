@@ -688,7 +688,7 @@
     "release": {
       "noAccounts": "Keine Konten",
       "noAccountsCopy": "Erstelle dein erstes Konto.",
-      "accountsOrderHint": "Halte den Griff gedrückt und ziehe ein Konto an die gewünschte Position. Das erste Konto erscheint auf der Startseite.",
+      "accountsOrderHint": "Halte den rechten Rand der Zeile gedrückt und ziehe das Konto an die gewünschte Position. Das erste Konto erscheint auf der Startseite.",
       "dragAccount": "{{name}} neu anordnen",
       "moveAccountUp": "Konto nach oben verschieben",
       "moveAccountDown": "Konto nach unten verschieben",

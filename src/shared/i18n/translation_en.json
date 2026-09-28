@@ -681,7 +681,7 @@
     "release": {
       "noAccounts": "No accounts",
       "noAccountsCopy": "Create your first account to begin.",
-      "accountsOrderHint": "Hold the grip and drag an account to reorder it. The first account appears on the home screen.",
+      "accountsOrderHint": "Press and drag an account from its right edge to reorder it. The first account appears on the home screen.",
       "dragAccount": "Reorder {{name}}",
       "moveAccountUp": "Move account up",
       "moveAccountDown": "Move account down",

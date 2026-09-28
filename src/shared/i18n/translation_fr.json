@@ -683,7 +683,7 @@
     "release": {
       "noAccounts": "Aucun compte",
       "noAccountsCopy": "Creez votre premier compte pour commencer.",
-      "accountsOrderHint": "Maintenez la poignée et faites glisser un compte pour le réordonner. Le premier compte apparaît sur l’écran d’accueil.",
+      "accountsOrderHint": "Maintenez le bord droit de la ligne et faites glisser le compte pour le réordonner. Le premier apparaît sur l’écran d’accueil.",
       "dragAccount": "Réordonner {{name}}",
       "moveAccountUp": "Déplacer le compte vers le haut",
       "moveAccountDown": "Déplacer le compte vers le bas",
